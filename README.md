@@ -9,7 +9,7 @@ graph LR
     A[Cowrie SSH Honeypot] -->|JSON logs| B[Log Ingestor]
     B -->|inserts| C[(PostgreSQL)]
     C -->|queries| D[Flask API]
-    D -->|REST| E[React Dashboard]
+    D -->|REST| E[Vue Dashboard]
     C -->|datasource| F[Grafana]
 ```
 
@@ -29,7 +29,7 @@ graph LR
 - Cowrie (SSH honeypot)
 - PostgreSQL
 - Python (Flask API + log ingestor)
-- React (dashboard)
+- Vue 3 (dashboard)
 - Grafana (monitoring)
 - Docker Compose
 - GitHub Actions (CI/CD)
