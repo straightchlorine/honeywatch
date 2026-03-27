@@ -36,6 +36,7 @@ services:
       - backend
 
   ingestor:
+    image: ghcr.io/straightchlorine/honeywatch/ingestor:latest
     build: ./ingestor
     container_name: honeywatch-ingestor
     restart: unless-stopped
@@ -53,6 +54,7 @@ services:
       - backend
 
   api:
+    image: ghcr.io/straightchlorine/honeywatch/api:latest
     build: ./api
     container_name: honeywatch-api
     restart: unless-stopped
@@ -74,6 +76,7 @@ services:
       - backend
 
   dashboard:
+    image: ghcr.io/straightchlorine/honeywatch/dashboard:latest
     build: ./dashboard
     container_name: honeywatch-dashboard
     restart: unless-stopped
