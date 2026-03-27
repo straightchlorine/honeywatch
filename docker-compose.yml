@@ -40,11 +40,6 @@ services:
     image: nginx:1.27-alpine
     container_name: honeywatch-proxy
     restart: unless-stopped
-    depends_on:
-      api:
-        condition: service_healthy
-      grafana:
-        condition: service_healthy
     ports:
       - "${WG_IP:-10.0.0.1}:5000:5000"
       - "${WG_IP:-10.0.0.1}:8080:8080"
