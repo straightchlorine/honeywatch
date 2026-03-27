@@ -2,7 +2,7 @@ name: Release
 
 on:
   push:
-    tags: ["*.*.*"]
+    tags: ["v*.*.*"]
 
 concurrency:
   group: release
@@ -82,12 +82,15 @@ jobs:
       name: production
     steps:
       - name: Deploy to VPS
-        uses: appleboy/ssh-action@v1
-        with:
-          host: ${{ secrets.SSH_HOST }}
-          username: ${{ secrets.SSH_USER }}
-          key: ${{ secrets.SSH_KEY }}
-          script: |
-            cd /opt/honeywatch
-            docker compose pull
-            docker compose up -d --remove-orphans
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST_KEY: ${{ secrets.SSH_HOST_KEY }}
+        run: |
+          install -m 600 /dev/null ~/.ssh_deploy_key
+          printf '%s\n' "$SSH_KEY" > ~/.ssh_deploy_key
+          mkdir -p ~/.ssh && printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
+          ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes \
+            "${SSH_USER}@${SSH_HOST}" \
+            'cd /opt/honeywatch && docker compose pull && docker compose up -d --remove-orphans'
