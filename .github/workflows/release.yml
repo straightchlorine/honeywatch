@@ -83,14 +83,17 @@ jobs:
     steps:
       - name: Deploy to VPS
         env:
-          SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
           SSH_HOST_KEY: ${{ secrets.SSH_HOST_KEY }}
+          PROXY_HOST: ${{ secrets.PROXY_HOST }}
+          PROXY_PORT: ${{ secrets.PROXY_PORT }}
+          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
         run: |
           install -m 600 /dev/null ~/.ssh_deploy_key
           printf '%s\n' "$SSH_KEY" > ~/.ssh_deploy_key
           mkdir -p ~/.ssh && printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
           ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes \
-            "${SSH_USER}@${SSH_HOST}" \
+            -o "ProxyCommand=ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes -W %h:%p -p ${PROXY_PORT} ${SSH_USER}@${PROXY_HOST}" \
+            "${SSH_USER}@${DEPLOY_HOST}" \
             'cd /opt/honeywatch && docker compose pull && docker compose up -d --remove-orphans'
