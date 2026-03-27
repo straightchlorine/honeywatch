@@ -13,14 +13,14 @@ env:
   IMAGE_PREFIX: ghcr.io/${{ github.repository }}
 
 permissions:
-  contents: read
+  contents: write
   packages: write
 
 jobs:
   verify-tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -44,7 +44,7 @@ jobs:
       matrix:
         component: [api, ingestor, dashboard]
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
@@ -96,4 +96,15 @@ jobs:
           ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes \
             -o "ProxyCommand=ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes -W %h:%p -p ${PROXY_PORT} ${SSH_USER}@${PROXY_HOST}" \
             "${SSH_USER}@${DEPLOY_HOST}" \
-            'cd /opt/honeywatch && docker compose pull && docker compose up -d --remove-orphans'
+            'cd /opt/honeywatch && git pull origin master && docker compose pull && docker compose up -d --remove-orphans'
+
+  release:
+    needs: [deploy]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Create GitHub Release
+        run: gh release create ${{ github.ref_name }} --generate-notes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
