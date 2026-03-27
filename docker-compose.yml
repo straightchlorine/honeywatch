@@ -19,12 +19,32 @@ services:
       - ALL
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.1 2222 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
 
   # -- Reverse proxy (only container with expose network access) --
   proxy:
-    image: nginx:alpine
+    image: nginx:1.27-alpine
     container_name: honeywatch-proxy
     restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+      grafana:
+        condition: service_healthy
     ports:
       - "${WG_IP:-10.0.0.1}:5000:5000"
       - "${WG_IP:-10.0.0.1}:8080:8080"
@@ -47,6 +67,16 @@ services:
       - NET_BIND_SERVICE
     security_opt:
       - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # -- Backend services (internal only - no internet access) --
   postgres:
@@ -62,6 +92,30 @@ services:
       - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     networks:
       - backend
+    cap_drop:
+      - ALL
+    cap_add:
+      - DAC_OVERRIDE
+      - FOWNER
+      - SETGID
+      - SETUID
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
 
   ingestor:
     image: ghcr.io/straightchlorine/honeywatch/ingestor:latest
@@ -69,8 +123,10 @@ services:
     container_name: honeywatch-ingestor
     restart: unless-stopped
     depends_on:
-      - postgres
-      - cowrie
+      postgres:
+        condition: service_healthy
+      cowrie:
+        condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -80,6 +136,20 @@ services:
       - cowrie-logs:/logs:ro
     networks:
       - backend
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   api:
     image: ghcr.io/straightchlorine/honeywatch/api:latest
@@ -87,7 +157,8 @@ services:
     container_name: honeywatch-api
     restart: unless-stopped
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
@@ -99,6 +170,25 @@ services:
       MAXMIND_LICENSE_KEY: ${MAXMIND_LICENSE_KEY}
     networks:
       - backend
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:5000/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
   dashboard:
     image: ghcr.io/straightchlorine/honeywatch/dashboard:latest
@@ -106,20 +196,54 @@ services:
     container_name: honeywatch-dashboard
     restart: unless-stopped
     depends_on:
-      - api
+      api:
+        condition: service_healthy
     networks:
       - backend
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   grafana:
-    image: grafana/grafana:latest
+    image: grafana/grafana:11.5.2
     container_name: honeywatch-grafana
     restart: unless-stopped
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
       - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
       - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
     networks:
       - backend
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: "0.5"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
 
 volumes:
   cowrie-logs:
