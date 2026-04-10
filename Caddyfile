@@ -1,0 +1,7 @@
+honey.piotrkrzysztof.dev {
+	# API (VPS 1 via WireGuard)
+	reverse_proxy /api/* 10.0.0.1:5000
+
+	# Dashboard (local container)
+	reverse_proxy dashboard:80
+}

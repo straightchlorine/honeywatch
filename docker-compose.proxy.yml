@@ -1,0 +1,62 @@
+# VPS 2 (proxy) -- reference compose for the public-facing side
+# Adapt this to your own setup (k3s, headscale, etc.)
+# Usage: docker compose -f docker-compose.proxy.yml up -d
+
+services:
+  caddy:
+    image: caddy:2.9-alpine
+    container_name: honeywatch-caddy
+    restart: unless-stopped
+    depends_on:
+      - dashboard
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://127.0.0.1:80 || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+
+  dashboard:
+    image: ghcr.io/straightchlorine/honeywatch/dashboard:latest
+    container_name: honeywatch-dashboard
+    restart: unless-stopped
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  caddy-data:
+  caddy-config:

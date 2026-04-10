@@ -96,7 +96,7 @@ jobs:
           ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes \
             -o "ProxyCommand=ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes -W %h:%p -p ${PROXY_PORT} ${SSH_USER}@${PROXY_HOST}" \
             "${SSH_USER}@${DEPLOY_HOST}" \
-            'cd /opt/honeywatch && git pull origin master && docker compose pull && docker compose up -d --remove-orphans'
+            'cd /opt/honeywatch && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --remove-orphans'
           rm -f ~/.ssh_deploy_key
 
   release:
