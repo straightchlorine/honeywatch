@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ipaddress
 import logging
 
 from psycopg_pool import ConnectionPool
@@ -15,6 +16,15 @@ from src.events import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _is_loopback(src_ip: str | None) -> bool:
+    if not src_ip:
+        return False
+    try:
+        return ipaddress.ip_address(src_ip).is_loopback
+    except ValueError:
+        return False
 
 _INSERT_SESSION = """
     INSERT INTO sessions
@@ -76,6 +86,11 @@ class EventWriter:
                 self._write_session_closed(event)
 
     def _write_session_connect(self, event: SessionConnect) -> None:
+        # Cowrie's docker-compose healthcheck dials 127.0.0.1:2222 on an
+        # interval, which cowrie logs like any other connect. Drop loopback
+        # sources so they don't inflate session counts or pollute stats.
+        if _is_loopback(event.src_ip):
+            return
         with self.pool.connection() as conn:
             conn.execute(
                 _INSERT_SESSION,

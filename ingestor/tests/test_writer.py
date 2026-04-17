@@ -158,6 +158,33 @@ def test_write_session_closed(
     assert row[0] == datetime(2024, 1, 15, 10, 31, 0, tzinfo=timezone.utc)
 
 
+def test_loopback_session_skipped(
+    writer: EventWriter,
+    db_connection: psycopg.Connection[tuple[object, ...]],
+) -> None:
+    # Cowrie's healthcheck dials 127.0.0.1:2222 -- those connects should not
+    # be persisted as attack sessions.
+    event = SessionConnect(
+        session_id="sess-loopback",
+        src_ip="127.0.0.1",
+        src_port=54321,
+        dst_ip="127.0.0.1",
+        dst_port=2222,
+        protocol="ssh",
+        timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        sensor="honeypot-01",
+    )
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM sessions WHERE id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 0
+
+
 def test_duplicate_session_ignored(
     writer: EventWriter,
     db_connection: psycopg.Connection[tuple[object, ...]],

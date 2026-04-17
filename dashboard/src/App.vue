@@ -42,14 +42,14 @@ onMounted(async () => {
           <span>Piotr Krzysztof Lis</span>
           <span class="icons">
             <IconLink
-              icon="github"
-              href="https://github.com/straightchlorine"
-              label="Piotr on GitHub"
-            />
-            <IconLink
               icon="linkedin"
               href="https://www.linkedin.com/in/straightchlorine/"
               label="Piotr on LinkedIn"
+            />
+            <IconLink
+              icon="github"
+              href="https://github.com/straightchlorine"
+              label="Piotr on GitHub"
             />
             <IconLink
               icon="codeberg"
@@ -62,14 +62,14 @@ onMounted(async () => {
           <span>Jakub Kucharski</span>
           <span class="icons">
             <IconLink
-              icon="github"
-              href="https://github.com/kubson2002k"
-              label="Jakub on GitHub"
-            />
-            <IconLink
               icon="linkedin"
               href="https://www.linkedin.com/in/jakub-kucharski-360811305/"
               label="Jakub on LinkedIn"
+            />
+            <IconLink
+              icon="github"
+              href="https://github.com/kubson2002k"
+              label="Jakub on GitHub"
             />
           </span>
         </p>
