@@ -81,21 +81,30 @@ jobs:
     environment:
       name: production
     steps:
-      - name: Deploy to VPS
+      # Join the Headscale tailnet ephemerally; the ACL restricts this runner
+      # (tag:ci) to SSH-only into the honeypot. No public jumphost, no public
+      # SSH on the honeypot itself.
+      - name: Join tailnet
+        uses: tailscale/github-action@v3
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          args: >-
+            --login-server=https://vpn.codextechnologies.org
+            --advertise-tags=tag:ci
+            --accept-dns=true
+          version: 1.84.3
+          hostname: gha-runner
+
+      - name: Deploy to honeypot over tailnet
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
-          SSH_HOST_KEY: ${{ secrets.SSH_HOST_KEY }}
-          PROXY_HOST: ${{ secrets.PROXY_HOST }}
-          PROXY_PORT: ${{ secrets.PROXY_PORT }}
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
+          HONEYPOT_HOST: ${{ secrets.HONEYPOT_HOST }}   # tailnet name or IP of the honeypot
         run: |
           install -m 600 /dev/null ~/.ssh_deploy_key
           printf '%s\n' "$SSH_KEY" > ~/.ssh_deploy_key
-          mkdir -p ~/.ssh && printf '%s\n' "$SSH_HOST_KEY" > ~/.ssh/known_hosts
-          ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes \
-            -o "ProxyCommand=ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=yes -W %h:%p -p ${PROXY_PORT} ${SSH_USER}@${PROXY_HOST}" \
-            "${SSH_USER}@${DEPLOY_HOST}" \
+          ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=accept-new \
+            "${SSH_USER}@${HONEYPOT_HOST}" \
             'cd /opt/honeywatch && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --remove-orphans'
           rm -f ~/.ssh_deploy_key
 
