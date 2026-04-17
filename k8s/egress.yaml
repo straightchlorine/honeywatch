@@ -14,8 +14,6 @@ metadata:
   labels:
     app: honeywatch-egress
 rules:
-  # tailscale/containerboot persists machine state here so the auth key is
-  # only consumed once; subsequent restarts reuse the stored identity.
   - apiGroups: [""]
     resources: ["secrets"]
     resourceNames: ["ts-egress-state"]
@@ -96,6 +94,18 @@ spec:
             capabilities:
               add:
                 - NET_ADMIN
+          lifecycle:
+            postStart:
+              exec:
+                command:
+                  - /bin/sh
+                  - -c
+                  - |
+                    for i in $(seq 1 60); do
+                      ip link show tailscale0 >/dev/null 2>&1 && break
+                      sleep 1
+                    done
+                    ip route add 100.64.0.0/10 dev tailscale0 2>/dev/null || true
           volumeMounts:
             - name: dev-net-tun
               mountPath: /dev/net/tun
