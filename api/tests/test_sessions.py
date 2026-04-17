@@ -1,15 +1,8 @@
 from typing import Any
 
 
-def test_list_sessions_requires_auth(client: Any) -> None:
+def test_list_sessions(client: Any, seed_data: Any) -> None:
     response = client.get("/api/sessions")
-    assert response.status_code == 401
-
-
-def test_list_sessions(
-    client: Any, auth_headers: dict[str, str], seed_data: Any
-) -> None:
-    response = client.get("/api/sessions", headers=auth_headers)
     assert response.status_code == 200
     data = response.get_json()
     assert "sessions" in data
@@ -18,10 +11,8 @@ def test_list_sessions(
     assert len(data["sessions"]) == 2
 
 
-def test_get_session_detail(
-    client: Any, auth_headers: dict[str, str], seed_data: Any
-) -> None:
-    response = client.get("/api/sessions/sess-001", headers=auth_headers)
+def test_get_session_detail(client: Any, seed_data: Any) -> None:
+    response = client.get("/api/sessions/sess-001")
     assert response.status_code == 200
     data = response.get_json()
     assert data["id"] == "sess-001"
@@ -31,15 +22,15 @@ def test_get_session_detail(
     assert len(data["downloads"]) == 1
 
 
-def test_get_session_not_found(client: Any, auth_headers: dict[str, str]) -> None:
-    response = client.get("/api/sessions/nonexistent", headers=auth_headers)
+def test_get_session_not_found(client: Any) -> None:
+    response = client.get("/api/sessions/nonexistent")
     assert response.status_code == 404
     data = response.get_json()
     assert "error" in data
 
 
-def test_stats(client: Any, auth_headers: dict[str, str], seed_data: Any) -> None:
-    response = client.get("/api/stats", headers=auth_headers)
+def test_stats(client: Any, seed_data: Any) -> None:
+    response = client.get("/api/stats")
     assert response.status_code == 200
     data = response.get_json()
     assert data["total_sessions"] == 2
@@ -48,3 +39,10 @@ def test_stats(client: Any, auth_headers: dict[str, str], seed_data: Any) -> Non
     assert len(data["top_usernames"]) > 0
     assert len(data["top_passwords"]) > 0
     assert isinstance(data["attacks_per_day"], list)
+
+
+def test_per_page_is_capped(client: Any, seed_data: Any) -> None:
+    response = client.get("/api/sessions?per_page=99999")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["per_page"] == 100

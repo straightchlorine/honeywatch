@@ -1,4 +1,3 @@
-import base64
 import os
 from collections.abc import Generator
 from datetime import datetime, timezone
@@ -65,12 +64,6 @@ def client(app: Any, db_session: Session) -> Generator[Any, None, None]:
         yield test_client
 
     ext.SessionLocal = original_session_local
-
-
-@pytest.fixture()
-def auth_headers() -> dict[str, str]:
-    credentials = base64.b64encode(b"testuser:testpass").decode("utf-8")
-    return {"Authorization": f"Basic {credentials}"}
 
 
 @pytest.fixture()

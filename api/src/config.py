@@ -16,9 +16,6 @@ class Config:
         f"@{POSTGRES_HOST}:5432/{POSTGRES_DB}"
     )
 
-    DASHBOARD_USER = os.environ.get("DASHBOARD_USER", "admin")
-    DASHBOARD_PASSWORD = os.environ.get("DASHBOARD_PASSWORD", "admin")
-
 
 class TestConfig(Config):
     TESTING = True
@@ -26,5 +23,3 @@ class TestConfig(Config):
         "TEST_DATABASE_URL",
         "postgresql+psycopg://honeywatch:changeme@localhost:5432/honeywatch_test",
     )
-    DASHBOARD_USER = "testuser"
-    DASHBOARD_PASSWORD = "testpass"
