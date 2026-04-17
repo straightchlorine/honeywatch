@@ -1,0 +1,128 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: ts-egress
+  namespace: honeywatch
+  labels:
+    app: honeywatch-egress
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: ts-egress-state
+  namespace: honeywatch
+  labels:
+    app: honeywatch-egress
+rules:
+  # tailscale/containerboot persists machine state here so the auth key is
+  # only consumed once; subsequent restarts reuse the stored identity.
+  - apiGroups: [""]
+    resources: ["secrets"]
+    resourceNames: ["ts-egress-state"]
+    verbs: ["get", "update", "patch"]
+  - apiGroups: [""]
+    resources: ["secrets"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: ts-egress-state
+  namespace: honeywatch
+  labels:
+    app: honeywatch-egress
+subjects:
+  - kind: ServiceAccount
+    name: ts-egress
+    namespace: honeywatch
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: ts-egress-state
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: honeywatch-egress
+  namespace: honeywatch
+  labels:
+    app: honeywatch-egress
+spec:
+  replicas: 1
+  strategy:
+    # Single tailnet identity -- don't run two pods racing for the same state.
+    type: Recreate
+  selector:
+    matchLabels:
+      app: honeywatch-egress
+  template:
+    metadata:
+      labels:
+        app: honeywatch-egress
+    spec:
+      serviceAccountName: ts-egress
+      containers:
+        - name: tailscale
+          image: tailscale/tailscale:stable
+          imagePullPolicy: IfNotPresent
+          env:
+            # Both values come from the SealedSecret in secret.yaml.
+            - name: TS_AUTHKEY
+              valueFrom:
+                secretKeyRef:
+                  name: honeywatch-egress
+                  key: TS_AUTHKEY
+            - name: TS_DEST_IP
+              valueFrom:
+                secretKeyRef:
+                  name: honeywatch-egress
+                  key: HONEYPOT_TS_IP
+            - name: TS_KUBE_SECRET
+              value: ts-egress-state
+            - name: TS_HOSTNAME
+              value: honeywatch-egress
+            - name: TS_USERSPACE
+              value: "false"
+            - name: TS_EXTRA_ARGS
+              value: >-
+                --login-server=https://vpn.codextechnologies.org
+                --advertise-tags=tag:honeywatch-egress
+          resources:
+            requests:
+              cpu: 25m
+              memory: 32Mi
+            limits:
+              cpu: 200m
+              memory: 128Mi
+          securityContext:
+            capabilities:
+              add:
+                - NET_ADMIN
+          volumeMounts:
+            - name: dev-net-tun
+              mountPath: /dev/net/tun
+      volumes:
+        - name: dev-net-tun
+          hostPath:
+            path: /dev/net/tun
+            type: CharDevice
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: honeypot-api
+  namespace: honeywatch
+  labels:
+    app: honeywatch-egress
+spec:
+  type: ClusterIP
+  # Traffic hitting this service is routed to the ts-egress pod, where
+  # tailscaled's DNAT (TS_DEST_IP) forwards it across the tailnet to the
+  # honeypot VPS's nginx on port 5000.
+  ports:
+    - name: http
+      port: 5000
+      targetPort: 5000
+      protocol: TCP
+  selector:
+    app: honeywatch-egress
