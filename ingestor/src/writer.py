@@ -26,6 +26,7 @@ def _is_loopback(src_ip: str | None) -> bool:
     except ValueError:
         return False
 
+
 _INSERT_SESSION = """
     INSERT INTO sessions
         (id, src_ip, src_port, dst_ip, dst_port,
