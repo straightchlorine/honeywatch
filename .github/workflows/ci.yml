@@ -15,6 +15,17 @@ jobs:
     strategy:
       matrix:
         component: [api, ingestor]
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: honeywatch
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: honeywatch_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 3s --health-retries 5
     defaults:
       run:
         working-directory: ${{ matrix.component }}
@@ -30,7 +41,7 @@ jobs:
           python-version: "3.13"
 
       - name: Install dependencies
-        run: uv sync --frozen
+        run: uv sync --frozen --extra dev
 
       - name: Lint with ruff
         run: |
@@ -40,7 +51,18 @@ jobs:
       - name: Typecheck with pyright
         run: uv run pyright
 
+      - name: Run migrations
+        if: matrix.component == 'api'
+        env:
+          POSTGRES_USER: honeywatch
+          POSTGRES_PASSWORD: testpass
+          POSTGRES_DB: honeywatch_test
+          POSTGRES_HOST: localhost
+        run: uv run alembic upgrade head
+
       - name: Run tests
+        env:
+          TEST_DATABASE_URL: postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test
         run: uv run pytest
 
   dashboard:
@@ -53,6 +75,8 @@ jobs:
 
       - name: Set up pnpm
         uses: pnpm/action-setup@v6
+        with:
+          package_json_file: dashboard/package.json
 
       - name: Set up Node.js
         uses: actions/setup-node@v6
