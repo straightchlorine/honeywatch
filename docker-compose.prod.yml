@@ -61,6 +61,7 @@ services:
       - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
     networks:
       - backend
+      - expose
     read_only: true
     tmpfs:
       - /tmp
@@ -243,3 +244,6 @@ networks:
   backend:
     driver: bridge
     internal: true
+  expose:
+    driver: bridge
+    internal: false
