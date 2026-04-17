@@ -10,10 +10,11 @@ import pytest
 
 @pytest.fixture(scope="session")
 def db_url() -> str:
-    return os.environ.get(
+    raw = os.environ.get(
         "TEST_DATABASE_URL",
         "postgresql://honeywatch:changeme@localhost:5432/honeywatch_test",
     )
+    return raw.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
 _CREATE_TABLES = """

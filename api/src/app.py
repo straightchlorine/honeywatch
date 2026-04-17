@@ -1,14 +1,27 @@
+from ipaddress import IPv4Address, IPv6Address
 from typing import Any, cast
 
 from flask import Flask, jsonify
+from flask.json.provider import DefaultJSONProvider
 
 from src.config import Config
 from src.extensions import init_db
 from src.routes import register_blueprints
 
 
+class _IPAwareJSONProvider(DefaultJSONProvider):
+    """Serialize psycopg's IPv4/IPv6Address (from INET columns) as strings."""
+
+    @staticmethod
+    def default(o: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
+        if isinstance(o, (IPv4Address, IPv6Address)):
+            return str(o)
+        return DefaultJSONProvider.default(o)
+
+
 def create_app(config: object | None = None) -> Flask:
     app = Flask(__name__)
+    app.json = _IPAwareJSONProvider(app)
 
     if config is not None:
         app.config.from_object(config)
