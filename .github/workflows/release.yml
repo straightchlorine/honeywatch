@@ -92,7 +92,6 @@ jobs:
             --login-server=https://vpn.codextechnologies.org
             --advertise-tags=tag:ci
             --accept-dns=true
-          version: 1.84.3
           hostname: gha-runner
 
       - name: Deploy to honeypot over tailnet
