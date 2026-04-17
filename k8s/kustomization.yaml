@@ -9,8 +9,7 @@ resources:
   - egress.yaml
   - middleware.yaml
   - ingress.yaml
-  # Uncomment once secret.yaml exists (see README.md bootstrap steps).
-  # - secret.yaml
+  - secret.yaml
 
 # Image Updater writes the resolved tag here when a newer dashboard image
 # is published. Pinned at build time; kept in sync via the
