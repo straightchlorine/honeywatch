@@ -1,6 +1,0 @@
-build/
-*.egg-info/
-__pycache__/
-.venv/
-.ruff_cache/
-*.pyc
