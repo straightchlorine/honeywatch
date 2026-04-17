@@ -15,8 +15,8 @@ metadata:
     argocd-image-updater.argoproj.io/image-list: dashboard=ghcr.io/straightchlorine/honeywatch/dashboard
     argocd-image-updater.argoproj.io/dashboard.update-strategy: semver
     argocd-image-updater.argoproj.io/dashboard.allow-tags: "regexp:^[0-9]+\\.[0-9]+\\.[0-9]+$"
-    argocd-image-updater.argoproj.io/write-back-method: git:secret:argocd/honeywatch-repo
-    argocd-image-updater.argoproj.io/write-back-target: "kustomization:./k8s"
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/write-back-target: kustomization
     argocd-image-updater.argoproj.io/git-branch: master
     argocd-image-updater.argoproj.io/git-commit-user: argocd-image-updater
     argocd-image-updater.argoproj.io/git-commit-email: argocd-image-updater@codextechnologies.org
