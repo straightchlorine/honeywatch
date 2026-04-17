@@ -11,13 +11,17 @@ services:
       - "2222:2222"
     volumes:
       - cowrie-logs:/cowrie/cowrie-git/var/log/cowrie
+      # Persistent state: sensor UUID and SSH host keys. Named volume
+      # (not tmpfs) so cowrie's non-root user can write and so the host
+      # keys stay stable across restarts -- regenerating them every boot
+      # would be a fingerprintable anomaly for a real SSH server.
+      - cowrie-state:/cowrie/cowrie-git/var/lib/cowrie
       - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
     networks:
       - honeypot
     read_only: true
     tmpfs:
       - /tmp
-      - /cowrie/cowrie-git/var/lib/cowrie
     cap_drop:
       - ALL
     security_opt:
@@ -228,6 +232,7 @@ services:
 
 volumes:
   cowrie-logs:
+  cowrie-state:
   postgres-data:
   grafana-data:
 
