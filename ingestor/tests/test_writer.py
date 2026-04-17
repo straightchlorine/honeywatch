@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 import psycopg
 import pytest
 
-from src.parser import (
+from src.events import (
     CommandInput,
     FileDownload,
-    LoginAttempt,
+    LoginFailed,
     SessionClosed,
     SessionConnect,
 )
@@ -65,11 +65,10 @@ def test_write_login_attempt(
 ) -> None:
     writer.write_event(_connect_event())
 
-    event = LoginAttempt(
+    event = LoginFailed(
         session_id="sess-001",
         username="root",
         password="password123",
-        success=False,
         timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
     )
     writer.write_event(event)

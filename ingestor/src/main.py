@@ -73,12 +73,17 @@ def main() -> None:
 
     try:
         for line in tail_follow(config.log_path):
+            # Log the full raw event first so unhandled event types are still
+            # visible. `just logs ingestor` surfaces everything cowrie emits.
+            logger.info("cowrie event: %s", line)
             event = parse_event(line)
-            if event is not None:
-                try:
-                    writer.write_event(event)
-                except Exception:
-                    logger.exception("Failed to write event")
+            if event is None:
+                continue
+            logger.debug("parsed as %s", type(event).__name__)
+            try:
+                writer.write_event(event)
+            except Exception:
+                logger.exception("Failed to write event")
     finally:
         writer.close()
         logger.info("Ingestor shut down")

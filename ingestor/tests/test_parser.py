@@ -2,14 +2,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from src.parser import (
+from src.events import (
     CommandInput,
     FileDownload,
-    LoginAttempt,
+    LoginFailed,
+    LoginSuccess,
     SessionClosed,
     SessionConnect,
-    parse_event,
 )
+from src.parser import parse_event
 
 
 def test_parse_session_connect(sample_connect_event: str) -> None:
@@ -27,21 +28,19 @@ def test_parse_session_connect(sample_connect_event: str) -> None:
 
 def test_parse_login_failed(sample_login_failed: str) -> None:
     event = parse_event(sample_login_failed)
-    assert isinstance(event, LoginAttempt)
+    assert isinstance(event, LoginFailed)
     assert event.session_id == "abc123"
     assert event.username == "root"
     assert event.password == "password123"
-    assert event.success is False
     assert event.timestamp == datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc)
 
 
 def test_parse_login_success(sample_login_success: str) -> None:
     event = parse_event(sample_login_success)
-    assert isinstance(event, LoginAttempt)
+    assert isinstance(event, LoginSuccess)
     assert event.session_id == "abc123"
     assert event.username == "root"
     assert event.password == "toor"
-    assert event.success is True
     assert event.timestamp == datetime(2024, 1, 15, 10, 30, 10, tzinfo=timezone.utc)
 
 

@@ -10,7 +10,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
-RUN useradd --create-home --shell /bin/bash ingestor
+RUN useradd --create-home --shell /bin/bash ingestor && chown -R ingestor:ingestor /app
 USER ingestor
 
-CMD ["uv", "run", "python", "-m", "src.main"]
+# Use the prebuilt venv directly at runtime; avoids uv cache init at start.
+ENV PATH="/app/.venv/bin:$PATH"
+
+CMD ["python", "-m", "src.main"]

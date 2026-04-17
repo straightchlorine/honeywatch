@@ -4,11 +4,12 @@ import logging
 
 from psycopg_pool import ConnectionPool
 
-from src.parser import (
+from src.events import (
     CommandInput,
     CowrieEvent,
     FileDownload,
-    LoginAttempt,
+    LoginFailed,
+    LoginSuccess,
     SessionClosed,
     SessionConnect,
 )
@@ -26,10 +27,13 @@ _INSERT_SESSION = """
 """
 
 _UPDATE_SESSION_CLOSED = """
-    INSERT INTO sessions (id, ended_at)
-    VALUES (%(id)s, %(ended_at)s)
-    ON CONFLICT (id) DO UPDATE SET ended_at = EXCLUDED.ended_at
+    UPDATE sessions SET ended_at = %(ended_at)s WHERE id = %(id)s
 """
+# Pure UPDATE, no upsert. Rationale: postgres validates the INSERT row
+# (including NOT NULL constraints on src_ip/src_port) before evaluating
+# ON CONFLICT, so an upsert with partial columns blows up. If we never
+# saw the connect event for this session, we silently skip the close --
+# better than poisoning the table with a half-empty row.
 
 _INSERT_AUTH_ATTEMPT = """
     INSERT INTO auth_attempts (session_id, username, password, success, timestamp)
@@ -48,17 +52,21 @@ _INSERT_DOWNLOAD = """
 
 
 class EventWriter:
-    """Writes parsed cowrie events to PostgreSQL using a connection pool."""
+    """Persists the subset of cowrie events we care about to PostgreSQL.
+
+    Events not matched below (e.g. `cowrie.client.kex`, `cowrie.log.open`)
+    are silently dropped -- the raw line was already logged upstream so
+    nothing is lost from an observability standpoint.
+    """
 
     def __init__(self, conninfo: str) -> None:
         self.pool = ConnectionPool(conninfo)
 
     def write_event(self, event: CowrieEvent) -> None:
-        """Dispatch and write a single event to the database."""
         match event:
             case SessionConnect():
                 self._write_session_connect(event)
-            case LoginAttempt():
+            case LoginSuccess() | LoginFailed():
                 self._write_login_attempt(event)
             case CommandInput():
                 self._write_command(event)
@@ -83,7 +91,7 @@ class EventWriter:
                 },
             )
 
-    def _write_login_attempt(self, event: LoginAttempt) -> None:
+    def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
         with self.pool.connection() as conn:
             conn.execute(
                 _INSERT_AUTH_ATTEMPT,
@@ -91,7 +99,7 @@ class EventWriter:
                     "session_id": event.session_id,
                     "username": event.username,
                     "password": event.password,
-                    "success": event.success,
+                    "success": isinstance(event, LoginSuccess),
                     "timestamp": event.timestamp,
                 },
             )
@@ -132,5 +140,4 @@ class EventWriter:
             )
 
     def close(self) -> None:
-        """Close the connection pool."""
         self.pool.close()
