@@ -106,6 +106,12 @@ spec:
                       sleep 1
                     done
                     ip route add 100.64.0.0/10 dev tailscale0 2>/dev/null || true
+                    iptables -t nat -C PREROUTING -i eth0 -p tcp --dport 5000 \
+                      -j DNAT --to-destination "$TS_DEST_IP:5000" 2>/dev/null \
+                      || iptables -t nat -I PREROUTING -i eth0 -p tcp --dport 5000 \
+                      -j DNAT --to-destination "$TS_DEST_IP:5000"
+                    iptables -t nat -C POSTROUTING -o tailscale0 -j MASQUERADE 2>/dev/null \
+                      || iptables -t nat -A POSTROUTING -o tailscale0 -j MASQUERADE
           volumeMounts:
             - name: dev-net-tun
               mountPath: /dev/net/tun
