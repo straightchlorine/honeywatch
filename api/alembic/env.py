@@ -15,11 +15,12 @@ if config.config_file_name is not None:
 target_metadata = Base.metadata
 
 pg_user = os.environ.get("POSTGRES_USER", "honeywatch")
-pg_pass = os.environ.get("POSTGRES_PASSWORD", "changeme")
+pg_pass = os.environ.get("POSTGRES_PASSWORD", "testpass")
 pg_host = os.environ.get("POSTGRES_HOST", "localhost")
+pg_port = os.environ.get("POSTGRES_PORT", "5432")
 pg_db = os.environ.get("POSTGRES_DB", "honeywatch")
 
-database_url = f"postgresql+psycopg://{pg_user}:{pg_pass}@{pg_host}:5432/{pg_db}"
+database_url = f"postgresql+psycopg://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
 config.set_main_option("sqlalchemy.url", database_url)
 
 

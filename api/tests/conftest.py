@@ -2,14 +2,16 @@ import os
 from collections.abc import Generator
 from datetime import datetime, timezone
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
+from alembic.config import Config as AlembicConfig
 from sqlalchemy import create_engine
 from sqlalchemy.orm import Session, sessionmaker
 
+from alembic import command
 from src.app import create_app
 from src.config import TestConfig
-from src.extensions import Base
 from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
 from src.models.download import Download
@@ -17,16 +19,28 @@ from src.models.session import Session as HoneypotSession
 
 TEST_DB_URL = os.environ.get(
     "TEST_DATABASE_URL",
-    "postgresql+psycopg://honeywatch:changeme@localhost:5432/honeywatch_test",
+    "postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test",
 )
+
+
+def _apply_migrations() -> None:
+    """Bring the test DB up to head via alembic. Single source of truth for
+    schema -- no more `Base.metadata.create_all`."""
+    u = urlparse(TEST_DB_URL.replace("postgresql+psycopg://", "postgresql://", 1))
+    os.environ.setdefault("POSTGRES_USER", u.username or "honeywatch")
+    os.environ.setdefault("POSTGRES_PASSWORD", u.password or "testpass")
+    os.environ.setdefault("POSTGRES_HOST", u.hostname or "localhost")
+    os.environ.setdefault("POSTGRES_PORT", str(u.port or 5432))
+    os.environ.setdefault("POSTGRES_DB", (u.path or "/honeywatch_test").lstrip("/"))
+    cfg = AlembicConfig("alembic.ini")
+    command.upgrade(cfg, "head")
 
 
 @pytest.fixture(scope="session")
 def engine() -> Generator[Any, None, None]:
+    _apply_migrations()
     eng = create_engine(TEST_DB_URL)
-    Base.metadata.create_all(eng)
     yield eng
-    Base.metadata.drop_all(eng)
     eng.dispose()
 
 

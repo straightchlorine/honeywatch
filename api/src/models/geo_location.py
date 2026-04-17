@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from sqlalchemy import DateTime, Float, Integer, String, func
+from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column
 
 from src.extensions import Base
@@ -9,7 +10,7 @@ from src.extensions import Base
 class GeoLocation(Base):
     __tablename__ = "geo_locations"
 
-    ip: Mapped[str] = mapped_column(String, primary_key=True)
+    ip: Mapped[str] = mapped_column(INET, primary_key=True)
     country_code: Mapped[str | None] = mapped_column(String, nullable=True)
     country: Mapped[str | None] = mapped_column(String, nullable=True)
     city: Mapped[str | None] = mapped_column(String, nullable=True)

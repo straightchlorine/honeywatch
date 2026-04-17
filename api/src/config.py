@@ -21,5 +21,5 @@ class TestConfig(Config):
     TESTING = True
     SQLALCHEMY_DATABASE_URI = os.environ.get(
         "TEST_DATABASE_URL",
-        "postgresql+psycopg://honeywatch:changeme@localhost:5432/honeywatch_test",
+        "postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test",
     )

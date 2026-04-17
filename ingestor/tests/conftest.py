@@ -2,60 +2,49 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from collections.abc import Generator
+from pathlib import Path
+from urllib.parse import urlparse
 
 import psycopg
 import pytest
+
+# Schema lives in api/alembic/. We shell out to `uv run alembic upgrade head`
+# from the api directory so its env.py finds its own models and venv, and we
+# avoid pulling alembic + sqlalchemy into the ingestor's dependency tree.
+_API_DIR = Path(__file__).resolve().parents[2] / "api"
 
 
 @pytest.fixture(scope="session")
 def db_url() -> str:
     raw = os.environ.get(
         "TEST_DATABASE_URL",
-        "postgresql://honeywatch:changeme@localhost:5432/honeywatch_test",
+        "postgresql://honeywatch:testpass@localhost:5432/honeywatch_test",
     )
+    # Raw psycopg rejects SQLAlchemy's `postgresql+psycopg://` dialect qualifier.
     return raw.replace("postgresql+psycopg://", "postgresql://", 1)
 
 
-_CREATE_TABLES = """
-CREATE TABLE IF NOT EXISTS sessions (
-    id TEXT PRIMARY KEY,
-    src_ip INET,
-    src_port INT,
-    dst_ip INET,
-    dst_port INT,
-    protocol TEXT,
-    started_at TIMESTAMPTZ,
-    ended_at TIMESTAMPTZ,
-    sensor TEXT
-);
+@pytest.fixture(scope="session", autouse=True)
+def apply_migrations(db_url: str) -> None:
+    """Run alembic upgrade once per session against the test DB."""
+    u = urlparse(db_url)
+    env = {
+        **os.environ,
+        "POSTGRES_USER": u.username or "honeywatch",
+        "POSTGRES_PASSWORD": u.password or "testpass",
+        "POSTGRES_HOST": u.hostname or "localhost",
+        "POSTGRES_PORT": str(u.port or 5432),
+        "POSTGRES_DB": (u.path or "/honeywatch_test").lstrip("/"),
+    }
+    subprocess.run(
+        ["uv", "run", "alembic", "upgrade", "head"],
+        cwd=_API_DIR,
+        env=env,
+        check=True,
+    )
 
-CREATE TABLE IF NOT EXISTS auth_attempts (
-    id SERIAL PRIMARY KEY,
-    session_id TEXT REFERENCES sessions(id),
-    username TEXT,
-    password TEXT,
-    success BOOL,
-    timestamp TIMESTAMPTZ
-);
-
-CREATE TABLE IF NOT EXISTS commands (
-    id SERIAL PRIMARY KEY,
-    session_id TEXT REFERENCES sessions(id),
-    input TEXT,
-    success BOOL,
-    timestamp TIMESTAMPTZ
-);
-
-CREATE TABLE IF NOT EXISTS downloads (
-    id SERIAL PRIMARY KEY,
-    session_id TEXT REFERENCES sessions(id),
-    url TEXT,
-    outfile TEXT,
-    sha256 TEXT,
-    timestamp TIMESTAMPTZ
-);
-"""
 
 _TRUNCATE = """
 TRUNCATE downloads, commands, auth_attempts, sessions CASCADE;
@@ -65,8 +54,6 @@ TRUNCATE downloads, commands, auth_attempts, sessions CASCADE;
 @pytest.fixture
 def db_connection(db_url: str) -> Generator[psycopg.Connection[tuple[object, ...]]]:
     conn = psycopg.connect(db_url)
-    conn.execute(_CREATE_TABLES)
-    conn.commit()
     yield conn
     conn.execute(_TRUNCATE)
     conn.commit()
