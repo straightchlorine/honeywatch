@@ -11,9 +11,6 @@ resources:
   - ingress.yaml
   - secret.yaml
 
-# Image Updater writes the resolved tag here when a newer dashboard image
-# is published. Pinned at build time; kept in sync via the
-# argocd-image-updater annotations on the Application.
 images:
   - name: ghcr.io/straightchlorine/honeywatch/dashboard
-    newTag: latest
+    newTag: 0.1.1
