@@ -1,0 +1,36 @@
+# ArgoCD Application for honeywatch on Hetzner k3s.
+#
+# Bootstrap (once per cluster):
+#   kubectl apply -f k8s/hetzner/argocd-app.yaml
+# After that, ArgoCD tracks this repo directly; nothing else to wire.
+#
+# Image Updater watches the dashboard image and writes the resolved tag
+# back into k8s/hetzner/kustomization.yaml via a Git commit.
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: honeywatch
+  namespace: argocd
+  annotations:
+    argocd-image-updater.argoproj.io/image-list: dashboard=ghcr.io/straightchlorine/honeywatch/dashboard
+    argocd-image-updater.argoproj.io/dashboard.update-strategy: semver
+    argocd-image-updater.argoproj.io/dashboard.allow-tags: "regexp:^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    argocd-image-updater.argoproj.io/write-back-method: git
+    argocd-image-updater.argoproj.io/write-back-target: "kustomization:./k8s/hetzner"
+    argocd-image-updater.argoproj.io/git-branch: master
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/straightchlorine/honeywatch.git
+    path: k8s/hetzner
+    targetRevision: master
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: honeywatch
+  syncPolicy:
+    automated:
+      selfHeal: true
+      prune: true
+    syncOptions:
+      - CreateNamespace=true

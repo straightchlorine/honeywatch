@@ -1,0 +1,8 @@
+formatter:
+  type: basic
+  indent: 2
+  max_line_length: 0
+  retain_line_breaks: true
+  retain_line_breaks_single: false
+  trim_trailing_whitespace: false
+  eof_newline: false
