@@ -81,16 +81,21 @@ jobs:
     environment:
       name: production
     steps:
-      # Join the Headscale tailnet ephemerally; the ACL restricts this runner
-      # (tag:ci) to SSH-only into the honeypot. No public jumphost, no public
-      # SSH on the honeypot itself.
+      # Join the Headscale tailnet ephemerally. The ACL restricts this runner
+      # (tag:cicd) to SSH-only into the honeypot. No public jumphost, no
+      # public SSH on the honeypot itself.
+      #
+      # Note: the preauth key stored in TS_AUTHKEY must be minted with
+      # `--tags tag:cicd`. We deliberately do NOT pass `--advertise-tags`
+      # here -- headscale 0.28 rejects registrations that combine a tagged
+      # preauth key with a matching `--advertise-tags` on the client. The
+      # tag is applied server-side from the key.
       - name: Join tailnet
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           args: >-
             --login-server=https://vpn.codextechnologies.org
-            --advertise-tags=tag:ci
             --accept-dns=true
           hostname: gha-runner
 

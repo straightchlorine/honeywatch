@@ -84,9 +84,7 @@ spec:
             - name: TS_USERSPACE
               value: "false"
             - name: TS_EXTRA_ARGS
-              value: >-
-                --login-server=https://vpn.codextechnologies.org
-                --advertise-tags=tag:honeywatch-egress
+              value: --login-server=https://vpn.codextechnologies.org
           resources:
             requests:
               cpu: 25m
