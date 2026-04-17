@@ -18,8 +18,8 @@ metadata:
     argocd-image-updater.argoproj.io/write-back-method: git
     argocd-image-updater.argoproj.io/write-back-target: kustomization
     argocd-image-updater.argoproj.io/git-branch: master
-    argocd-image-updater.argoproj.io/git-commit-user: argocd-image-updater
-    argocd-image-updater.argoproj.io/git-commit-email: argocd-image-updater@codextechnologies.org
+    argocd-image-updater.argoproj.io/git-commit-user: straightchlorine
+    argocd-image-updater.argoproj.io/git-commit-email: 44237356+straightchlorine@users.noreply.github.com
 spec:
   project: default
   source:
