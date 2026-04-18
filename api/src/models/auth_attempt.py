@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.extensions import Base
 
+if TYPE_CHECKING:
+    from src.models.session import Session
+
 
 class AuthAttempt(Base):
+    """A single login attempt recorded within a cowrie session."""
+
     __tablename__ = "auth_attempts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -23,6 +31,4 @@ class AuthAttempt(Base):
     session: Mapped["Session"] = relationship(back_populates="auth_attempts")
 
 
-from src.models.session import Session  # noqa: E402
-
-__all__ = ["AuthAttempt", "Session"]
+__all__ = ["AuthAttempt"]

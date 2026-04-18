@@ -1,12 +1,20 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.extensions import Base
 
+if TYPE_CHECKING:
+    from src.models.session import Session
+
 
 class Download(Base):
+    """A file fetched by the attacker inside a cowrie session."""
+
     __tablename__ = "downloads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -23,6 +31,4 @@ class Download(Base):
     session: Mapped["Session"] = relationship(back_populates="downloads")
 
 
-from src.models.session import Session  # noqa: E402
-
-__all__ = ["Download", "Session"]
+__all__ = ["Download"]

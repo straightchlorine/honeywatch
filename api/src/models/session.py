@@ -1,4 +1,7 @@
+from __future__ import annotations
+
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import INET
@@ -6,8 +9,15 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.extensions import Base
 
+if TYPE_CHECKING:
+    from src.models.auth_attempt import AuthAttempt
+    from src.models.command import Command
+    from src.models.download import Download
+
 
 class Session(Base):
+    """A single cowrie SSH/Telnet session and its aggregated child events."""
+
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -35,8 +45,4 @@ class Session(Base):
     )
 
 
-from src.models.auth_attempt import AuthAttempt  # noqa: E402
-from src.models.command import Command  # noqa: E402
-from src.models.download import Download  # noqa: E402
-
-__all__ = ["Session", "AuthAttempt", "Command", "Download"]
+__all__ = ["Session"]
