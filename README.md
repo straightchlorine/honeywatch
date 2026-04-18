@@ -22,26 +22,27 @@ graph LR
 
 - Runs a Cowrie SSH honeypot that captures brute-force attempts
 - Ingests logs into PostgreSQL
-- Shows a React dashboard with:
-  - IP geolocation map
-  - Login attempt timeline
-  - Top passwords and usernames used by bots
-  - Attack frequency stats
-- Grafana dashboards for monitoring
+- Serves a Vue 3 dashboard with an IP geolocation map, login attempt timeline, top credentials used by bots, and attack frequency stats
+- Grafana wired in as a Postgres query UI for ad-hoc exploration
 
 ## Stack
 
-- Cowrie (SSH honeypot)
-- PostgreSQL
-- Python (Flask API + log ingestor)
-- Vue 3 (dashboard)
-- Grafana (monitoring)
-- Docker Compose
-- GitHub Actions (CI/CD)
+Cowrie, PostgreSQL, Flask (API + ingestor), Vue 3, Grafana, Docker Compose, GitHub Actions.
 
 ## Running Locally
 
 ```bash
 cp .env.example .env
-docker compose up -d
+just dev          # bring up the full stack (build + detached)
+just logs         # tail logs; `just logs api ingestor` to filter
+just attack       # SSH into cowrie on :2222 to generate events
+just down         # stop the stack
 ```
+
+See `justfile` for the full command list.
+
+## URLs
+
+- Dashboard: http://localhost:8080
+- API: http://localhost:5000
+- Grafana: http://localhost:3000
