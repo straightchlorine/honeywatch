@@ -19,6 +19,14 @@ logger = logging.getLogger(__name__)
 
 
 def _is_loopback(src_ip: str | None) -> bool:
+    """Return True if `src_ip` parses as a loopback IP address.
+
+    Args:
+        src_ip: IP string or None.
+
+    Returns:
+        True for loopback addresses; False for None, empty, or unparseable input.
+    """
     if not src_ip:
         return False
     try:
@@ -74,6 +82,14 @@ class EventWriter:
         self.pool = ConnectionPool(conninfo)
 
     def write_event(self, event: CowrieEvent) -> None:
+        """Persist a cowrie event to PostgreSQL.
+
+        Args:
+            event: The parsed cowrie event.
+
+        Note:
+            Events not matched by the dispatch table are silently dropped.
+        """
         match event:
             case SessionConnect():
                 self._write_session_connect(event)

@@ -1,15 +1,7 @@
-"""Canonical Pydantic model of cowrie's JSON log schema.
+"""Pydantic models for cowrie's JSON log schema.
 
-This module is the reference for every event type cowrie emits that we care
-about. Fields mirror cowrie's wire names; where our internal code prefers a
-different attribute (e.g. `session_id` vs cowrie's `session`, `sha256` vs
-cowrie's `shasum`), aliases translate at parse time.
-
-The `CowrieEvent` type below is a discriminated union keyed on `eventid`.
-Pass it to a `TypeAdapter` to validate raw lines; pydantic picks the right
-subclass from the eventid string. Events that are not in this union will
-fail validation -- check the raw line logged by the ingestor at INFO to see
-what cowrie sent.
+`CowrieEvent` is a discriminated union keyed on `eventid`; unknown events
+fail validation.
 """
 
 from __future__ import annotations
@@ -21,13 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class _EventBase(BaseModel):
-    """Common envelope for every cowrie event.
-
-    Session-scoped subclasses add `session_id: str = Field(validation_alias="session")`.
-    `extra="allow"` means any cowrie field we haven't explicitly modelled is
-    still captured -- access it via `.model_extra` or `.model_dump()`. The
-    known-common fields below are strongly typed for ergonomics.
-    """
+    """Common envelope for every cowrie event; unknown fields preserved via `extra="allow"`."""
 
     model_config = ConfigDict(populate_by_name=True, extra="allow", frozen=True)
 
@@ -47,13 +33,6 @@ class _EventBase(BaseModel):
 
 
 class SessionConnect(_EventBase):
-    """Incoming TCP connection accepted by cowrie.
-
-    src_ip/src_port/protocol are inherited from _EventBase as Optional; in
-    practice cowrie always emits them on this event. dst_ip/dst_port are
-    specific to connect.
-    """
-
     eventid: Literal["cowrie.session.connect"] = "cowrie.session.connect"
     dst_ip: str
     dst_port: int
@@ -61,16 +40,12 @@ class SessionConnect(_EventBase):
 
 
 class SessionParams(_EventBase):
-    """Session parameters negotiated after connect (usually arch hint)."""
-
     eventid: Literal["cowrie.session.params"] = "cowrie.session.params"
     arch: str | None = None
     session_id: str = Field(validation_alias="session")
 
 
 class SessionClosed(_EventBase):
-    """Session teardown, including total duration in seconds."""
-
     eventid: Literal["cowrie.session.closed"] = "cowrie.session.closed"
     duration: float | None = None
     session_id: str = Field(validation_alias="session")
@@ -80,16 +55,12 @@ class SessionClosed(_EventBase):
 
 
 class ClientVersion(_EventBase):
-    """Client banner string (e.g. `SSH-2.0-OpenSSH_9.6`)."""
-
     eventid: Literal["cowrie.client.version"] = "cowrie.client.version"
     version: str
     session_id: str = Field(validation_alias="session")
 
 
 class ClientKex(_EventBase):
-    """Key-exchange algorithms advertised by the client."""
-
     eventid: Literal["cowrie.client.kex"] = "cowrie.client.kex"
     hassh: str | None = None
     hasshAlgorithms: str | None = None
@@ -103,8 +74,6 @@ class ClientKex(_EventBase):
 
 
 class ClientSize(_EventBase):
-    """Terminal size requested by the client."""
-
     eventid: Literal["cowrie.client.size"] = "cowrie.client.size"
     width: int
     height: int
@@ -112,8 +81,6 @@ class ClientSize(_EventBase):
 
 
 class ClientVar(_EventBase):
-    """Environment variable the client tried to set."""
-
     eventid: Literal["cowrie.client.var"] = "cowrie.client.var"
     name: str
     value: str
@@ -121,8 +88,6 @@ class ClientVar(_EventBase):
 
 
 class ClientFingerprint(_EventBase):
-    """Public-key fingerprint offered during pubkey auth."""
-
     eventid: Literal["cowrie.client.fingerprint"] = "cowrie.client.fingerprint"
     username: str | None = None
     fingerprint: str
@@ -219,8 +184,6 @@ class DirectTcpipData(_EventBase):
 
 
 class LogOpen(_EventBase):
-    """Cowrie's own log file opened (rare, emitted on cowrie startup)."""
-
     eventid: Literal["cowrie.log.open"] = "cowrie.log.open"
 
 

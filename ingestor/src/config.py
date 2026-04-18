@@ -15,6 +15,15 @@ class Config:
 
     @classmethod
     def from_env(cls) -> Config:
+        """Build a Config from environment variables.
+
+        Returns:
+            A populated, frozen `Config`.
+
+        Raises:
+            KeyError: If a required variable (`POSTGRES_USER`, `POSTGRES_PASSWORD`,
+                `POSTGRES_DB`) is unset.
+        """
         return cls(
             postgres_user=os.environ["POSTGRES_USER"],
             postgres_password=os.environ["POSTGRES_PASSWORD"],
