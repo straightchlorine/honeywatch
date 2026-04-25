@@ -2,7 +2,7 @@
 
 services:
   cowrie:
-    image: cowrie/cowrie:v2.5.0
+    image: cowrie/cowrie:sha-cd0770d
     container_name: honeywatch-cowrie
     restart: unless-stopped
     ports:
