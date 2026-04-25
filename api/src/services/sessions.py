@@ -10,9 +10,7 @@ from src.services.stats import StatsService
 from src.services.types import SessionDetailDict, SessionsPageDict, StatsDict
 
 
-def get_sessions_paginated(
-    db: DbSession, page: int, per_page: int
-) -> SessionsPageDict:
+def get_sessions_paginated(db: DbSession, page: int, per_page: int) -> SessionsPageDict:
     """Return a page of sessions ordered by most recent first.
 
     Args:
