@@ -10,4 +10,4 @@ resources:
 - secret.yaml
 images:
 - name: ghcr.io/straightchlorine/honeywatch/dashboard
-  newTag: 0.2.1
+  newTag: 0.2.2
