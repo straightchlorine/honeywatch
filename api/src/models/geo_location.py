@@ -8,6 +8,8 @@ from src.extensions import Base
 
 
 class GeoLocation(Base):
+    """Geolocation metadata cached for a single source IP."""
+
     __tablename__ = "geo_locations"
 
     ip: Mapped[str] = mapped_column(INET, primary_key=True)

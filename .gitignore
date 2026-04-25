@@ -45,6 +45,14 @@ htmlcov/
 coverage.xml
 *.cover
 
+# --- LaTeX (docs) ---
+docs/*.aux
+docs/*.log
+docs/*.fls
+docs/*.fdb_latexmk
+docs/*.synctex.gz
+docs/*.toc
+
 # --- Node (dashboard) ---
 node_modules/
 *.tsbuildinfo

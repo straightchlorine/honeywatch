@@ -1,3 +1,4 @@
+from flask import Flask, current_app
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -6,11 +7,35 @@ class Base(DeclarativeBase):
     pass
 
 
-engine = create_engine("sqlite://")
-SessionLocal: sessionmaker[Session] = sessionmaker(bind=engine)
+def init_db(app: Flask, database_url: str) -> None:
+    """Attach a SQLAlchemy engine and session factory to a Flask app.
 
+    Args:
+        app: The Flask application to attach the DB machinery to.
+        database_url: SQLAlchemy-style connection URL.
 
-def init_db(database_url: str) -> None:
-    global engine, SessionLocal
+    Returns:
+        None. Sets ``app.extensions['db_engine']`` and
+        ``app.extensions['db_session_factory']``.
+    """
     engine = create_engine(database_url)
-    SessionLocal = sessionmaker(bind=engine)
+    app.extensions["db_engine"] = engine
+    app.extensions["db_session_factory"] = sessionmaker(bind=engine)
+
+
+def get_session_factory() -> sessionmaker[Session]:
+    """Return the session factory bound to the current Flask app.
+
+    Returns:
+        The ``sessionmaker`` stored on ``current_app.extensions``.
+
+    Raises:
+        RuntimeError: If the DB was not initialized on this app.
+    """
+    factory = current_app.extensions.get("db_session_factory")
+    if factory is None:
+        raise RuntimeError(
+            "Database is not initialized on this Flask app. "
+            "Call init_db(app, database_url) in create_app()."
+        )
+    return factory

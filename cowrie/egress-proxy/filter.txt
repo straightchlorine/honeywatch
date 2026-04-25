@@ -1,0 +1,5 @@
+\.onion$
+^pastebin\.com$
+^transfer\.sh$
+^file\.io$
+^0x0\.st$

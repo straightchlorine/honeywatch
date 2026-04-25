@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import DateTime, Integer, String, func
@@ -8,6 +10,8 @@ from src.extensions import Base
 
 
 class Session(Base):
+    """A single cowrie SSH/Telnet session and its aggregated child events."""
+
     __tablename__ = "sessions"
 
     id: Mapped[str] = mapped_column(String, primary_key=True)
@@ -24,19 +28,15 @@ class Session(Base):
     )
     sensor: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    auth_attempts: Mapped[list["AuthAttempt"]] = relationship(
+    auth_attempts: Mapped[list["AuthAttempt"]] = relationship(  # noqa: F821
         back_populates="session", cascade="all, delete-orphan"
     )
-    commands: Mapped[list["Command"]] = relationship(
+    commands: Mapped[list["Command"]] = relationship(  # noqa: F821
         back_populates="session", cascade="all, delete-orphan"
     )
-    downloads: Mapped[list["Download"]] = relationship(
+    downloads: Mapped[list["Download"]] = relationship(  # noqa: F821
         back_populates="session", cascade="all, delete-orphan"
     )
 
 
-from src.models.auth_attempt import AuthAttempt  # noqa: E402
-from src.models.command import Command  # noqa: E402
-from src.models.download import Download  # noqa: E402
-
-__all__ = ["Session", "AuthAttempt", "Command", "Download"]
+__all__ = ["Session"]

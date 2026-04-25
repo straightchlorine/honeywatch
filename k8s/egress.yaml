@@ -61,7 +61,7 @@ spec:
       serviceAccountName: ts-egress
       containers:
         - name: tailscale
-          image: tailscale/tailscale:stable
+          image: tailscale/tailscale:v1.80.0
           imagePullPolicy: IfNotPresent
           env:
             # Both values come from the SealedSecret in secret.yaml.
@@ -140,3 +140,48 @@ spec:
       protocol: TCP
   selector:
     app: honeywatch-egress
+---
+# Pin egress from the tailscale sidecar. Tailscaled needs:
+#   - UDP 41641 to any public IP (direct WireGuard)
+#   - TCP 443 to DERP relays / the control plane
+#   - DNS (UDP/TCP 53) to the cluster resolver
+# Everything else is denied so a compromised sidecar cannot pivot into
+# the rest of the cluster or the internet at large.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: honeywatch-egress-allow
+  namespace: honeywatch
+  labels:
+    app: honeywatch-egress
+spec:
+  podSelector:
+    matchLabels:
+      app: honeywatch-egress
+  policyTypes:
+    - Egress
+  egress:
+    # DNS to the cluster resolver (kube-dns / coredns in kube-system).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    # Tailscale control plane + DERP relays (TCP 443 to any address).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: TCP
+          port: 443
+    # Direct WireGuard to peers (UDP 41641 any address).
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+      ports:
+        - protocol: UDP
+          port: 41641

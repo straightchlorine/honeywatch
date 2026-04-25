@@ -28,7 +28,14 @@ def db_url() -> str:
 
 @pytest.fixture(scope="session", autouse=True)
 def apply_migrations(db_url: str) -> None:
-    """Run alembic upgrade once per session against the test DB."""
+    """Run `alembic upgrade head` against the test DB once per session.
+
+    Args:
+        db_url: PostgreSQL DSN for the test database.
+
+    Raises:
+        subprocess.CalledProcessError: If the alembic upgrade fails.
+    """
     u = urlparse(db_url)
     env = {
         **os.environ,

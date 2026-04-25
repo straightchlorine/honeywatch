@@ -37,6 +37,16 @@ jobs:
             exit 1
           fi
 
+      - name: Verify tag signature (advisory)
+        env:
+          TAG_REF: ${{ github.ref_name }}
+        run: |
+          if git tag -v "$TAG_REF" 2>&1; then
+            echo "Tag signature verified."
+          else
+            echo "::warning::Tag '$TAG_REF' is unsigned or unverified.
+          fi
+
   build-and-push:
     needs: [verify-tag]
     runs-on: ubuntu-latest
@@ -81,36 +91,62 @@ jobs:
     environment:
       name: production
     steps:
-      # Join the Headscale tailnet ephemerally. The ACL restricts this runner
-      # (tag:cicd) to SSH-only into the honeypot. No public jumphost, no
-      # public SSH on the honeypot itself.
-      #
-      # Note: the preauth key stored in TS_AUTHKEY must be minted with
-      # `--tags tag:cicd`. We deliberately do NOT pass `--advertise-tags`
-      # here -- headscale 0.28 rejects registrations that combine a tagged
-      # preauth key with a matching `--advertise-tags` on the client. The
-      # tag is applied server-side from the key.
       - name: Join tailnet
         uses: tailscale/github-action@v3
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           args: >-
-            --login-server=https://vpn.codextechnologies.org
-            --accept-dns=true
+            --login-server=https://vpn.codextechnologies.org --accept-dns=true
           hostname: gha-runner
 
       - name: Deploy to honeypot over tailnet
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
+          SSH_KEY_B64: ${{ secrets.SSH_KEY_B64 }}
           SSH_KEY: ${{ secrets.SSH_KEY }}
-          HONEYPOT_HOST: ${{ secrets.HONEYPOT_HOST }}   # tailnet name or IP of the honeypot
+          HONEYPOT_HOST: ${{ secrets.HONEYPOT_HOST }}
+          HONEYPOT_SSH_HOST_KEY: ${{ secrets.HONEYPOT_SSH_HOST_KEY }}
         run: |
-          install -m 600 /dev/null ~/.ssh_deploy_key
-          printf '%s\n' "$SSH_KEY" > ~/.ssh_deploy_key
-          ssh -i ~/.ssh_deploy_key -o StrictHostKeyChecking=accept-new \
-            "${SSH_USER}@${HONEYPOT_HOST}" \
-            'cd /opt/honeywatch && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --remove-orphans'
-          rm -f ~/.ssh_deploy_key
+          set -euo pipefail
+          if [ -n "${SSH_USER:-}" ]; then echo "::add-mask::$SSH_USER"; fi
+          if [ -n "${HONEYPOT_HOST:-}" ]; then echo "::add-mask::$HONEYPOT_HOST"; fi
+          if [ -n "${SSH_KEY:-}" ]; then echo "::add-mask::$SSH_KEY"; fi
+          if [ -n "${SSH_KEY_B64:-}" ]; then echo "::add-mask::$SSH_KEY_B64"; fi
+
+          umask 077
+          KEY_FILE="$(mktemp)"
+          KNOWN_HOSTS="$(mktemp)"
+          trap 'shred -u "$KEY_FILE" "$KNOWN_HOSTS" 2>/dev/null || rm -f "$KEY_FILE" "$KNOWN_HOSTS"' EXIT
+
+          if [ -n "${SSH_KEY_B64:-}" ]; then
+            printf '%s' "$SSH_KEY_B64" | base64 -d > "$KEY_FILE"
+          elif [ -n "${SSH_KEY:-}" ]; then
+            echo "::warning::Using legacy SSH_KEY secret. Rotate to SSH_KEY_B64 (base64-encoded) to avoid CR/LF normalization issues."
+            printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
+          else
+            echo "Neither SSH_KEY_B64 nor SSH_KEY secret is set." >&2
+            exit 1
+          fi
+          chmod 600 "$KEY_FILE"
+
+          STRICT_HOST_OPT="-o StrictHostKeyChecking=yes"
+          if [ -n "${HONEYPOT_SSH_HOST_KEY:-}" ]; then
+            printf '%s\n' "$HONEYPOT_SSH_HOST_KEY" > "$KNOWN_HOSTS"
+          else
+            echo "::warning::HONEYPOT_SSH_HOST_KEY secret is not set; falling back to StrictHostKeyChecking=accept-new (TOFU). TODO: set HONEYPOT_SSH_HOST_KEY to a pinned known_hosts line to eliminate the first-use MITM window."
+            STRICT_HOST_OPT="-o StrictHostKeyChecking=accept-new"
+          fi
+
+          TAG="${GITHUB_REF_NAME#v}"
+          ssh -p 2022 \
+              -i "$KEY_FILE" \
+              -o UserKnownHostsFile="$KNOWN_HOSTS" \
+              $STRICT_HOST_OPT \
+              -o IdentitiesOnly=yes \
+              -o BatchMode=yes \
+              -o ConnectTimeout=20 \
+              "${SSH_USER}@${HONEYPOT_HOST}" \
+              "set -e; cd /opt/honeywatch && export API_VERSION='${TAG}' INGESTOR_VERSION='${TAG}' && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --remove-orphans"
 
   release:
     needs: [deploy]

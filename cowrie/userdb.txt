@@ -1,0 +1,51 @@
+# Honeywatch custom Cowrie UserDB.
+# Format per line: username:uid:password
+#   *   matches anything (accept)
+#   !X  rejects literal X
+#   /re/ treats X as a regex (do NOT ship a `/honeypot/i` reject - it is
+#        the textbook scanner signature for upstream userdb.example)
+#
+# Goal: look like a poorly-secured CentOS box with a handful of weak
+# credentials scanners expect to work. Accept/reject ratio mirrors what a
+# real compromised box looks like to the bots that probe it.
+
+# Weak root logins bots expect to work, minus the obvious ones we reject
+root:x:!root
+root:x:!toor
+root:x:!12345
+root:x:!password
+root:x:*
+
+# Common admin / service accounts
+admin:x:admin
+admin:x:admin123
+admin:x:password
+administrator:x:admin
+administrator:x:password
+
+# Distro default users (CentOS / cloud images)
+centos:x:centos
+centos:x:centos123
+cloud-user:x:cloud-user
+
+# Debian / Ubuntu default cloud images (attackers spray these too)
+ubuntu:x:ubuntu
+debian:x:debian
+
+# Embedded / IoT defaults (part of a realistic drive-by spray)
+pi:x:raspberry
+user:x:user
+user:x:1234
+test:x:test
+guest:x:guest
+
+# Misc weak service creds
+oracle:x:oracle
+postgres:x:postgres
+mysql:x:mysql
+git:x:git
+ftp:x:ftp
+
+# Reject everything else (username-level) so the acceptance pattern is
+# not "literally every credential works" - that is itself a tell.
+!*:x:*

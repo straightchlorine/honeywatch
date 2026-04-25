@@ -4,15 +4,36 @@
 services:
   # -- Honeypot (isolated network - no access to backend services) --
   cowrie:
-    image: cowrie/cowrie:latest
+    image: cowrie/cowrie:v2.5.0
     container_name: honeywatch-cowrie
     restart: unless-stopped
     ports:
-      - "2222:2222"
+      - "22:2222"
+    environment:
+      http_proxy: http://egress-proxy:8888
+      https_proxy: http://egress-proxy:8888
+      HTTP_PROXY: http://egress-proxy:8888
+      HTTPS_PROXY: http://egress-proxy:8888
     volumes:
       - cowrie-logs:/cowrie/cowrie-git/var/log/cowrie
       - cowrie-state:/cowrie/cowrie-git/var/lib/cowrie
       - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
+      - ./cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
+      - ./cowrie/honeyfs/etc/passwd:/cowrie/cowrie-git/honeyfs/etc/passwd:ro
+      - ./cowrie/honeyfs/etc/shadow:/cowrie/cowrie-git/honeyfs/etc/shadow:ro
+      - ./cowrie/honeyfs/etc/group:/cowrie/cowrie-git/honeyfs/etc/group:ro
+      - ./cowrie/honeyfs/etc/issue:/cowrie/cowrie-git/honeyfs/etc/issue:ro
+      - ./cowrie/honeyfs/etc/issue.net:/cowrie/cowrie-git/honeyfs/etc/issue.net:ro
+      - ./cowrie/honeyfs/etc/motd:/cowrie/cowrie-git/honeyfs/etc/motd:ro
+      - ./cowrie/honeyfs/etc/os-release:/cowrie/cowrie-git/honeyfs/etc/os-release:ro
+      - ./cowrie/honeyfs/etc/hostname:/cowrie/cowrie-git/honeyfs/etc/hostname:ro
+      - ./cowrie/honeyfs/etc/hosts:/cowrie/cowrie-git/honeyfs/etc/hosts:ro
+      - ./cowrie/honeyfs/etc/resolv.conf:/cowrie/cowrie-git/honeyfs/etc/resolv.conf:ro
+      - ./cowrie/honeyfs/proc/version:/cowrie/cowrie-git/honeyfs/proc/version:ro
+      - ./cowrie/honeyfs/proc/cpuinfo:/cowrie/cowrie-git/honeyfs/proc/cpuinfo:ro
+      - ./cowrie/honeyfs/proc/meminfo:/cowrie/cowrie-git/honeyfs/proc/meminfo:ro
+      - ./cowrie/honeyfs/proc/mounts:/cowrie/cowrie-git/honeyfs/proc/mounts:ro
+      - ./cowrie/honeyfs/proc/modules:/cowrie/cowrie-git/honeyfs/proc/modules:ro
     networks:
       - honeypot
     read_only: true
@@ -41,6 +62,31 @@ services:
       interval: 15s
       timeout: 5s
       retries: 3
+
+  egress-proxy:
+    build: ./cowrie/egress-proxy
+    container_name: honeywatch-egress-proxy
+    restart: unless-stopped
+    networks:
+      - honeypot
+      - egress
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 64M
+          cpus: "0.1"
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
 
   # -- Reverse proxy (binds only to the Headscale tailnet interface) --
   proxy:
@@ -126,7 +172,7 @@ services:
       retries: 5
 
   ingestor:
-    image: ghcr.io/straightchlorine/honeywatch/ingestor:latest
+    image: ghcr.io/straightchlorine/honeywatch/ingestor:${INGESTOR_VERSION:?INGESTOR_VERSION must be set to the released ingestor image tag}
     container_name: honeywatch-ingestor
     restart: unless-stopped
     depends_on:
@@ -159,7 +205,7 @@ services:
         max-file: "3"
 
   api:
-    image: ghcr.io/straightchlorine/honeywatch/api:latest
+    image: ghcr.io/straightchlorine/honeywatch/api:${API_VERSION:?API_VERSION must be set to the released API image tag}
     container_name: honeywatch-api
     restart: unless-stopped
     depends_on:
@@ -240,6 +286,13 @@ volumes:
 networks:
   honeypot:
     driver: bridge
+    # Cowrie has no direct internet access; all egress must traverse
+    # the egress-proxy sidecar which is dual-homed on `egress`.
+    internal: true
+  egress:
+    driver: bridge
+    # Only the egress-proxy sits on this bridge; it is the tinyproxy
+    # container's one path to the internet.
     internal: false
   backend:
     driver: bridge

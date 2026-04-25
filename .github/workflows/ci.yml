@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [master]
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: read
 
@@ -54,8 +58,6 @@ jobs:
       - name: Run tests
         env:
           # Conftests in both components apply alembic migrations themselves
-          # (api uses alembic's Python API, ingestor shells out to api/);
-          # no separate "Run migrations" step needed.
           TEST_DATABASE_URL: postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test
         run: uv run pytest
 

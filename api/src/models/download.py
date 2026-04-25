@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
@@ -7,6 +9,8 @@ from src.extensions import Base
 
 
 class Download(Base):
+    """A file fetched by the attacker inside a cowrie session."""
+
     __tablename__ = "downloads"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -20,9 +24,7 @@ class Download(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    session: Mapped["Session"] = relationship(back_populates="downloads")
+    session: Mapped["Session"] = relationship(back_populates="downloads")  # noqa: F821
 
 
-from src.models.session import Session  # noqa: E402
-
-__all__ = ["Download", "Session"]
+__all__ = ["Download"]

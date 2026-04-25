@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from datetime import datetime
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Integer, String, func
@@ -7,6 +9,8 @@ from src.extensions import Base
 
 
 class AuthAttempt(Base):
+    """A single login attempt recorded within a cowrie session."""
+
     __tablename__ = "auth_attempts"
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
@@ -20,9 +24,7 @@ class AuthAttempt(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    session: Mapped["Session"] = relationship(back_populates="auth_attempts")
+    session: Mapped["Session"] = relationship(back_populates="auth_attempts")  # noqa: F821
 
 
-from src.models.session import Session  # noqa: E402
-
-__all__ = ["AuthAttempt", "Session"]
+__all__ = ["AuthAttempt"]

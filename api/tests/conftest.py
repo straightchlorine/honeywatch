@@ -24,8 +24,6 @@ TEST_DB_URL = os.environ.get(
 
 
 def _apply_migrations() -> None:
-    """Bring the test DB up to head via alembic. Single source of truth for
-    schema -- no more `Base.metadata.create_all`."""
     u = urlparse(TEST_DB_URL.replace("postgresql+psycopg://", "postgresql://", 1))
     os.environ.setdefault("POSTGRES_USER", u.username or "honeywatch")
     os.environ.setdefault("POSTGRES_PASSWORD", u.password or "testpass")
@@ -60,24 +58,22 @@ def db_session(engine: Any) -> Generator[Session, None, None]:
 
 @pytest.fixture(scope="session")
 def app(engine: Any) -> Any:
-    test_app = create_app(TestConfig)
-    return test_app
+    os.environ.setdefault("TESTING", "1")
+    return create_app(TestConfig)
 
 
 @pytest.fixture()
 def client(app: Any, db_session: Session) -> Generator[Any, None, None]:
-    import src.extensions as ext
-
-    original_session_local = ext.SessionLocal
-
-    # Override SessionLocal to use the test session's connection
-    test_factory = sessionmaker(bind=db_session.get_bind())
-    ext.SessionLocal = test_factory
+    # Route the app's session factory at the per-test transaction so every
+    # request sees (and rolls back) the same data as the test body.
+    original_factory = app.extensions.get("db_session_factory")
+    app.extensions["db_session_factory"] = sessionmaker(bind=db_session.get_bind())
 
     with app.test_client() as test_client:
         yield test_client
 
-    ext.SessionLocal = original_session_local
+    if original_factory is not None:
+        app.extensions["db_session_factory"] = original_factory
 
 
 @pytest.fixture()

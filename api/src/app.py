@@ -1,16 +1,18 @@
+import os
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any, cast
 
 from flask import Flask, jsonify
 from flask.json.provider import DefaultJSONProvider
 
-from src.config import Config
+from src.config import Config, require_secret_key
 from src.extensions import init_db
 from src.routes import register_blueprints
 
 
 class _IPAwareJSONProvider(DefaultJSONProvider):
-    """Serialize psycopg's IPv4/IPv6Address (from INET columns) as strings."""
+    """JSON provider that serialises psycopg ``IPv4Address`` / ``IPv6Address``
+    values (returned from Postgres INET columns) as strings."""
 
     @staticmethod
     def default(o: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
@@ -20,6 +22,17 @@ class _IPAwareJSONProvider(DefaultJSONProvider):
 
 
 def create_app(config: object | None = None) -> Flask:
+    """Build and configure the Flask application.
+
+    Args:
+        config: Optional config object. Defaults to :class:`Config`; tests
+            pass :class:`TestConfig`.
+
+    Returns:
+        A fully wired Flask app: IP-aware JSON provider, DB engine and
+        session factory attached to ``app.extensions``, blueprints
+        registered, JSON error handlers installed.
+    """
     app = Flask(__name__)
     app.json = _IPAwareJSONProvider(app)
 
@@ -28,9 +41,15 @@ def create_app(config: object | None = None) -> Flask:
     else:
         app.config.from_object(Config)
 
-    db_url = cast(str, app.config["SQLALCHEMY_DATABASE_URI"])
+    if app.config.get("TESTING"):
+        os.environ.setdefault("TESTING", "1")
+    secret_key = require_secret_key()
+    app.config["FLASK_SECRET_KEY"] = secret_key
+    app.config["SECRET_KEY"] = secret_key
+
+    db_url = cast(str, app.config.get("SQLALCHEMY_DATABASE_URI") or "")
     if db_url:
-        init_db(db_url)
+        init_db(app, db_url)
 
     register_blueprints(app)
 

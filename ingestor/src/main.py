@@ -7,6 +7,8 @@ import sys
 import time
 from collections.abc import Iterator
 
+import psycopg
+
 from src.config import Config
 from src.parser import parse_event
 from src.writer import EventWriter
@@ -19,7 +21,14 @@ logger = logging.getLogger(__name__)
 
 
 def tail_follow(path: str) -> Iterator[str]:
-    """Tail-follow a file, handling rotation and truncation."""
+    """Tail a file from its current end, handling rotation and truncation.
+
+    Args:
+        path: Filesystem path to follow.
+
+    Yields:
+        Each new non-empty line appended to the file, indefinitely.
+    """
     while True:
         try:
             with open(path) as f:
@@ -59,6 +68,7 @@ def tail_follow(path: str) -> Iterator[str]:
 
 
 def main() -> None:
+    """Run the ingestor event loop until interrupted."""
     config = Config.from_env()
     logger.info("Starting ingestor, watching %s", config.log_path)
 
@@ -82,7 +92,7 @@ def main() -> None:
             logger.debug("parsed as %s", type(event).__name__)
             try:
                 writer.write_event(event)
-            except Exception:
+            except (psycopg.Error, ValueError, TypeError):
                 logger.exception("Failed to write event")
     finally:
         writer.close()
