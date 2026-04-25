@@ -142,8 +142,8 @@ spec:
     app: honeywatch-egress
 ---
 # Pin egress from the tailscale sidecar. Tailscaled needs:
+#   - TCP 443+6443 to any IP (k8s API after DNAT, DERP relays, control plane)
 #   - UDP 41641 to any public IP (direct WireGuard)
-#   - TCP 443 to DERP relays / the control plane
 #   - DNS (UDP/TCP 53) to the cluster resolver
 # Everything else is denied so a compromised sidecar cannot pivot into
 # the rest of the cluster or the internet at large.
@@ -161,31 +161,29 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # Kubernetes API server (needed for TS_KUBE_SECRET state management).
-    - to:
-        - namespaceSelector:
-            matchLabels:
-              kubernetes.io/metadata.name: default
-      ports:
-        - protocol: TCP
-          port: 443
     # DNS to the cluster resolver (kube-dns / coredns in kube-system).
     - to:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
       ports:
         - protocol: UDP
           port: 53
         - protocol: TCP
           port: 53
-    # Tailscale control plane + DERP relays (TCP 443 to any address).
+    # Tailscale control plane, DERP relays, AND k8s API (port 6443 after
+    # kube-proxy DNAT from the kubernetes Service ClusterIP on 443).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
         - protocol: TCP
           port: 443
+        - protocol: TCP
+          port: 6443
     # Direct WireGuard to peers (UDP 41641 any address).
     - to:
         - ipBlock:
@@ -193,3 +191,35 @@ spec:
       ports:
         - protocol: UDP
           port: 41641
+---
+# kube-router applies a namespace-wide default-deny when any Egress
+# NetworkPolicy exists. This policy explicitly allows egress for every
+# pod that is NOT the locked-down tailscale sidecar, so the dashboard
+# (and any future non-egress workload) is not collateral-blocked.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: honeywatch-dashboard-netpol
+  namespace: honeywatch
+  labels:
+    app: dashboard
+spec:
+  podSelector:
+    matchLabels:
+      app: dashboard
+  policyTypes:
+    - Egress
+  egress:
+    # DNS only — nginx serves static files and needs no other egress.
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: kube-system
+          podSelector:
+            matchLabels:
+              k8s-app: kube-dns
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
