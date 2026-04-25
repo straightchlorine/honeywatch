@@ -41,13 +41,13 @@ def create_app(config: object | None = None) -> Flask:
     else:
         app.config.from_object(Config)
 
-    if app.config.get("TESTING"):  # pyright: ignore[reportUnknownMemberType]
+    if app.config.get("TESTING"):
         os.environ.setdefault("TESTING", "1")
     secret_key = require_secret_key()
     app.config["FLASK_SECRET_KEY"] = secret_key
     app.config["SECRET_KEY"] = secret_key
 
-    db_url = cast(str, app.config.get("SQLALCHEMY_DATABASE_URI") or "")  # pyright: ignore[reportUnknownMemberType]
+    db_url = cast(str, app.config.get("SQLALCHEMY_DATABASE_URI") or "")
     if db_url:
         init_db(app, db_url)
 
