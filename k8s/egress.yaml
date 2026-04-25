@@ -161,6 +161,14 @@ spec:
   policyTypes:
     - Egress
   egress:
+    # Kubernetes API server (needed for TS_KUBE_SECRET state management).
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: default
+      ports:
+        - protocol: TCP
+          port: 443
     # DNS to the cluster resolver (kube-dns / coredns in kube-system).
     - to:
         - namespaceSelector:
