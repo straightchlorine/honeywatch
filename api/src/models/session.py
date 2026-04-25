@@ -28,13 +28,13 @@ class Session(Base):
     )
     sensor: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    auth_attempts: Mapped[list["AuthAttempt"]] = relationship(
+    auth_attempts: Mapped[list["AuthAttempt"]] = relationship(  # noqa: F821
         back_populates="session", cascade="all, delete-orphan"
     )
-    commands: Mapped[list["Command"]] = relationship(
+    commands: Mapped[list["Command"]] = relationship(  # noqa: F821
         back_populates="session", cascade="all, delete-orphan"
     )
-    downloads: Mapped[list["Download"]] = relationship(
+    downloads: Mapped[list["Download"]] = relationship(  # noqa: F821
         back_populates="session", cascade="all, delete-orphan"
     )
 

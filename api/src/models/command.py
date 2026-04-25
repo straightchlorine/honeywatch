@@ -23,7 +23,7 @@ class Command(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    session: Mapped["Session"] = relationship(back_populates="commands")
+    session: Mapped["Session"] = relationship(back_populates="commands")  # noqa: F821
 
 
 __all__ = ["Command"]

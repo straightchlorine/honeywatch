@@ -24,7 +24,7 @@ class Download(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    session: Mapped["Session"] = relationship(back_populates="downloads")
+    session: Mapped["Session"] = relationship(back_populates="downloads")  # noqa: F821
 
 
 __all__ = ["Download"]

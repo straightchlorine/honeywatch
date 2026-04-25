@@ -13,7 +13,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 
 class _EventBase(BaseModel):
-    """Common envelope for every cowrie event; unknown fields preserved via `extra="allow"`."""
+    """Common envelope for every cowrie event.
+
+    Unknown fields preserved via ``extra="allow"``.
+    """
 
     model_config = ConfigDict(populate_by_name=True, extra="allow", frozen=True)
 

@@ -24,7 +24,7 @@ class AuthAttempt(Base):
         DateTime(timezone=True), server_default=func.now()
     )
 
-    session: Mapped["Session"] = relationship(back_populates="auth_attempts")
+    session: Mapped["Session"] = relationship(back_populates="auth_attempts")  # noqa: F821
 
 
 __all__ = ["AuthAttempt"]
