@@ -64,7 +64,7 @@ class SessionSerializer:
             "protocol": s.protocol,
             "started_at": _iso(s.started_at),
             "ended_at": _iso(s.ended_at),
-            "sensor": s.sensor,
+            "sensor": s.sensor if s.sensor else None,
             "auth_attempts": [AuthAttemptSerializer.dump(a) for a in s.auth_attempts],
             "commands": [CommandSerializer.dump(c) for c in s.commands],
             "downloads": [DownloadSerializer.dump(d) for d in s.downloads],
