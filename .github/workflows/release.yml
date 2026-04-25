@@ -37,15 +37,6 @@ jobs:
             exit 1
           fi
 
-      - name: Verify tag signature (advisory)
-        env:
-          TAG_REF: ${{ github.ref_name }}
-        run: |
-          if git tag -v "$TAG_REF" 2>&1; then
-            echo "Tag signature verified."
-          else
-            echo "::warning::Tag '$TAG_REF' is unsigned or unverified.
-          fi
 
   build-and-push:
     needs: [verify-tag]
