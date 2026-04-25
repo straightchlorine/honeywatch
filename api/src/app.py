@@ -5,7 +5,7 @@ from typing import Any, cast
 from flask import Flask, jsonify
 from flask.json.provider import DefaultJSONProvider
 
-from src.config import Config, _require_secret_key
+from src.config import Config, require_secret_key
 from src.extensions import init_db
 from src.routes import register_blueprints
 
@@ -41,13 +41,13 @@ def create_app(config: object | None = None) -> Flask:
     else:
         app.config.from_object(Config)
 
-    if app.config.get("TESTING"):
+    if app.config.get("TESTING"):  # pyright: ignore[reportUnknownMemberType]
         os.environ.setdefault("TESTING", "1")
-    secret_key = _require_secret_key()
+    secret_key = require_secret_key()
     app.config["FLASK_SECRET_KEY"] = secret_key
     app.config["SECRET_KEY"] = secret_key
 
-    db_url = cast(str, app.config.get("SQLALCHEMY_DATABASE_URI") or "")
+    db_url = cast(str, app.config.get("SQLALCHEMY_DATABASE_URI") or "")  # pyright: ignore[reportUnknownMemberType]
     if db_url:
         init_db(app, db_url)
 

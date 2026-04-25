@@ -1,7 +1,7 @@
 import os
 
 
-def _require_secret_key() -> str:
+def require_secret_key() -> str:
     """Resolve the Flask secret key, failing fast in production.
 
     The secret key is always read from ``FLASK_SECRET_KEY``. If unset, a
@@ -30,7 +30,7 @@ class Config:
     """Base application configuration.
 
     ``FLASK_SECRET_KEY`` must be set in the environment for any non-dev
-    deployment; see :func:`_require_secret_key`. The key is resolved when
+    deployment; see :func:`require_secret_key`. The key is resolved when
     ``create_app`` calls :func:`apply_secret_key` so importing this module
     never fails on a missing env var.
     """
