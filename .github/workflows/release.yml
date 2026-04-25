@@ -83,7 +83,7 @@ jobs:
       name: production
     steps:
       - name: Join tailnet
-        uses: tailscale/github-action@v3
+        uses: tailscale/github-action@v4
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           args: >-
