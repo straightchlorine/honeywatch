@@ -151,10 +151,6 @@ services:
       - postgres-data:/var/lib/postgresql/data
     networks:
       - backend
-    read_only: true
-    tmpfs:
-      - /tmp
-      - /run/postgresql
     cap_drop:
       - ALL
     cap_add:
