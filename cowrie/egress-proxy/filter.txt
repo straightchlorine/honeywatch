@@ -3,3 +3,11 @@
 ^transfer\.sh$
 ^file\.io$
 ^0x0\.st$
+^paste\.ee$
+^ix\.io$
+^sprunge\.us$
+^dpaste\.org$
+^termbin\.com$
+ngrok\.io$
+ngrok\.app$
+^serveo\.net$

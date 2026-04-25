@@ -21,6 +21,7 @@ services:
       - ./cowrie/honeyfs/etc/hostname:/cowrie/cowrie-git/honeyfs/etc/hostname:ro
       - ./cowrie/honeyfs/etc/hosts:/cowrie/cowrie-git/honeyfs/etc/hosts:ro
       - ./cowrie/honeyfs/etc/resolv.conf:/cowrie/cowrie-git/honeyfs/etc/resolv.conf:ro
+      - ./cowrie/honeyfs/etc/redhat-release:/cowrie/cowrie-git/honeyfs/etc/redhat-release:ro
       - ./cowrie/honeyfs/proc/version:/cowrie/cowrie-git/honeyfs/proc/version:ro
       - ./cowrie/honeyfs/proc/cpuinfo:/cowrie/cowrie-git/honeyfs/proc/cpuinfo:ro
       - ./cowrie/honeyfs/proc/meminfo:/cowrie/cowrie-git/honeyfs/proc/meminfo:ro

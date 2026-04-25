@@ -20,6 +20,14 @@ iptables -P INPUT  ACCEPT
 iptables -P OUTPUT DROP
 iptables -P FORWARD DROP
 
+# Block all IPv6 egress -- without these rules IPv6 bypasses all filtering.
+ip6tables -P INPUT  ACCEPT
+ip6tables -P OUTPUT DROP
+ip6tables -P FORWARD DROP
+ip6tables -A OUTPUT -o lo -j ACCEPT
+ip6tables -A OUTPUT -m state --state ESTABLISHED,RELATED -j ACCEPT
+ip6tables -A FORWARD -m state --state ESTABLISHED,RELATED -j ACCEPT
+
 # Loopback is fine.
 iptables -A OUTPUT -o lo -j ACCEPT
 
@@ -57,7 +65,7 @@ done
 # ---- Explicit REJECT for commonly abused ports. Belt + suspenders:
 #      default policy is already DROP but returning ICMP makes local
 #      egress attempts fail loud in logs. ----
-for P in 22 23 25 465 587 445 139 6667 3389 5900; do
+for P in 22 23 25 465 587 445 139 6667 6697 3389 5900; do
   iptables -A OUTPUT  -p tcp --dport "$P" -j REJECT --reject-with icmp-port-unreachable
   iptables -A FORWARD -p tcp --dport "$P" -j REJECT --reject-with icmp-port-unreachable
 done
