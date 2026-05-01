@@ -16,7 +16,7 @@ dependencies = [
 dev = [
     "pytest>=9.0.3",
     "ruff>=0.15.12",
-    "pyright>=1.1.408",
+    "pyright>=1.1.409",
 ]
 
 [tool.ruff]
