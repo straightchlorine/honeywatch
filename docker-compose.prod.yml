@@ -79,12 +79,14 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      # NET_ADMIN + NET_RAW: iptables rule installation in start.sh
-      # SETGID + SETUID:     setpriv drops to tinyproxy:tinyproxy
-      # SETPCAP:             setpriv clears the capability bounding set
-      # After exec, the running tinyproxy has no caps in any set.
+      # NET_ADMIN: iptables rule installation in start.sh (filter
+      #            table + state/limit/owner matchers). NET_RAW is
+      #            intentionally NOT granted - tinyproxy uses regular
+      #            sockets and our iptables operations don't need it.
+      # SETGID + SETUID: setpriv drops to tinyproxy:tinyproxy
+      # SETPCAP:        setpriv clears the capability bounding set
+      # After setpriv exec, the running tinyproxy has no caps in any set.
       - NET_ADMIN
-      - NET_RAW
       - SETGID
       - SETUID
       - SETPCAP
