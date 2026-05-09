@@ -1,6 +1,5 @@
 import os
 
-
 VALID_ENVS = ("development", "production")
 
 
