@@ -36,6 +36,17 @@ updates:
     labels:
       - ci
     open-pull-requests-limit: 5
+    target-branch: master
+    groups:
+      safe-updates:
+        dependency-type: production
+        update-types:
+          - patch
+          - minor
+      major-breaking:
+        dependency-type: production
+        update-types:
+          - major
 
   - package-ecosystem: docker
     directory: /api
