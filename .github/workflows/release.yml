@@ -236,11 +236,8 @@ jobs:
           ssh -F ~/.ssh/config honeypot "
             set -e
             cd /opt/honeywatch
-            git fetch --tags --prune origin
-            git checkout '${GITHUB_REF_NAME}'
             export API_VERSION='${TAG}' INGESTOR_VERSION='${TAG}'
             docker compose -f docker-compose.prod.yml pull
-            docker compose -f docker-compose.prod.yml build egress-proxy
             docker compose -f docker-compose.prod.yml up -d --remove-orphans
           "
 
