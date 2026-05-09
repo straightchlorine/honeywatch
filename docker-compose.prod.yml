@@ -79,8 +79,15 @@ services:
     cap_drop:
       - ALL
     cap_add:
+      # NET_ADMIN + NET_RAW: iptables rule installation in start.sh
+      # SETGID + SETUID:     setpriv drops to tinyproxy:tinyproxy
+      # SETPCAP:             setpriv clears the capability bounding set
+      # After exec, the running tinyproxy has no caps in any set.
       - NET_ADMIN
       - NET_RAW
+      - SETGID
+      - SETUID
+      - SETPCAP
     security_opt:
       - no-new-privileges:true
     deploy:

@@ -11,6 +11,7 @@ RUN apk add --no-cache \
         tinyproxy \
         ca-certificates \
         bind-tools \
+        util-linux \
     && addgroup -S tinyproxy 2>/dev/null || true \
     && adduser -S -G tinyproxy tinyproxy 2>/dev/null || true
 

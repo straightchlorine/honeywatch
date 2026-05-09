@@ -73,5 +73,22 @@ done
 iptables -A OUTPUT  -p tcp --dport 6660:6669 -j REJECT --reject-with icmp-port-unreachable
 iptables -A FORWARD -p tcp --dport 6660:6669 -j REJECT --reject-with icmp-port-unreachable
 
-# Launch tinyproxy in the foreground so the container's PID 1 is the proxy.
-exec tinyproxy -d -c /etc/egress-proxy/tinyproxy.conf
+# Launch tinyproxy as PID 1 with privileges fully dropped:
+#   --reuid / --regid              switch to tinyproxy:tinyproxy
+#   --clear-groups                 drop supplementary groups (root)
+#   --reset-env                    sanitise inherited env
+#   --bounding-set=-all            empty the capability bounding set
+#                                  (requires CAP_SETPCAP on the calling
+#                                   process, granted by compose cap_add)
+#   --no-new-privs                 kernel-enforced: subsequent execve()
+#                                  cannot gain caps via setuid binaries
+# Result: tinyproxy runs with no capabilities in any set; even if it
+# is exploited, an attacker cannot regain root inside this container.
+exec setpriv \
+    --reuid tinyproxy \
+    --regid tinyproxy \
+    --clear-groups \
+    --reset-env \
+    --no-new-privs \
+    --bounding-set=-all \
+    tinyproxy -d -c /etc/egress-proxy/tinyproxy.conf
