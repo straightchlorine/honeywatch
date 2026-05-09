@@ -6,6 +6,7 @@ import signal
 import sys
 import time
 from collections.abc import Iterator
+from pathlib import Path
 
 import psycopg
 
@@ -90,10 +91,28 @@ def main() -> None:
             if event is None:
                 continue
             logger.debug("parsed as %s", type(event).__name__)
-            try:
-                writer.write_event(event)
-            except (psycopg.Error, ValueError, TypeError):
-                logger.exception("Failed to write event")
+            backoff = 1.0
+            for attempt in range(1, 6):
+                try:
+                    writer.write_event(event)
+                    Path("/tmp/healthy").touch()
+                    break
+                except psycopg.Error:
+                    if attempt == 5:
+                        logger.exception(
+                            "Failed to write event after 5 attempts; dropping"
+                        )
+                        break
+                    logger.warning(
+                        "psycopg error on attempt %d/5, retrying in %.0fs",
+                        attempt,
+                        backoff,
+                    )
+                    time.sleep(backoff)
+                    backoff *= 2
+                except (ValueError, TypeError):
+                    logger.exception("Failed to write event")
+                    break
     finally:
         writer.close()
         logger.info("Ingestor shut down")

@@ -35,10 +35,12 @@ class Config:
 
     @property
     def conninfo(self) -> str:
+        # sslmode=disable: postgres reachable only on the internal docker bridge net.
         return (
             f"host={self.postgres_host} "
             f"port={self.postgres_port} "
             f"dbname={self.postgres_db} "
             f"user={self.postgres_user} "
-            f"password={self.postgres_password}"
+            f"password={self.postgres_password} "
+            f"sslmode=disable"
         )
