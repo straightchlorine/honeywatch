@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@37802adc94f370d6bfd71619e3f0bf239e1f3b78  # v7.6.0
+        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b  # v8.1.0
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405  # v6.2.0
@@ -72,7 +72,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@a0ea98b2dc7d387a59324835f7421c1d5f8357b4  # v6.0.5
+        uses: pnpm/action-setup@91ab88e2619ed1f46221f0ba42d1492c02baf788  # v6.0.6
         with:
           package_json_file: dashboard/package.json
 
@@ -121,7 +121,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Scan with Trivy
-        uses: aquasecurity/trivy-action@57a97c7e7821a5776cebc9bb87c984fa69cba8f1  # 0.35.0
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
           image-ref: ${{ matrix.component }}:scan
           format: sarif
@@ -132,7 +132,7 @@ jobs:
 
       - name: Upload SARIF to security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@f0213c31c702f929cf06ddb900ac315d246a8997  # v4.33.0
+        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e  # v4.35.4
         with:
           sarif_file: trivy-${{ matrix.component }}.sarif
           category: trivy-${{ matrix.component }}
