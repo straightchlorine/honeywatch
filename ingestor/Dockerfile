@@ -1,6 +1,6 @@
-FROM python:3.13-slim
+FROM python:3.13-slim@sha256:a0779d7c12fc20be6ec6b4ddc901a4fd7657b8a6bc9def9d3fde89ed5efe0a3d
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.7 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:3a59a3cdd5f7c217faa36e32dbc7fddbb0412889c2a0a5229f6d790e5a019dd7 /uv /uvx /bin/
 
 WORKDIR /app
 
@@ -17,6 +17,6 @@ USER ingestor
 ENV PATH="/app/.venv/bin:$PATH"
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
-    CMD python -c "import pathlib,sys; sys.exit(0 if 'State:\tR' in pathlib.Path('/proc/1/status').read_text() or 'State:\tS' in pathlib.Path('/proc/1/status').read_text() else 1)" || exit 1
+    CMD sh -c 'test $(( $(date +%s) - $(stat -c %Y /tmp/healthy 2>/dev/null || echo 0) )) -lt 60' || exit 1
 
 CMD ["python", "-m", "src.main"]

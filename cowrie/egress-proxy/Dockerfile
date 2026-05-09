@@ -3,7 +3,7 @@
 # Runs iptables + tinyproxy so traffic from the internal `honeypot`
 # docker network can only leave via this container, and only on the
 # allowlisted ports (DNS to pinned resolvers, HTTP/HTTPS rate limited).
-FROM alpine:3.20
+FROM alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
 
 RUN apk add --no-cache \
         iptables \

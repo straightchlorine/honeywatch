@@ -11,7 +11,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
 from src.app import create_app
-from src.config import TestConfig
+from src.config import TestingConfig
 from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
 from src.models.download import Download
@@ -58,8 +58,8 @@ def db_session(engine: Any) -> Generator[Session, None, None]:
 
 @pytest.fixture(scope="session")
 def app(engine: Any) -> Any:
-    os.environ.setdefault("TESTING", "1")
-    return create_app(TestConfig)
+    os.environ.setdefault("ENVIRONMENT", "development")
+    return create_app(TestingConfig)
 
 
 @pytest.fixture()

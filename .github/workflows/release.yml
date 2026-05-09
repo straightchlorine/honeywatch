@@ -20,7 +20,7 @@ jobs:
   verify-tag:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
         with:
           fetch-depth: 0
 
@@ -41,17 +41,20 @@ jobs:
   build-and-push:
     needs: [verify-tag]
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
     strategy:
       matrix:
         component: [api, ingestor, dashboard]
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
+        uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd  # v4.0.0
 
       - name: Log into GHCR
-        uses: docker/login-action@v4
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
         with:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
@@ -59,7 +62,7 @@ jobs:
 
       - name: Extract metadata
         id: meta
-        uses: docker/metadata-action@v6
+        uses: docker/metadata-action@030e881283bb7a6894de51c315a6bfe6a94e05cf  # v6.0.0
         with:
           images: ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}
           tags: |
@@ -67,7 +70,8 @@ jobs:
             type=raw,value=latest
 
       - name: Build and push
-        uses: docker/build-push-action@v7
+        id: build
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f  # v7.1.0
         with:
           context: ./${{ matrix.component }}
           push: true
@@ -76,68 +80,192 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-  deploy:
+      - name: Persist digest for attestation
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+        run: |
+          set -euo pipefail
+          if [ -z "${DIGEST:-}" ]; then
+            echo "::error::build-push-action did not produce a digest output"
+            exit 1
+          fi
+          mkdir -p digests
+          printf '%s' "$DIGEST" > "digests/${{ matrix.component }}.txt"
+
+      - name: Upload digest artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: digest-${{ matrix.component }}
+          path: digests/${{ matrix.component }}.txt
+          if-no-files-found: error
+          retention-days: 1
+
+  attestation:
     needs: [build-and-push]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: [api, ingestor, dashboard]
+    permissions:
+      contents: read
+      packages: write
+      attestations: write
+      id-token: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
+
+      - name: Download digest artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          name: digest-${{ matrix.component }}
+          path: digests
+
+      - name: Resolve digest
+        id: digest
+        run: |
+          set -euo pipefail
+          DIGEST=$(cat "digests/${{ matrix.component }}.txt")
+          case "$DIGEST" in
+            sha256:*) ;;
+            *) echo "::error::Invalid digest format: $DIGEST"; exit 1 ;;
+          esac
+          echo "value=$DIGEST" >> "$GITHUB_OUTPUT"
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+
+      - name: Log into GHCR
+        uses: docker/login-action@4907a6ddec9925e35a0a9e82d7399ccc52663121  # v4.1.0
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Generate SBOM
+        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610  # v0.24.0
+        with:
+          image: ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}@${{ steps.digest.outputs.value }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.component }}.spdx.json
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@a2bbfa25375fe432b6a289bc6b6cd05ecd0c4c32  # v4.1.0
+        with:
+          subject-name: ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}
+          subject-digest: ${{ steps.digest.outputs.value }}
+          push-to-registry: true
+
+      - name: Sign image (keyless via OIDC)
+        env:
+          IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}@${{ steps.digest.outputs.value }}
+        run: |
+          cosign sign --yes "$IMAGE"
+
+      - name: Upload SBOM artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
+        with:
+          name: sbom-${{ matrix.component }}
+          path: sbom-${{ matrix.component }}.spdx.json
+          if-no-files-found: error
+
+  deploy:
+    needs: [build-and-push, attestation]
     runs-on: ubuntu-latest
     environment:
       name: production
     steps:
+      - name: Verify HONEYPOT_SSH_HOST_KEY is set
+        env:
+          HONEYPOT_SSH_HOST_KEY: ${{ secrets.HONEYPOT_SSH_HOST_KEY }}
+        run: |
+          if [ -z "${HONEYPOT_SSH_HOST_KEY:-}" ]; then
+            echo "::error::HONEYPOT_SSH_HOST_KEY must be set for production deploy (no TOFU fallback)" >&2
+            exit 1
+          fi
+
       - name: Join tailnet
-        uses: tailscale/github-action@v4
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8  # v4.1.2
         with:
           authkey: ${{ secrets.TS_AUTHKEY }}
           args: >-
             --login-server=https://vpn.codextechnologies.org --accept-dns=true
           hostname: gha-runner
 
-      - name: Deploy to honeypot over tailnet
+      - name: Configure SSH client
         env:
           SSH_USER: ${{ secrets.SSH_USER }}
-          SSH_KEY_B64: ${{ secrets.SSH_KEY_B64 }}
-          SSH_KEY: ${{ secrets.SSH_KEY }}
           HONEYPOT_HOST: ${{ secrets.HONEYPOT_HOST }}
+          SSH_KEY_B64: ${{ secrets.SSH_KEY_B64 }}
           HONEYPOT_SSH_HOST_KEY: ${{ secrets.HONEYPOT_SSH_HOST_KEY }}
         run: |
           set -euo pipefail
-          if [ -n "${SSH_USER:-}" ]; then echo "::add-mask::$SSH_USER"; fi
-          if [ -n "${HONEYPOT_HOST:-}" ]; then echo "::add-mask::$HONEYPOT_HOST"; fi
-          if [ -n "${SSH_KEY:-}" ]; then echo "::add-mask::$SSH_KEY"; fi
-          if [ -n "${SSH_KEY_B64:-}" ]; then echo "::add-mask::$SSH_KEY_B64"; fi
+          if [ -z "${SSH_USER:-}" ];      then echo "::error::SSH_USER not set"; exit 1; fi
+          if [ -z "${HONEYPOT_HOST:-}" ]; then echo "::error::HONEYPOT_HOST not set"; exit 1; fi
+          if [ -z "${SSH_KEY_B64:-}" ];   then echo "::error::SSH_KEY_B64 not set"; exit 1; fi
+          echo "::add-mask::$SSH_USER"
+          echo "::add-mask::$HONEYPOT_HOST"
+          echo "::add-mask::$SSH_KEY_B64"
 
           umask 077
-          KEY_FILE="$(mktemp)"
-          KNOWN_HOSTS="$(mktemp)"
-          trap 'shred -u "$KEY_FILE" "$KNOWN_HOSTS" 2>/dev/null || rm -f "$KEY_FILE" "$KNOWN_HOSTS"' EXIT
+          mkdir -p ~/.ssh
+          printf '%s' "$SSH_KEY_B64" | base64 -d > ~/.ssh/key
+          printf '%s\n' "$HONEYPOT_SSH_HOST_KEY" > ~/.ssh/known_hosts
+          cat > ~/.ssh/config <<EOF
+          Host honeypot-deploy
+            HostName ${HONEYPOT_HOST}
+            User ${SSH_USER}
+            Port 2022
+            IdentityFile ~/.ssh/key
+            IdentitiesOnly yes
+            UserKnownHostsFile ~/.ssh/known_hosts
+            StrictHostKeyChecking yes
+            BatchMode yes
+            ConnectTimeout 20
+            ServerAliveInterval 60
+            ServerAliveCountMax 3
+            KexAlgorithms curve25519-sha256,curve25519-sha256@libssh.org
+            HostKeyAlgorithms ssh-ed25519,ecdsa-sha2-nistp256
+            MACs hmac-sha2-512-etm@openssh.com,hmac-sha2-256-etm@openssh.com
+          EOF
+          chmod 600 ~/.ssh/key ~/.ssh/known_hosts ~/.ssh/config
 
-          if [ -n "${SSH_KEY_B64:-}" ]; then
-            printf '%s' "$SSH_KEY_B64" | base64 -d > "$KEY_FILE"
-          elif [ -n "${SSH_KEY:-}" ]; then
-            echo "::warning::Using legacy SSH_KEY secret. Rotate to SSH_KEY_B64 (base64-encoded) to avoid CR/LF normalization issues."
-            printf '%s\n' "$SSH_KEY" > "$KEY_FILE"
-          else
-            echo "Neither SSH_KEY_B64 nor SSH_KEY secret is set." >&2
-            exit 1
-          fi
-          chmod 600 "$KEY_FILE"
-
-          STRICT_HOST_OPT="-o StrictHostKeyChecking=yes"
-          if [ -n "${HONEYPOT_SSH_HOST_KEY:-}" ]; then
-            printf '%s\n' "$HONEYPOT_SSH_HOST_KEY" > "$KNOWN_HOSTS"
-          else
-            echo "::warning::HONEYPOT_SSH_HOST_KEY secret is not set; falling back to StrictHostKeyChecking=accept-new (TOFU). TODO: set HONEYPOT_SSH_HOST_KEY to a pinned known_hosts line to eliminate the first-use MITM window."
-            STRICT_HOST_OPT="-o StrictHostKeyChecking=accept-new"
-          fi
-
+      - name: Deploy to honeypot over tailnet
+        run: |
+          set -euo pipefail
           TAG="${GITHUB_REF_NAME#v}"
-          ssh -p 2022 \
-              -i "$KEY_FILE" \
-              -o UserKnownHostsFile="$KNOWN_HOSTS" \
-              $STRICT_HOST_OPT \
-              -o IdentitiesOnly=yes \
-              -o BatchMode=yes \
-              -o ConnectTimeout=20 \
-              "${SSH_USER}@${HONEYPOT_HOST}" \
-              "set -e; cd /opt/honeywatch && export API_VERSION='${TAG}' INGESTOR_VERSION='${TAG}' && docker compose -f docker-compose.prod.yml pull && docker compose -f docker-compose.prod.yml up -d --remove-orphans"
+          ssh -F ~/.ssh/config honeypot-deploy "
+            set -e
+            cd /opt/honeywatch
+            export API_VERSION='${TAG}' INGESTOR_VERSION='${TAG}'
+            docker compose -f docker-compose.prod.yml pull
+            docker compose -f docker-compose.prod.yml up -d --remove-orphans
+          "
+
+      - name: Install cosign for post-deploy verification
+        uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6  # v4.1.2
+
+      - name: Download digest artifacts
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c  # v8.0.1
+        with:
+          pattern: digest-*
+          path: digests
+          merge-multiple: true
+
+      - name: Verify deployed image signatures
+        env:
+          REPO: ${{ github.repository }}
+          IDENTITY_REGEX: 'https://github.com/${{ github.repository }}/.+'
+          OIDC_ISSUER: 'https://token.actions.githubusercontent.com'
+        run: |
+          set -euo pipefail
+          for component in api ingestor dashboard; do
+            DIGEST=$(cat "digests/${component}.txt")
+            IMAGE="${{ env.IMAGE_PREFIX }}/${component}@${DIGEST}"
+            echo "Verifying ${IMAGE}"
+            cosign verify "${IMAGE}" \
+              --certificate-identity-regexp "${IDENTITY_REGEX}" \
+              --certificate-oidc-issuer "${OIDC_ISSUER}" >/dev/null
+          done
 
   release:
     needs: [deploy]
@@ -145,7 +273,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd  # v6.0.2
 
       - name: Create GitHub Release
         run: gh release create ${{ github.ref_name }} --generate-notes

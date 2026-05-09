@@ -4,7 +4,7 @@
 services:
   # -- Honeypot (isolated network - no access to backend services) --
   cowrie:
-    image: cowrie/cowrie:sha-cd0770d
+    image: cowrie/cowrie:sha-cd0770d@sha256:bf371c37638bf8b49efed87b66f5d0bf48432a499c6b3fa3c44c03ebf02cc13a
     container_name: honeywatch-cowrie
     restart: unless-stopped
     ports:
@@ -49,6 +49,7 @@ services:
         limits:
           memory: 256M
           cpus: "0.5"
+          pids: 100
     logging:
       driver: json-file
       options:
@@ -87,6 +88,7 @@ services:
         limits:
           memory: 64M
           cpus: "0.1"
+          pids: 50
     logging:
       driver: json-file
       options:
@@ -95,7 +97,7 @@ services:
 
   # -- Reverse proxy (binds only to the Headscale tailnet interface) --
   proxy:
-    image: nginx:1.27-alpine
+    image: nginx:1.29-alpine-slim@sha256:c9366b8c560169b101ca0e5422ed063b20779e6454c2326b9c9704225c9b0c08
     container_name: honeywatch-proxy
     restart: unless-stopped
     depends_on:
@@ -132,6 +134,7 @@ services:
         limits:
           memory: 128M
           cpus: "0.25"
+          pids: 100
     logging:
       driver: json-file
       options:
@@ -140,15 +143,26 @@ services:
 
   # -- Backend services (internal only - no internet access) --
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
     container_name: honeywatch-db
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_INGESTOR_PASSWORD: ${POSTGRES_INGESTOR_PASSWORD:?POSTGRES_INGESTOR_PASSWORD must be set}
+      POSTGRES_API_PASSWORD: ${POSTGRES_API_PASSWORD:?POSTGRES_API_PASSWORD must be set}
+      POSTGRES_INITDB_ARGS: >-
+        -c password_encryption=scram-sha-256 -c log_connections=on -c log_disconnections=on -c log_statement=ddl -c shared_preload_libraries=pg_stat_statements -c shared_buffers=128MB -c work_mem=4MB -c max_connections=50 -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    command:
+      - postgres
+      - -c
+      - hba_file=/etc/postgresql/pg_hba.conf
     volumes:
       - postgres-data:/var/lib/postgresql/data
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro
+      - ./postgres/init.sql:/etc/honeywatch/init.sql:ro
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
     networks:
       - backend
     cap_drop:
@@ -165,6 +179,7 @@ services:
         limits:
           memory: 512M
           cpus: "0.5"
+          pids: 50
     logging:
       driver: json-file
       options:
@@ -176,6 +191,50 @@ services:
       timeout: 3s
       retries: 5
 
+  # One-shot: runs Alembic migrations as the Postgres bootstrap user
+  #
+  # Tables are created by the role whose ALTER DEFAULT PRIVILEGES
+  # init.sql configured (honeywatch_ingestor gets INSERT/SELECT,
+  # honeywatch_api gets SELECT).
+  #
+  # Exits 0 on success; api and ingestor wait for
+  # service_completed_successfully.
+  api-migrate:
+    image: ghcr.io/straightchlorine/honeywatch/api:${API_VERSION:?API_VERSION must be set to the released API image tag}
+    container_name: honeywatch-api-migrate
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ENVIRONMENT: production
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
+    networks:
+      - backend
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    deploy:
+      resources:
+        limits:
+          memory: 128M
+          cpus: "0.25"
+          pids: 50
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+    entrypoint: ["alembic", "upgrade", "head"]
+
   ingestor:
     image: ghcr.io/straightchlorine/honeywatch/ingestor:${INGESTOR_VERSION:?INGESTOR_VERSION must be set to the released ingestor image tag}
     container_name: honeywatch-ingestor
@@ -185,9 +244,11 @@ services:
         condition: service_healthy
       cowrie:
         condition: service_healthy
+      api-migrate:
+        condition: service_completed_successfully
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_USER: honeywatch_ingestor
+      POSTGRES_PASSWORD: ${POSTGRES_INGESTOR_PASSWORD:?POSTGRES_INGESTOR_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: postgres
     volumes:
@@ -206,6 +267,7 @@ services:
         limits:
           memory: 256M
           cpus: "0.25"
+          pids: 100
     logging:
       driver: json-file
       options:
@@ -219,9 +281,12 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      api-migrate:
+        condition: service_completed_successfully
     environment:
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      ENVIRONMENT: production
+      POSTGRES_USER: honeywatch_api
+      POSTGRES_PASSWORD: ${POSTGRES_API_PASSWORD:?POSTGRES_API_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: postgres
       FLASK_SECRET_KEY: ${FLASK_SECRET_KEY}
@@ -240,6 +305,7 @@ services:
         limits:
           memory: 256M
           cpus: "0.5"
+          pids: 100
     logging:
       driver: json-file
       options:
@@ -252,7 +318,7 @@ services:
       retries: 3
 
   grafana:
-    image: grafana/grafana:11.5.2
+    image: grafana/grafana:11.5.2@sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7
     container_name: honeywatch-grafana
     restart: unless-stopped
     environment:
@@ -277,6 +343,7 @@ services:
         limits:
           memory: 256M
           cpus: "0.5"
+          pids: 100
     logging:
       driver: json-file
       options:
