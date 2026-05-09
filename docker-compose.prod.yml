@@ -355,51 +355,6 @@ services:
       timeout: 3s
       retries: 3
 
-  # -- Backups (encrypted pg_dump -> Cloudflare R2) --
-  pg-backup:
-    image: alpine:3.23@sha256:5b10f432ef3da1b8d4c7eb6c487f2f5a8f096bc91145e68878dd4a5019afde11
-    container_name: honeywatch-pg-backup
-    restart: unless-stopped
-    depends_on:
-      postgres:
-        condition: service_healthy
-    environment:
-      POSTGRES_HOST: postgres
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-      POSTGRES_DB: ${POSTGRES_DB}
-      R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:?R2_ACCOUNT_ID must be set for backups}
-      R2_BUCKET: ${R2_BUCKET:?R2_BUCKET must be set for backups}
-      R2_API_TOKEN: ${R2_API_TOKEN:?R2_API_TOKEN must be set for backups}
-      BACKUP_PASSPHRASE: ${BACKUP_PASSPHRASE:?BACKUP_PASSPHRASE must be set to encrypt backups}
-      BACKUP_INTERVAL_HOURS: ${BACKUP_INTERVAL_HOURS:-24}
-    volumes:
-      - ./backup/backup.sh:/usr/local/bin/backup.sh:ro
-    networks:
-      - backend
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 128M
-          cpus: "0.1"
-          pids: 50
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    entrypoint:
-      - /bin/sh
-      - -c
-      - "apk add --no-cache postgresql16-client openssl curl && exec /usr/local/bin/backup.sh"
-
 volumes:
   cowrie-logs:
   cowrie-state:
