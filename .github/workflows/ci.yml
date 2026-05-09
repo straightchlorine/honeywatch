@@ -124,16 +124,8 @@ jobs:
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ matrix.component }}:scan
-          format: sarif
-          output: trivy-${{ matrix.component }}.sarif
+          format: table
           vuln-type: os,library
           severity: CRITICAL,HIGH
           exit-code: '1'
           ignore-unfixed: true
-
-      - name: Upload SARIF to security tab
-        if: always()
-        uses: github/codeql-action/upload-sarif@68bde559dea0fdcac2102bfdf6230c5f70eb485e # v4.35.4
-        with:
-          sarif_file: trivy-${{ matrix.component }}.sarif
-          category: trivy-${{ matrix.component }}
