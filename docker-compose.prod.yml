@@ -97,7 +97,7 @@ services:
 
   # -- Reverse proxy (binds only to the Headscale tailnet interface) --
   proxy:
-    image: nginx:1.29-alpine@sha256:5616878291a2eed594aee8db4dade5878cf7edcb475e59193904b198d9b830de
+    image: nginx:1.29-alpine-slim@sha256:c9366b8c560169b101ca0e5422ed063b20779e6454c2326b9c9704225c9b0c08
     container_name: honeywatch-proxy
     restart: unless-stopped
     depends_on:
