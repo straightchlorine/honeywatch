@@ -39,10 +39,10 @@ const error = ref<string | null>(null);
 onMounted(async () => {
   try {
     const [sR, pwR, coR, trR, hmR] = await Promise.all([
-      fetch("/api/stats"),
+      fetch("/api/stats/totals"),
       fetch("/api/stats/top-passwords"),
       fetch("/api/stats/top-countries"),
-      fetch("/api/stats/trend?period=7d"),
+      fetch("/api/stats/trend?period_days=7"),
       fetch("/api/stats/heatmap"),
     ]);
 
