@@ -71,15 +71,24 @@ class StatsService:
         return [{"password": row[0], "count": row[1]} for row in rows]
 
     def top_countries(self) -> list[TopCountryDict]:
-        """Return the top-N attacking countries by session count, descending."""
+        """Return the top-N attacking countries by session count, descending.
+
+        Sessions whose `src_ip` has no `geo_locations` row (geo enrichment
+        pending or failed -- the ingestor splits session vs geo writes for
+        availability) are bucketed under "Unknown" rather than dropped.
+        """
+        country_code = func.coalesce(GeoLocation.country_code, "??").label(
+            "country_code"
+        )
+        country = func.coalesce(GeoLocation.country, "Unknown").label("country")
         rows = self.db.execute(
             select(
-                GeoLocation.country_code,
-                GeoLocation.country,
+                country_code,
+                country,
                 func.count(Session.id).label("count"),
             )
-            .join(GeoLocation, GeoLocation.ip == Session.src_ip)
-            .group_by(GeoLocation.country_code, GeoLocation.country)
+            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+            .group_by(country_code, country)
             .order_by(func.count(Session.id).desc())
             .limit(self.top_n)
         ).all()

@@ -29,11 +29,25 @@ def test_top_passwords_top_n_clamp(client: Any, seed_data: Any) -> None:
     assert len(response.get_json()) == 1
 
 
-def test_top_countries_empty_until_enricher(client: Any, seed_data: Any) -> None:
-    """``top-countries`` returns ``[]`` until PR-B's geo enricher populates rows."""
+def test_top_countries_buckets_missing_geo_as_unknown(
+    client: Any, seed_data: Any
+) -> None:
+    """Sessions without a geo row appear under "Unknown" (outer join + COALESCE).
+
+    The ingestor splits session and geo writes so a session row can exist
+    before (or without) its geo enrichment. Inner-joining would silently
+    undercount the leaderboard; bucketing as Unknown surfaces the gap.
+    """
     response = client.get("/api/stats/top-countries")
     assert response.status_code == 200
-    assert response.get_json() == []
+    data = response.get_json()
+    assert isinstance(data, list)
+    assert any(
+        row["country"] == "Unknown"
+        and row["country_code"] == "??"
+        and row["count"] >= 1
+        for row in data
+    ), data
 
 
 def test_activity_each_bucket(client: Any, seed_data: Any) -> None:

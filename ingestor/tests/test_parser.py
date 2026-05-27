@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from src.events import (
     CommandInput,
     FileDownload,
@@ -10,7 +12,7 @@ from src.events import (
     SessionClosed,
     SessionConnect,
 )
-from src.parser import parse_event
+from src.parser import _seen_drift, parse_event
 
 
 def test_parse_session_connect(sample_connect_event: str) -> None:
@@ -80,3 +82,57 @@ def test_parse_unknown_event() -> None:
 def test_parse_malformed_json() -> None:
     event = parse_event("this is not json{{{")
     assert event is None
+
+
+def test_drift_log_sanitizes_control_chars(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Attacker-crafted control chars in cowrie payload must not reach logs raw.
+
+    Cowrie's `input` field captures attacker bytes verbatim. If an attacker
+    can produce a drifted event (e.g. malformed JSON, unknown eventid), the
+    raw excerpt that lands in operator logs must be defanged.
+    """
+    _seen_drift.clear()
+    # Unknown eventid carrying an ANSI escape and an embedded newline that
+    # would otherwise let the attacker forge a log-line prefix.
+    line = (
+        '{"eventid":"cowrie.unknown.\\u001b[31mfake",'
+        '"session":"X\\nINJECTED","timestamp":"2024-01-01T00:00:00Z"}'
+    )
+    with caplog.at_level("WARNING", logger="src.parser"):
+        result = parse_event(line)
+
+    assert result is None
+    msg = " ".join(r.message for r in caplog.records)
+    # Raw control chars must not appear in formatted log message.
+    assert "\x1b" not in msg
+    assert "\n" not in msg
+    # The escape form should be present so an operator can still see what hit.
+    assert "\\x1b" in msg
+
+
+def test_drift_log_rate_limited_per_eventid(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """Second sighting of the same drifted eventid should drop to DEBUG."""
+    _seen_drift.clear()
+    bad = '{"eventid":"cowrie.unknown.new","session":"a","timestamp":"x"}'
+
+    with caplog.at_level("WARNING", logger="src.parser"):
+        parse_event(bad)
+        parse_event(bad)
+
+    warns = [r for r in caplog.records if r.levelname == "WARNING"]
+    assert len(warns) == 1, "second sighting must not log at WARNING"
+
+
+def test_drift_extracts_eventid_via_json_not_regex() -> None:
+    """JSON-escaped quote inside eventid must not break extraction.
+
+    A regex-based eventid pull breaks on `\\"` whereas json.loads handles it.
+    """
+    _seen_drift.clear()
+    # Valid JSON, unknown eventid containing an escaped quote.
+    line = '{"eventid":"cowrie.x\\"y","session":"a","timestamp":"x"}'
+    assert parse_event(line) is None  # treated as drift, not crash
