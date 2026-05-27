@@ -20,6 +20,19 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Per-event retry budget. Three attempts at 1s, 2s, 4s gives a total
+# bounded wait of ~7s before declaring failure and dead-lettering.
+_RETRY_ATTEMPTS = 3
+_RETRY_INITIAL_BACKOFF = 1.0
+
+# Process-level circuit breaker. After this many consecutive failures
+# (Postgres down, network partition, etc.) sleep instead of grinding.
+_CIRCUIT_BREAKER_THRESHOLD = 50
+_CIRCUIT_BREAKER_SLEEP = 30.0
+
+# Dead-letter file collects raw cowrie lines that exhausted the retry budget.
+_DEADLETTER_PATH = Path("/tmp/deadletter.jsonl")
+
 
 def tail_follow(path: str) -> Iterator[str]:
     """Tail a file from its current end, handling rotation and truncation.
@@ -70,6 +83,15 @@ def tail_follow(path: str) -> Iterator[str]:
             time.sleep(1.0)
 
 
+def _dead_letter(raw: str) -> None:
+    """Append a raw cowrie line to the dead-letter file."""
+    try:
+        with _DEADLETTER_PATH.open("a", encoding="utf-8") as f:
+            f.write(raw + "\n")
+    except OSError:
+        logger.exception("failed to append to dead-letter file %s", _DEADLETTER_PATH)
+
+
 def main() -> None:
     """Run the ingestor event loop until interrupted."""
     config = Config.from_env()
@@ -82,39 +104,61 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
+    consecutive_failures = 0
     try:
         with EventWriter(config.conninfo) as writer:
             for line in tail_follow(config.log_path):
                 # Log the full raw event first so unhandled event types are
-                # still visible. `just logs ingestor` surfaces everything
-                # cowrie emits.
+                # still visible.
                 logger.info("cowrie event: %s", line)
                 event = parse_event(line)
                 if event is None:
                     continue
                 logger.debug("parsed as %s", type(event).__name__)
-                backoff = 1.0
-                for attempt in range(1, 6):
+
+                tripped_breaker = False
+                backoff = _RETRY_INITIAL_BACKOFF
+                for attempt in range(1, _RETRY_ATTEMPTS + 1):
                     try:
                         writer.write_event(event)
                         Path("/tmp/healthy").touch()
+                        consecutive_failures = 0
                         break
                     except psycopg.Error:
-                        if attempt == 5:
+                        if attempt == _RETRY_ATTEMPTS:
                             logger.exception(
-                                "Failed to write event after 5 attempts; dropping"
+                                "Failed to write event after %d attempts; "
+                                "appending to %s",
+                                _RETRY_ATTEMPTS,
+                                _DEADLETTER_PATH,
+                            )
+                            _dead_letter(line)
+                            consecutive_failures += 1
+                            tripped_breaker = (
+                                consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD
                             )
                             break
                         logger.warning(
-                            "psycopg error on attempt %d/5, retrying in %.0fs",
+                            "psycopg error on attempt %d/%d, retrying in %.0fs",
                             attempt,
+                            _RETRY_ATTEMPTS,
                             backoff,
                         )
                         time.sleep(backoff)
                         backoff *= 2
                     except (ValueError, TypeError):
+                        # Programming error/malformed event - non-recoverable
                         logger.exception("Failed to write event")
                         break
+
+                if tripped_breaker:
+                    logger.warning(
+                        "circuit breaker: %d consecutive failures, sleeping %.0fs",
+                        consecutive_failures,
+                        _CIRCUIT_BREAKER_SLEEP,
+                    )
+                    time.sleep(_CIRCUIT_BREAKER_SLEEP)
+                    consecutive_failures = 0
     finally:
         logger.info("Ingestor shut down")
 

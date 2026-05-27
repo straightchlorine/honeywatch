@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import os
 from types import TracebackType
 from typing import Self
 
+import psycopg
 from psycopg_pool import ConnectionPool
 
 from src.events import (
@@ -19,6 +21,9 @@ from src.events import (
 from src.geoip import lookup as geoip_lookup
 
 logger = logging.getLogger(__name__)
+
+# Default-on so production suppresses cowrie's own healthcheck.
+_DROP_LOOPBACK = os.environ.get("DROP_LOOPBACK", "1") == "1"
 
 
 def _is_loopback(src_ip: str | None) -> bool:
@@ -53,9 +58,8 @@ _UPDATE_SESSION_CLOSED = """
 """
 # Pure UPDATE, no upsert. Rationale: postgres validates the INSERT row
 # (including NOT NULL constraints on src_ip/src_port) before evaluating
-# ON CONFLICT, so an upsert with partial columns blows up. If we never
-# saw the connect event for this session, we silently skip the close --
-# better than poisoning the table with a half-empty row.
+# ON CONFLICT, so an upsert with partial columns blows up.
+# If no connect event this session, silently skip the close - no half-empty rows.
 
 _INSERT_AUTH_ATTEMPT = """
     INSERT INTO auth_attempts (session_id, username, password, success, timestamp)
@@ -126,6 +130,8 @@ class EventWriter:
         Note:
             Events not matched by the dispatch table are silently dropped.
         """
+        # Repair any connections the pool is holding that died since last use.
+        self.pool.check()
         match event:
             case SessionConnect():
                 self._write_session_connect(event)
@@ -139,10 +145,9 @@ class EventWriter:
                 self._write_session_closed(event)
 
     def _write_session_connect(self, event: SessionConnect) -> None:
-        # Cowrie's docker-compose healthcheck dials 127.0.0.1:2222 on an
-        # interval, which cowrie logs like any other connect. Drop loopback
-        # sources so they don't inflate session counts or pollute stats.
-        if _is_loopback(event.src_ip):
+        # Suppress cowrie's docker-compose healthcheck dials.
+        # They must not contribute to the counts or pollute stats.
+        if _DROP_LOOPBACK and _is_loopback(event.src_ip):
             return
         with self.pool.connection() as conn, conn.transaction():
             conn.execute(
@@ -158,8 +163,14 @@ class EventWriter:
                     "sensor": event.sensor,
                 },
             )
-            geo = geoip_lookup(event.src_ip)
-            if geo is not None:
+
+        # Best-effort enrichment. Does not roll back the session insert above.
+        # (Would erase entire record of the attach)
+        geo = geoip_lookup(event.src_ip)
+        if geo is None:
+            return
+        try:
+            with self.pool.connection() as conn:
                 conn.execute(
                     _UPSERT_GEO,
                     {
@@ -173,6 +184,12 @@ class EventWriter:
                         "as_org": geo.as_org,
                     },
                 )
+        except psycopg.Error:
+            logger.warning(
+                "geo upsert failed for %s; session row preserved",
+                event.src_ip,
+                exc_info=True,
+            )
 
     def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
         with self.pool.connection() as conn:
