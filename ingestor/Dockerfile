@@ -10,7 +10,11 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
-RUN useradd --create-home --shell /bin/bash ingestor && chown -R ingestor:ingestor /app
+ENV GEOIP_DATA_DIR=/data/geoip
+
+RUN useradd --create-home --shell /bin/bash ingestor \
+    && mkdir -p /data/geoip \
+    && chown -R ingestor:ingestor /app /data/geoip
 USER ingestor
 
 # Use the prebuilt venv directly at runtime; avoids uv cache init at start.

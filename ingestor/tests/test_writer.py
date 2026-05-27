@@ -200,3 +200,38 @@ def test_duplicate_session_ignored(
 
     assert count is not None
     assert count[0] == 1
+
+
+def test_geo_enrichment_populates_geo_locations(
+    writer: EventWriter,
+    db_connection: psycopg.Connection[tuple[object, ...]],
+) -> None:
+    # Skip when mmdb files are not present (CI without secrets, fresh clone).
+    from src.geoip import _ASN_PATH, _CITY_PATH
+
+    if not _CITY_PATH.exists() or not _ASN_PATH.exists():
+        pytest.skip("GeoLite2 mmdb files not available locally")
+
+    event = SessionConnect(
+        session_id="sess-geo-001",
+        src_ip="8.8.8.8",  # Google DNS, stable: US + ASN 15169
+        src_port=54321,
+        dst_ip="10.0.0.1",
+        dst_port=2222,
+        protocol="ssh",
+        timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+        sensor="honeypot-01",
+    )
+    writer.write_event(event)
+
+    row = db_connection.execute(
+        "SELECT country_code, asn, as_org FROM geo_locations WHERE ip = %s",
+        (event.src_ip,),
+    ).fetchone()
+
+    assert row is not None
+    assert row[0] == "US"
+    assert row[1] == 15169
+    as_org = row[2]
+    assert isinstance(as_org, str)
+    assert "Google" in as_org

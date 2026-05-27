@@ -262,6 +262,7 @@ services:
       POSTGRES_HOST: postgres
     volumes:
       - cowrie-logs:/logs:ro
+      - geoip-data:/data/geoip:ro
     networks:
       - backend
     read_only: true
@@ -369,6 +370,7 @@ volumes:
   cowrie-state:
   postgres-data:
   grafana-data:
+  geoip-data:
 
 networks:
   honeypot:
