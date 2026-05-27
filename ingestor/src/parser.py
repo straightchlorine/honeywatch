@@ -1,47 +1,81 @@
-"""Thin adapter around the `CowrieEvent` pydantic union."""
+"""Parse a single cowrie JSON line into a `CowrieEvent`."""
 
 from __future__ import annotations
 
+import json
 import logging
-import re
 
 from pydantic import TypeAdapter, ValidationError
 
+from src import metrics
 from src.events import CowrieEvent
+from src.sanitize import sanitize
 
 logger = logging.getLogger(__name__)
 
 _ADAPTER: TypeAdapter[CowrieEvent] = TypeAdapter(CowrieEvent)
-# Probe for the eventid. When validation fails (drift, unknown event),
-# the eventid shows whether there is a new type we don't model or known
-# type changed.
-_EVENTID_RE = re.compile(r'"eventid"\s*:\s*"([^"]+)"')
-_RAW_EXCERPT_LIMIT = 200
+
+# Per-process rate limiter: log every unknown eventid at WARNING the first
+# time we see it, DEBUG thereafter. Caps log volume if cowrie ships a new
+# event type that arrives at attack-rate.
+_seen_drift: set[str] = set()
 
 
 def parse_event(line: str) -> CowrieEvent | None:
-    """Parse a raw cowrie JSON line.
+    """Validate `line` against the cowrie schema.
 
     Args:
-        line: One JSON-encoded cowrie event.
+        line: A single JSON object as text.
 
     Returns:
-        The parsed `CowrieEvent`, or `None` if the line is unhandled or malformed.
+        The matched `CowrieEvent` subtype, or None if the line doesn't
+        match any known schema (drift, unknown event, malformed JSON).
     """
     try:
         return _ADAPTER.validate_json(line)
     except ValidationError as exc:
-        # cowrie shape drift warning
-        match = _EVENTID_RE.search(line)
-        eventid = match.group(1) if match else None
-        first_err = exc.errors()[0].get("msg", str(exc)) if exc.errors() else str(exc)
-        excerpt = line[:_RAW_EXCERPT_LIMIT]
-        if len(line) > _RAW_EXCERPT_LIMIT:
-            excerpt += "..."
-        logger.warning(
-            "parser: dropped event id=%s err=%s raw=%s",
-            eventid,
-            first_err,
-            excerpt,
-        )
+        _log_drift(line, exc)
         return None
+
+
+def _log_drift(line: str, exc: ValidationError) -> None:
+    """Emit a sanitized, rate-limited warning for a line that failed validation."""
+    eventid = _extract_eventid(line)
+    safe_eventid = sanitize(eventid, max_len=64) if eventid else "<unknown>"
+    first_err = exc.errors()[0].get("msg", str(exc)) if exc.errors() else str(exc)
+    safe_err = sanitize(str(first_err), max_len=200)
+    safe_raw = sanitize(line, max_len=200)
+
+    metrics.parser_drift_total.labels(eventid=safe_eventid).inc()
+
+    if safe_eventid not in _seen_drift:
+        _seen_drift.add(safe_eventid)
+        logger.warning(
+            "parser: dropped event id=%s err=%s raw=%s (first sighting)",
+            safe_eventid,
+            safe_err,
+            safe_raw,
+        )
+    else:
+        logger.debug(
+            "parser: dropped event id=%s err=%s raw=%s",
+            safe_eventid,
+            safe_err,
+            safe_raw,
+        )
+
+
+def _extract_eventid(line: str) -> str | None:
+    """Safely pull `eventid` from a possibly-malformed JSON line.
+
+    Uses `json.loads` so JSON escape sequences resolve correctly. If the
+    line isn't valid JSON or `eventid` is missing/non-str, returns None.
+    """
+    try:
+        obj = json.loads(line)
+    except (ValueError, TypeError):
+        return None
+    if not isinstance(obj, dict):
+        return None
+    value = obj.get("eventid")
+    return value if isinstance(value, str) else None

@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import ipaddress
 import logging
-import os
 from types import TracebackType
 from typing import Self
 
 import psycopg
 from psycopg_pool import ConnectionPool
 
+from src import metrics
 from src.events import (
     CommandInput,
     CowrieEvent,
@@ -21,9 +21,6 @@ from src.events import (
 from src.geoip import lookup as geoip_lookup
 
 logger = logging.getLogger(__name__)
-
-# Default-on so production suppresses cowrie's own healthcheck.
-_DROP_LOOPBACK = os.environ.get("DROP_LOOPBACK", "1") == "1"
 
 
 def _is_loopback(src_ip: str | None) -> bool:
@@ -103,10 +100,12 @@ class EventWriter:
     nothing is lost from an observability standpoint.
     """
 
-    def __init__(self, conninfo: str) -> None:
-        # Defer pool open to __enter__ so I/O doesn't happen at construction.
-        # psycopg_pool deprecates eager-open in a future release.
-        self.pool = ConnectionPool(conninfo, open=False)
+    def __init__(self, conninfo: str, *, drop_loopback: bool = True) -> None:
+        # `check=` runs on every checkout
+        self.pool = ConnectionPool(
+            conninfo, open=False, check=ConnectionPool.check_connection
+        )
+        self._drop_loopback = drop_loopback
 
     def __enter__(self) -> Self:
         self.pool.open()
@@ -130,8 +129,6 @@ class EventWriter:
         Note:
             Events not matched by the dispatch table are silently dropped.
         """
-        # Repair any connections the pool is holding that died since last use.
-        self.pool.check()
         match event:
             case SessionConnect():
                 self._write_session_connect(event)
@@ -147,94 +144,120 @@ class EventWriter:
     def _write_session_connect(self, event: SessionConnect) -> None:
         # Suppress cowrie's docker-compose healthcheck dials.
         # They must not contribute to the counts or pollute stats.
-        if _DROP_LOOPBACK and _is_loopback(event.src_ip):
+        if self._drop_loopback and _is_loopback(event.src_ip):
             return
-        with self.pool.connection() as conn, conn.transaction():
-            conn.execute(
-                _INSERT_SESSION,
-                {
-                    "id": event.session_id,
-                    "src_ip": event.src_ip,
-                    "src_port": event.src_port,
-                    "dst_ip": event.dst_ip,
-                    "dst_port": event.dst_port,
-                    "protocol": event.protocol,
-                    "started_at": event.timestamp,
-                    "sensor": event.sensor,
-                },
-            )
 
-        # Best-effort enrichment. Does not roll back the session insert above.
-        # (Would erase entire record of the attach)
-        geo = geoip_lookup(event.src_ip)
-        if geo is None:
-            return
+        # Two transactions:
+        # - session insert is durable;
+        # - geo upsert is best-effort and never rolls back the session row
+        with self.pool.connection() as conn:
+            with conn.transaction():
+                conn.execute(
+                    _INSERT_SESSION,
+                    {
+                        "id": event.session_id,
+                        "src_ip": event.src_ip,
+                        "src_port": event.src_port,
+                        "dst_ip": event.dst_ip,
+                        "dst_port": event.dst_port,
+                        "protocol": event.protocol,
+                        "started_at": event.timestamp,
+                        "sensor": event.sensor,
+                    },
+                )
+
+            geo = geoip_lookup(event.src_ip)
+            if geo is None:
+                return
+            try:
+                with conn.transaction():
+                    conn.execute(
+                        _UPSERT_GEO,
+                        {
+                            "ip": event.src_ip,
+                            "country_code": geo.country_code,
+                            "country": geo.country,
+                            "city": geo.city,
+                            "latitude": geo.latitude,
+                            "longitude": geo.longitude,
+                            "asn": geo.asn,
+                            "as_org": geo.as_org,
+                        },
+                    )
+            except psycopg.Error:
+                metrics.geo_upsert_failures_total.inc()
+                logger.warning(
+                    "geo upsert failed for %s; session row preserved",
+                    event.src_ip,
+                    exc_info=True,
+                )
+
+    def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
         try:
             with self.pool.connection() as conn:
                 conn.execute(
-                    _UPSERT_GEO,
+                    _INSERT_AUTH_ATTEMPT,
                     {
-                        "ip": event.src_ip,
-                        "country_code": geo.country_code,
-                        "country": geo.country,
-                        "city": geo.city,
-                        "latitude": geo.latitude,
-                        "longitude": geo.longitude,
-                        "asn": geo.asn,
-                        "as_org": geo.as_org,
+                        "session_id": event.session_id,
+                        "username": event.username,
+                        "password": event.password,
+                        "success": isinstance(event, LoginSuccess),
+                        "timestamp": event.timestamp,
                     },
                 )
-        except psycopg.Error:
-            logger.warning(
-                "geo upsert failed for %s; session row preserved",
-                event.src_ip,
-                exc_info=True,
-            )
-
-    def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
-        with self.pool.connection() as conn:
-            conn.execute(
-                _INSERT_AUTH_ATTEMPT,
-                {
-                    "session_id": event.session_id,
-                    "username": event.username,
-                    "password": event.password,
-                    "success": isinstance(event, LoginSuccess),
-                    "timestamp": event.timestamp,
-                },
-            )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("auth", event.session_id)
 
     def _write_command(self, event: CommandInput) -> None:
-        with self.pool.connection() as conn:
-            conn.execute(
-                _INSERT_COMMAND,
-                {
-                    "session_id": event.session_id,
-                    "input": event.input,
-                    "success": True,
-                    "timestamp": event.timestamp,
-                },
-            )
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    _INSERT_COMMAND,
+                    {
+                        "session_id": event.session_id,
+                        "input": event.input,
+                        "success": True,
+                        "timestamp": event.timestamp,
+                    },
+                )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("cmd", event.session_id)
 
     def _write_download(self, event: FileDownload) -> None:
-        with self.pool.connection() as conn:
-            conn.execute(
-                _INSERT_DOWNLOAD,
-                {
-                    "session_id": event.session_id,
-                    "url": event.url,
-                    "outfile": event.outfile,
-                    "sha256": event.sha256,
-                    "timestamp": event.timestamp,
-                },
-            )
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    _INSERT_DOWNLOAD,
+                    {
+                        "session_id": event.session_id,
+                        "url": event.url,
+                        "outfile": event.outfile,
+                        "sha256": event.sha256,
+                        "timestamp": event.timestamp,
+                    },
+                )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("download", event.session_id)
 
     def _write_session_closed(self, event: SessionClosed) -> None:
         with self.pool.connection() as conn:
-            conn.execute(
+            cur = conn.execute(
                 _UPDATE_SESSION_CLOSED,
                 {
                     "id": event.session_id,
                     "ended_at": event.timestamp,
                 },
             )
+            if cur.rowcount == 0:
+                self._log_orphan("session_closed", event.session_id)
+
+    @staticmethod
+    def _log_orphan(kind: str, session_id: str) -> None:
+        """Log + meter an event whose session row never landed.
+
+        Happens at startup mid-stream (ingestor restart with tail seeking to
+        EOF, connect event missed) or under sustained DB outages where the
+        connect itself failed.
+        """
+        metrics.orphan_event_total.labels(kind=kind).inc()
+        logger.info("orphan %s event for session_id=%s", kind, session_id)

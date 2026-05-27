@@ -10,6 +10,10 @@ from pathlib import Path
 import psycopg
 import pytest
 
+from src.writer import EventWriter
+
+DbConn = psycopg.Connection[tuple[object, ...]]
+
 # Schema lives in api/alembic/. We shell out to `uv run alembic upgrade head`
 # from the api directory so its env.py finds its own models and venv, and we
 # avoid pulling alembic + sqlalchemy into the ingestor's dependency tree.
@@ -79,12 +83,24 @@ TRUNCATE downloads, commands, auth_attempts, sessions CASCADE;
 
 
 @pytest.fixture
-def db_connection(db_url: str) -> Generator[psycopg.Connection[tuple[object, ...]]]:
+def db_connection(db_url: str) -> Generator[DbConn]:
     conn = psycopg.connect(db_url)
     yield conn
     conn.execute(_TRUNCATE)
     conn.commit()
     conn.close()
+
+
+@pytest.fixture
+def writer(db_url: str) -> Generator[EventWriter]:
+    """EventWriter bound to the test DB.
+
+    Loopback drop disabled so tests using RFC1918 / loopback IPs don't
+    silently no-op. Tests that exercise the loopback gate should construct
+    their own EventWriter with `drop_loopback=True`.
+    """
+    with EventWriter(db_url, drop_loopback=False) as w:
+        yield w
 
 
 @pytest.fixture

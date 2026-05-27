@@ -1,25 +1,20 @@
 from __future__ import annotations
 
-from collections.abc import Generator
 from datetime import datetime, timezone
+from unittest.mock import patch
 
-import psycopg
 import pytest
 
 from src.events import (
     CommandInput,
     FileDownload,
     LoginFailed,
+    LoginSuccess,
     SessionClosed,
     SessionConnect,
 )
 from src.writer import EventWriter
-
-
-@pytest.fixture
-def writer(db_url: str) -> Generator[EventWriter]:
-    with EventWriter(db_url) as w:
-        yield w
+from tests.conftest import DbConn
 
 
 def _connect_event() -> SessionConnect:
@@ -37,7 +32,7 @@ def _connect_event() -> SessionConnect:
 
 def test_write_session_connect(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     event = _connect_event()
     writer.write_event(event)
@@ -60,7 +55,7 @@ def test_write_session_connect(
 
 def test_write_login_attempt(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     writer.write_event(_connect_event())
 
@@ -87,7 +82,7 @@ def test_write_login_attempt(
 
 def test_write_command(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     writer.write_event(_connect_event())
 
@@ -111,7 +106,7 @@ def test_write_command(
 
 def test_write_download(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     writer.write_event(_connect_event())
 
@@ -138,7 +133,7 @@ def test_write_download(
 
 def test_write_session_closed(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     writer.write_event(_connect_event())
 
@@ -157,14 +152,23 @@ def test_write_session_closed(
     assert row[0] == datetime(2024, 1, 15, 10, 31, 0, tzinfo=timezone.utc)
 
 
-def test_loopback_session_skipped(
-    writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+@pytest.mark.parametrize(
+    ("drop_loopback", "expected"),
+    [(True, 0), (False, 1)],
+)
+def test_loopback_session_gated_by_flag(
+    db_url: str,
+    db_connection: DbConn,
+    drop_loopback: bool,
+    expected: int,
 ) -> None:
-    # Cowrie's healthcheck dials 127.0.0.1:2222 -- those connects should not
-    # be persisted as attack sessions.
+    """Cowrie's docker healthcheck dials 127.0.0.1:2222.
+
+    Production drops them (`drop_loopback=True`); dev keeps them so an
+    operator's `just attack` from the host appears in the session list.
+    """
     event = SessionConnect(
-        session_id="sess-loopback",
+        session_id=f"sess-loopback-{drop_loopback}",
         src_ip="127.0.0.1",
         src_port=54321,
         dst_ip="127.0.0.1",
@@ -173,7 +177,8 @@ def test_loopback_session_skipped(
         timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
         sensor="honeypot-01",
     )
-    writer.write_event(event)
+    with EventWriter(db_url, drop_loopback=drop_loopback) as w:
+        w.write_event(event)
 
     count = db_connection.execute(
         "SELECT count(*) FROM sessions WHERE id = %s",
@@ -181,12 +186,12 @@ def test_loopback_session_skipped(
     ).fetchone()
 
     assert count is not None
-    assert count[0] == 0
+    assert count[0] == expected
 
 
 def test_duplicate_session_ignored(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     event = _connect_event()
     writer.write_event(event)
@@ -204,7 +209,7 @@ def test_duplicate_session_ignored(
 
 def test_geo_enrichment_populates_geo_locations(
     writer: EventWriter,
-    db_connection: psycopg.Connection[tuple[object, ...]],
+    db_connection: DbConn,
 ) -> None:
     # Skip when mmdb files are not present (CI without secrets, fresh clone).
     from src.geoip import _ASN_PATH, _CITY_PATH
@@ -235,3 +240,161 @@ def test_geo_enrichment_populates_geo_locations(
     as_org = row[2]
     assert isinstance(as_org, str)
     assert "Google" in as_org
+
+
+def test_session_closed_orphan_logs_and_skips(
+    writer: EventWriter,
+    db_connection: DbConn,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """SessionClosed with no prior connect must be a silent no-op + log."""
+    closed = SessionClosed(
+        session_id="sess-orphan",
+        timestamp=datetime(2024, 1, 15, 10, 31, 0, tzinfo=timezone.utc),
+    )
+    with caplog.at_level("INFO", logger="src.writer"):
+        writer.write_event(closed)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM sessions WHERE id = %s",
+        ("sess-orphan",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any("orphan session_closed event" in r.message for r in caplog.records)
+
+
+def test_login_attempt_orphan_caught(
+    writer: EventWriter,
+    db_connection: DbConn,
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """LoginFailed for an unknown session must catch FK violation, not raise.
+
+    Happens at startup mid-stream: tail seeks to EOF, missing the connect.
+    Without the FK catch this would crash the retry loop.
+    """
+    event = LoginFailed(
+        session_id="sess-orphan-auth",
+        username="root",
+        password="x",
+        timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
+    )
+    with caplog.at_level("INFO", logger="src.writer"):
+        writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM auth_attempts WHERE session_id = %s",
+        ("sess-orphan-auth",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any("orphan auth event" in r.message for r in caplog.records)
+
+
+def test_login_success_orphan_caught(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """LoginSuccess orphan path uses the same catch."""
+    event = LoginSuccess(
+        session_id="sess-orphan-auth-2",
+        username="root",
+        password="x",
+        timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    count = db_connection.execute(
+        "SELECT count(*) FROM auth_attempts WHERE session_id = %s",
+        ("sess-orphan-auth-2",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+
+
+def test_command_orphan_caught(writer: EventWriter, db_connection: DbConn) -> None:
+    event = CommandInput(
+        session_id="sess-orphan-cmd",
+        input="id",
+        timestamp=datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    count = db_connection.execute(
+        "SELECT count(*) FROM commands WHERE session_id = %s",
+        ("sess-orphan-cmd",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+
+
+def test_download_orphan_caught(writer: EventWriter, db_connection: DbConn) -> None:
+    event = FileDownload(
+        session_id="sess-orphan-dl",
+        url="http://x",
+        outfile="/tmp/x",
+        sha256="0" * 64,
+        timestamp=datetime(2024, 1, 15, 10, 30, 20, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    count = db_connection.execute(
+        "SELECT count(*) FROM downloads WHERE session_id = %s",
+        ("sess-orphan-dl",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+
+
+def test_geo_failure_preserves_session(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Geo upsert failure must not roll back the session row.
+
+    Split-tx is load-bearing: an attack record is more valuable than its
+    enrichment. Simulates a geo write blowing up by monkeypatching the
+    geoip_lookup to return a fake hit and the geo SQL to raise.
+    """
+    from src import writer as writer_module
+    from src.geoip import GeoData
+
+    fake_geo = GeoData(
+        country_code="US",
+        country="United States",
+        city="Test",
+        latitude=0.0,
+        longitude=0.0,
+        asn=0,
+        as_org="Test",
+    )
+
+    with patch.object(writer_module, "geoip_lookup", return_value=fake_geo):
+        with patch(
+            "src.writer._UPSERT_GEO",
+            "INSERT INTO geo_locations (this_column_does_not_exist) VALUES (1)",
+        ):
+            event = SessionConnect(
+                session_id="sess-geo-fail",
+                src_ip="203.0.113.7",
+                src_port=44444,
+                dst_ip="10.0.0.1",
+                dst_port=2222,
+                protocol="ssh",
+                timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+                sensor="honeypot-01",
+            )
+            writer.write_event(event)
+
+    # Session row preserved despite geo upsert failure.
+    count = db_connection.execute(
+        "SELECT count(*) FROM sessions WHERE id = %s",
+        ("sess-geo-fail",),
+    ).fetchone()
+    assert count is not None and count[0] == 1
+
+
+def test_pool_check_not_called_per_event(
+    writer: EventWriter, db_connection: DbConn
+) -> None:
+    """Regression guard: per-event `pool.check()` was a hot-path tax.
+
+    The new design relies on `ConnectionPool(check=...)` running on
+    checkout, not on every write_event call.
+    """
+    with patch.object(writer.pool, "check") as mock_check:
+        writer.write_event(_connect_event())
+    mock_check.assert_not_called()

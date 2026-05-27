@@ -1,17 +1,28 @@
+"""Cowrie log -> Postgres ingestor entrypoint.
+
+Producer thread tails cowrie's log into a bounded queue; the consumer
+drives `Writer`. A Postgres outage stalls only the consumer:
+  - producer keeps draining cowrie's log into memory (capped)
+  - liveness file keeps being touched
+  - orchestration doesn't kill the pod mid-backlog
+"""
+
 from __future__ import annotations
 
 import logging
-import os
+import queue
 import signal
-import sys
-import time
-from collections.abc import Iterator
-from pathlib import Path
+import threading
+from collections.abc import Callable, Iterator
 
 import psycopg
+from prometheus_client import start_http_server
 
+from src import metrics
 from src.config import Config
 from src.parser import parse_event
+from src.reliability import Fuse, Retry, Writer
+from src.tail import tail_follow
 from src.writer import EventWriter
 
 logging.basicConfig(
@@ -20,76 +31,94 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Per-event retry budget. Three attempts at 1s, 2s, 4s gives a total
-# bounded wait of ~7s before declaring failure and dead-lettering.
-_RETRY_ATTEMPTS = 3
-_RETRY_INITIAL_BACKOFF = 1.0
-
-# Process-level circuit breaker. After this many consecutive failures
-# (Postgres down, network partition, etc.) sleep instead of grinding.
-_CIRCUIT_BREAKER_THRESHOLD = 50
-_CIRCUIT_BREAKER_SLEEP = 30.0
-
-# Dead-letter file collects raw cowrie lines that exhausted the retry budget.
-_DEADLETTER_PATH = Path("/tmp/deadletter.jsonl")
+# Sentinel pushed by the producer to tell the consumer to drain and exit.
+_STOP_SENTINEL = object()
 
 
-def tail_follow(path: str) -> Iterator[str]:
-    """Tail a file from its current end, handling rotation and truncation.
-
-    Args:
-        path: Filesystem path to follow.
-
-    Yields:
-        Each new non-empty line appended to the file, indefinitely.
-    """
-    while True:
-        try:
-            with open(path) as f:
-                # Seek to end - only process new events
-                f.seek(0, os.SEEK_END)
-                logger.info("Opened %s, seeking to end (position %d)", path, f.tell())
-
-                while True:
-                    line = f.readline()
-                    if line:
-                        line = line.strip()
-                        if line:
-                            yield line
-                    else:
-                        # Check for file rotation or truncation
-                        try:
-                            current_stat = os.stat(path)
-                            fd_stat = os.fstat(f.fileno())
-
-                            # File was replaced (different inode)
-                            if current_stat.st_ino != fd_stat.st_ino:
-                                logger.info("File rotated, reopening from beginning")
-                                break
-
-                            # File was truncated (current position > file size)
-                            if f.tell() > fd_stat.st_size:
-                                logger.info("File truncated, seeking to beginning")
-                                f.seek(0)
-                                continue
-                        except OSError as exc:
-                            # Stat can race with rotation (file briefly missing).
-                            # Log and fall through to sleep; next iteration retries.
-                            logger.debug("stat failed on %s: %s", path, exc)
-
-                        time.sleep(0.1)
-        except FileNotFoundError:
-            logger.warning("Log file %s not found, retrying in 1s...", path)
-            time.sleep(1.0)
-
-
-def _dead_letter(raw: str) -> None:
-    """Append a raw cowrie line to the dead-letter file."""
+def _producer(
+    lines: Iterator[str],
+    out_queue: "queue.Queue[str | object]",
+    stop_event: threading.Event,
+) -> None:
+    """Push tailed lines onto `out_queue`; exit when `stop_event` is set."""
     try:
-        with _DEADLETTER_PATH.open("a", encoding="utf-8") as f:
-            f.write(raw + "\n")
+        for line in lines:
+            if stop_event.is_set():
+                break
+            # block on backpressure - cowrie's file still holds the line so
+            # the next loop will catch up once the consumer drains.
+            while not stop_event.is_set():
+                try:
+                    out_queue.put(line, timeout=0.5)
+                    break
+                except queue.Full:
+                    continue
+            metrics.queue_depth.set(out_queue.qsize())
+    finally:
+        # Always signal the consumer so it doesn't block forever on shutdown.
+        out_queue.put(_STOP_SENTINEL)
+
+
+def _consumer(
+    in_queue: "queue.Queue[str | object]",
+    writer: Writer,
+    config: Config,
+    stop_event: threading.Event,
+) -> None:
+    """Drain `in_queue`, parse + persist via `writer`. Heartbeat liveness."""
+    # Touching, so probes won't kill the pod during cold start.
+    _touch_healthy(config)
+
+    while not stop_event.is_set():
+        try:
+            item = in_queue.get(timeout=1.0)
+        except queue.Empty:
+            _touch_healthy(config)
+            continue
+
+        metrics.queue_depth.set(in_queue.qsize())
+
+        if item is _STOP_SENTINEL:
+            break
+
+        line = item if isinstance(item, str) else ""
+        logger.debug("cowrie event: %s", line)
+
+        event = parse_event(line)
+        if event is not None:
+            writer.write(event, line)
+
+        _touch_healthy(config)
+
+
+def _touch_healthy(config: Config) -> None:
+    """Refresh the liveness sentinel from the consumer loop.
+
+    Not "after successful DB write" - DB stalls (which the fuse rides out)
+    must not age the file out and trigger restarts that lose the backlog.
+    """
+    try:
+        config.healthcheck_path.touch()
     except OSError:
-        logger.exception("failed to append to dead-letter file %s", _DEADLETTER_PATH)
+        logger.warning(
+            "failed to touch healthcheck path %s",
+            config.healthcheck_path,
+            exc_info=True,
+        )
+
+
+def _build_probe(writer: EventWriter) -> Callable[[], bool]:
+    """Fuse probe: True iff a `SELECT 1` round-trips to Postgres."""
+
+    def probe() -> bool:
+        try:
+            with writer.pool.connection() as conn:
+                conn.execute("SELECT 1")
+            return True
+        except psycopg.Error:
+            return False
+
+    return probe
 
 
 def main() -> None:
@@ -97,68 +126,49 @@ def main() -> None:
     config = Config.from_env()
     logger.info("Starting ingestor, watching %s", config.log_path)
 
+    start_http_server(config.metrics_port)
+    logger.info("Metrics server listening on :%d", config.metrics_port)
+
+    stop_event = threading.Event()
+
     def _handle_signal(signum: int, _frame: object) -> None:
         logger.info("Received signal %d, shutting down", signum)
-        sys.exit(0)
+        stop_event.set()
 
     signal.signal(signal.SIGTERM, _handle_signal)
     signal.signal(signal.SIGINT, _handle_signal)
 
-    consecutive_failures = 0
     try:
-        with EventWriter(config.conninfo) as writer:
-            for line in tail_follow(config.log_path):
-                # Log the full raw event first so unhandled event types are
-                # still visible.
-                logger.info("cowrie event: %s", line)
-                event = parse_event(line)
-                if event is None:
-                    continue
-                logger.debug("parsed as %s", type(event).__name__)
+        with EventWriter(
+            config.conninfo, drop_loopback=config.drop_loopback
+        ) as event_writer:
+            writer = Writer(
+                event_writer,
+                Retry(
+                    attempts=config.retry_attempts,
+                    initial_backoff=config.retry_initial_backoff,
+                ),
+                Fuse(
+                    threshold=config.fuse_threshold,
+                    sleep_seconds=config.fuse_sleep,
+                    probe=_build_probe(event_writer),
+                ),
+            )
 
-                tripped_breaker = False
-                backoff = _RETRY_INITIAL_BACKOFF
-                for attempt in range(1, _RETRY_ATTEMPTS + 1):
-                    try:
-                        writer.write_event(event)
-                        Path("/tmp/healthy").touch()
-                        consecutive_failures = 0
-                        break
-                    except psycopg.Error:
-                        if attempt == _RETRY_ATTEMPTS:
-                            logger.exception(
-                                "Failed to write event after %d attempts; "
-                                "appending to %s",
-                                _RETRY_ATTEMPTS,
-                                _DEADLETTER_PATH,
-                            )
-                            _dead_letter(line)
-                            consecutive_failures += 1
-                            tripped_breaker = (
-                                consecutive_failures >= _CIRCUIT_BREAKER_THRESHOLD
-                            )
-                            break
-                        logger.warning(
-                            "psycopg error on attempt %d/%d, retrying in %.0fs",
-                            attempt,
-                            _RETRY_ATTEMPTS,
-                            backoff,
-                        )
-                        time.sleep(backoff)
-                        backoff *= 2
-                    except (ValueError, TypeError):
-                        # Programming error/malformed event - non-recoverable
-                        logger.exception("Failed to write event")
-                        break
+            line_queue: queue.Queue[str | object] = queue.Queue(
+                maxsize=config.queue_max
+            )
+            producer_thread = threading.Thread(
+                target=_producer,
+                args=(tail_follow(config.log_path), line_queue, stop_event),
+                name="tail-producer",
+                daemon=True,
+            )
+            producer_thread.start()
 
-                if tripped_breaker:
-                    logger.warning(
-                        "circuit breaker: %d consecutive failures, sleeping %.0fs",
-                        consecutive_failures,
-                        _CIRCUIT_BREAKER_SLEEP,
-                    )
-                    time.sleep(_CIRCUIT_BREAKER_SLEEP)
-                    consecutive_failures = 0
+            _consumer(line_queue, writer, config, stop_event)
+            stop_event.set()
+            producer_thread.join(timeout=2.0)
     finally:
         logger.info("Ingestor shut down")
 
