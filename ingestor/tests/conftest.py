@@ -3,9 +3,9 @@ from __future__ import annotations
 import json
 import os
 import subprocess
+import urllib.parse
 from collections.abc import Generator
 from pathlib import Path
-from urllib.parse import urlparse
 
 import psycopg
 import pytest
@@ -16,34 +16,54 @@ import pytest
 _API_DIR = Path(__file__).resolve().parents[2] / "api"
 
 
+def _resolve_test_db_components() -> dict[str, str]:
+    """Resolve test-DB connection parts.
+
+    Mirrors ``api/tests/conftest.py``: ``TEST_DATABASE_URL`` wins if set
+    (CI's path), otherwise build from ``POSTGRES_USER`` / ``POSTGRES_PASSWORD``
+    / ``POSTGRES_HOST`` / ``POSTGRES_PORT`` plus ``POSTGRES_TEST_DB`` (the
+    local justfile path; avoids URL-encoding ``+``/``=`` in dev passwords).
+    """
+    raw = os.environ.get("TEST_DATABASE_URL")
+    if raw:
+        raw = raw.replace("postgresql+psycopg://", "postgresql://", 1)
+        u = urllib.parse.urlparse(raw)
+        return {
+            "user": u.username or "honeywatch",
+            "password": u.password or "testpass",
+            "host": u.hostname or "localhost",
+            "port": str(u.port or 5433),
+            "db": (u.path or "/honeywatch_test").lstrip("/"),
+        }
+    return {
+        "user": os.environ.get("POSTGRES_USER", "honeywatch"),
+        "password": os.environ.get("POSTGRES_PASSWORD", "testpass"),
+        "host": os.environ.get("POSTGRES_HOST", "localhost"),
+        "port": os.environ.get("POSTGRES_PORT", "5433"),
+        "db": os.environ.get("POSTGRES_TEST_DB", "honeywatch_test"),
+    }
+
+
 @pytest.fixture(scope="session")
 def db_url() -> str:
-    raw = os.environ.get(
-        "TEST_DATABASE_URL",
-        "postgresql://honeywatch:testpass@localhost:5432/honeywatch_test",
-    )
-    # Raw psycopg rejects SQLAlchemy's `postgresql+psycopg://` dialect qualifier.
-    return raw.replace("postgresql+psycopg://", "postgresql://", 1)
+    c = _resolve_test_db_components()
+    # URL-encode the password so ``+`` / ``=`` characters from the project
+    # ``.env`` round-trip cleanly into a libpq DSN.
+    pw = urllib.parse.quote(c["password"], safe="")
+    return f"postgresql://{c['user']}:{pw}@{c['host']}:{c['port']}/{c['db']}"
 
 
 @pytest.fixture(scope="session", autouse=True)
 def apply_migrations(db_url: str) -> None:
-    """Run `alembic upgrade head` against the test DB once per session.
-
-    Args:
-        db_url: PostgreSQL DSN for the test database.
-
-    Raises:
-        subprocess.CalledProcessError: If the alembic upgrade fails.
-    """
-    u = urlparse(db_url)
+    """Run `alembic upgrade head` against the test DB once per session."""
+    c = _resolve_test_db_components()
     env = {
         **os.environ,
-        "POSTGRES_USER": u.username or "honeywatch",
-        "POSTGRES_PASSWORD": u.password or "testpass",
-        "POSTGRES_HOST": u.hostname or "localhost",
-        "POSTGRES_PORT": str(u.port or 5432),
-        "POSTGRES_DB": (u.path or "/honeywatch_test").lstrip("/"),
+        "POSTGRES_USER": c["user"],
+        "POSTGRES_PASSWORD": c["password"],
+        "POSTGRES_HOST": c["host"],
+        "POSTGRES_PORT": c["port"],
+        "POSTGRES_DB": c["db"],
     }
     subprocess.run(
         ["uv", "run", "alembic", "upgrade", "head"],
