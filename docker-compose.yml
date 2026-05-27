@@ -64,6 +64,7 @@ services:
       POSTGRES_HOST: postgres
     volumes:
       - cowrie-logs:/logs:ro
+      - ./ingestor/data:/data/geoip:ro
     networks:
       - honeywatch
 

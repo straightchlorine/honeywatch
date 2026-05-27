@@ -17,20 +17,36 @@ mkdir -p "$TARGET_DIR"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+curl_opts=(
+    --fail --silent --show-error --location
+    --retry 5 --retry-delay 30 --retry-all-errors
+    --user "${MAXMIND_ACCOUNT_ID}:${MAXMIND_LICENSE_KEY}"
+)
+
 fetch_edition() {
     local edition="$1"
     local out_name="$2"
     local target="$TARGET_DIR/$out_name"
+    local base="https://download.maxmind.com/geoip/databases/${edition}/download"
+    local tarball="$TMP/${edition}.tar.gz"
+    local sha_sidecar="$TMP/${edition}.tar.gz.sha256"
 
-    # `download.maxmind.com/geoip/databases/<edition>/download` returns a 302
-    # to an R2 presigned URL; -L follows it.
     echo "==> Fetching $edition"
-    curl -fsSL \
-        --user "${MAXMIND_ACCOUNT_ID}:${MAXMIND_LICENSE_KEY}" \
-        -o "$TMP/${edition}.tar.gz" \
-        "https://download.maxmind.com/geoip/databases/${edition}/download?suffix=tar.gz"
+    curl "${curl_opts[@]}" -o "$tarball"     "${base}?suffix=tar.gz"
+    curl "${curl_opts[@]}" -o "$sha_sidecar" "${base}?suffix=tar.gz.sha256"
 
-    tar -xzf "$TMP/${edition}.tar.gz" -C "$TMP"
+    local expected
+    expected=$(awk '{print $1}' "$sha_sidecar")
+    if [ -z "$expected" ]; then
+        echo "could not parse sha256 sidecar for $edition" >&2
+        exit 1
+    fi
+    printf '%s  %s\n' "$expected" "$(basename "$tarball")" \
+        > "$TMP/${edition}.checksum"
+    (cd "$TMP" && sha256sum -c "${edition}.checksum" >/dev/null)
+
+    tar -xzf "$tarball" -C "$TMP"
+
     # MaxMind tarballs extract to ${edition}_YYYYMMDD/
     local extracted
     extracted=$(find "$TMP" -maxdepth 1 -type d -name "${edition}_*" | head -n 1)
@@ -38,7 +54,8 @@ fetch_edition() {
         echo "could not locate extracted dir for $edition" >&2
         exit 1
     fi
-    mv "${extracted}/${edition}.mmdb" "$target"
+
+    mv -f "${extracted}/${edition}.mmdb" "$target"
     echo "    wrote $target ($(du -h "$target" | cut -f1))"
 }
 

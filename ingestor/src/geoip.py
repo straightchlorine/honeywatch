@@ -52,7 +52,7 @@ _ReaderPair = tuple["geoip2.database.Reader | None", "geoip2.database.Reader | N
 def _open_readers() -> _ReaderPair:
     global _city_reader, _asn_reader, _missing_warned
     with _lock:
-        if _city_reader is not None or _asn_reader is not None:
+        if _city_reader is not None and _asn_reader is not None:
             return _city_reader, _asn_reader
         if not _CITY_PATH.exists() or not _ASN_PATH.exists():
             if not _missing_warned:
