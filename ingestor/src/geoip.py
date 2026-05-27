@@ -43,19 +43,24 @@ class GeoData:
 _lock = Lock()
 _city_reader: geoip2.database.Reader | None = None
 _asn_reader: geoip2.database.Reader | None = None
-_missing_warned = False
+# Set of warning keys already emitted, so each "databases missing"
+# warning fires once per process instead of once per event.
+_warned: set[str] = set()
 
 
 _ReaderPair = tuple["geoip2.database.Reader | None", "geoip2.database.Reader | None"]
 
 
 def _open_readers() -> _ReaderPair:
-    global _city_reader, _asn_reader, _missing_warned
+    # Both readers are opened together below; require both to be set
+    # before so a partial init (e.g. ASN constructor raises after City
+    # succeeded) mismatched (Reader, None) pair forever.
+    global _city_reader, _asn_reader
     with _lock:
         if _city_reader is not None and _asn_reader is not None:
             return _city_reader, _asn_reader
         if not _CITY_PATH.exists() or not _ASN_PATH.exists():
-            if not _missing_warned:
+            if "missing" not in _warned:
                 logger.warning(
                     "GeoIP databases missing at %s; geo enrichment disabled "
                     "(City: %s, ASN: %s)",
@@ -63,7 +68,7 @@ def _open_readers() -> _ReaderPair:
                     _CITY_PATH.exists(),
                     _ASN_PATH.exists(),
                 )
-                _missing_warned = True
+                _warned.add("missing")
             return None, None
         _city_reader = geoip2.database.Reader(str(_CITY_PATH))
         _asn_reader = geoip2.database.Reader(str(_ASN_PATH))
@@ -117,6 +122,8 @@ def lookup(ip: str | None) -> GeoData | None:
         asn = a.autonomous_system_number
         as_org = a.autonomous_system_organization
     except geoip2.errors.AddressNotFoundError:
+        # ASN DB doesn't cover this IP - keep any partial city-only
+        # result. Treated as a full miss only if city was also empty
         pass
 
     # If neither DB had anything, treat as miss.
