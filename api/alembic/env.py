@@ -3,9 +3,18 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
-import src.models  # noqa: F401 - ensure all models are registered
 from alembic import context
 from src.extensions import Base
+from src.models import AuthAttempt, Command, Download, GeoLocation, Session
+
+# Reference each mapped class so Base.metadata is populated for autogenerate.
+_REGISTERED_MODELS: tuple[type[Base], ...] = (
+    AuthAttempt,
+    Command,
+    Download,
+    GeoLocation,
+    Session,
+)
 
 config = context.config
 
