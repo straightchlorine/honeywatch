@@ -1,8 +1,15 @@
+set dotenv-load := true
+
 default:
     @just --list
 
+# ---------------------------------------------------------------------------
+# Dev stack
+# ---------------------------------------------------------------------------
+
 # Bring up the dev stack (cowrie, postgres, ingestor, api, dashboard, grafana).
-# Dashboard on http://localhost:8080, API on :5000, Grafana on :3000.
+# Dashboard on http://localhost:8080, API on :5000, Grafana on :3000, dev
+# postgres on :${POSTGRES_HOST_PORT:-5433}.
 dev:
     docker compose up -d --build
 
@@ -14,12 +21,6 @@ logs *services:
 down:
     docker compose down
 
-# Run alembic migrations against the dev postgres. Idempotent; safe to re-run.
-# The api entrypoint also runs this on boot -- use this recipe to apply a new
-# migration without restarting the API container.
-db-upgrade:
-    docker compose exec api alembic upgrade head
-
 # SSH into the local cowrie to generate real events. Type any password when
 # prompted; cowrie logs both successful and failed attempts. Default user is
 # root; override with `just attack admin`.
@@ -27,6 +28,81 @@ attack user="root":
     ssh -p 2222 -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null {{user}}@localhost || true
 
 # Stream the raw cowrie JSON events -- the exact input the ingestor parses.
-# Useful for eyeballing the wire format or capturing samples for tests.
 cowrie-log:
     docker compose exec ingestor tail -f /logs/cowrie.json
+
+# ---------------------------------------------------------------------------
+# Database (one postgres container hosts both `${POSTGRES_DB}` for dev and
+# `honeywatch_test` for the test suite - transactions roll back per-test)
+# ---------------------------------------------------------------------------
+
+# Run alembic migrations against the dev database.
+db-upgrade:
+    docker compose exec api alembic upgrade head
+
+# Open a psql shell in the live dev database.
+db-shell:
+    docker compose exec postgres psql -U "$POSTGRES_USER" "$POSTGRES_DB"
+
+# Bring the dev postgres up.
+test-db-init:
+    docker compose up -d postgres
+    @echo "waiting for postgres..."
+    @for i in $(seq 1 30); do \
+      docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1 && break; \
+      sleep 1; \
+    done
+    @docker compose exec -T postgres sh -c \
+      'psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='"'"'honeywatch_test'"'"'" | grep -q 1 \
+       || psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE honeywatch_test OWNER \"$POSTGRES_USER\""'
+    @echo "honeywatch_test ready"
+
+# Open a psql shell in the test database.
+test-db-shell:
+    docker compose exec postgres psql -U "$POSTGRES_USER" honeywatch_test
+
+# Drop the test database.
+test-db-reset:
+    docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres \
+      -c "DROP DATABASE IF EXISTS honeywatch_test;"
+    @just test-db-init
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+# Iterate fast: pytest only against the dev postgres' test DB.
+# Assumes `just dev` (or at least `just test-db-init`) has been run.
+test-api:
+    cd api && \
+      POSTGRES_HOST=localhost \
+      POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" \
+      POSTGRES_TEST_DB=honeywatch_test \
+      uv run pytest -q
+
+# Iterate fast: ingestor pytest. Uses the same dev postgres + test DB as the
+# api suite; assumes `just dev` (or at least `just test-db-init`) has been run.
+test-ingestor:
+    cd ingestor && \
+      POSTGRES_HOST=localhost \
+      POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" \
+      POSTGRES_TEST_DB=honeywatch_test \
+      uv run pytest -q
+
+# Iterate fast: dashboard build (vue-tsc + vite). Mirrors CI.
+test-dashboard:
+    cd dashboard && pnpm install --frozen-lockfile && pnpm build
+
+# Full CI mirror: ruff + pyright + pytest (api + ingestor) + dashboard build.
+# Ensures the dev postgres is up and the test DB exists. Green here means
+# green in `.github/workflows/ci.yml`.
+test: test-db-init
+    cd api && uv run ruff check .
+    cd api && uv run ruff format --check .
+    cd api && uv run pyright
+    just test-api
+    cd ingestor && uv run ruff check .
+    cd ingestor && uv run ruff format --check .
+    cd ingestor && uv run pyright
+    just test-ingestor
+    just test-dashboard
