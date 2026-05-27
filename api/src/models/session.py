@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.extensions import Base
+
+if TYPE_CHECKING:
+    from src.models.auth_attempt import AuthAttempt
+    from src.models.command import Command
+    from src.models.download import Download
 
 
 class Session(Base):
@@ -28,13 +34,13 @@ class Session(Base):
     )
     sensor: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    auth_attempts: Mapped[list["AuthAttempt"]] = relationship(  # noqa: F821
+    auth_attempts: Mapped[list[AuthAttempt]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
-    commands: Mapped[list["Command"]] = relationship(  # noqa: F821
+    commands: Mapped[list[Command]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
-    downloads: Mapped[list["Download"]] = relationship(  # noqa: F821
+    downloads: Mapped[list[Download]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
 

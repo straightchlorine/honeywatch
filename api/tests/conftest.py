@@ -2,11 +2,11 @@ import os
 from collections.abc import Generator
 from datetime import datetime, timezone
 from typing import Any
-from urllib.parse import urlparse
 
 import pytest
 from alembic.config import Config as AlembicConfig
 from sqlalchemy import create_engine
+from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import Session, sessionmaker
 
 from alembic import command
@@ -17,19 +17,49 @@ from src.models.command import Command
 from src.models.download import Download
 from src.models.session import Session as HoneypotSession
 
-TEST_DB_URL = os.environ.get(
-    "TEST_DATABASE_URL",
-    "postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test",
-)
+
+def _resolve_test_db_url() -> str:
+    """Resolve the test database URL.
+
+    Two supported inputs:
+
+    1. ``TEST_DATABASE_URL`` set directly (CI uses this with a literal password).
+    2. ``POSTGRES_USER``/``POSTGRES_PASSWORD``/``POSTGRES_HOST``/``POSTGRES_PORT``
+       plus ``POSTGRES_TEST_DB``. Used locally by the justfile, which sources the
+       project ``.env`` (its passwords contain ``+`` / ``=`` characters that
+       refuse to round-trip through a hand-rolled URL string).
+
+    Either path always points at a dedicated test database; tests must never
+    mutate ``$POSTGRES_DB`` (the live dev DB).
+    """
+    direct = os.environ.get("TEST_DATABASE_URL")
+    if direct:
+        return direct
+    return URL.create(
+        "postgresql+psycopg",
+        username=os.environ.get("POSTGRES_USER", "honeywatch"),
+        password=os.environ.get("POSTGRES_PASSWORD", "testpass"),
+        host=os.environ.get("POSTGRES_HOST", "localhost"),
+        port=int(os.environ.get("POSTGRES_PORT", "5433")),
+        database=os.environ.get("POSTGRES_TEST_DB", "honeywatch_test"),
+    ).render_as_string(hide_password=False)
+
+
+TEST_DB_URL = _resolve_test_db_url()
 
 
 def _apply_migrations() -> None:
-    u = urlparse(TEST_DB_URL.replace("postgresql+psycopg://", "postgresql://", 1))
-    os.environ.setdefault("POSTGRES_USER", u.username or "honeywatch")
-    os.environ.setdefault("POSTGRES_PASSWORD", u.password or "testpass")
-    os.environ.setdefault("POSTGRES_HOST", u.hostname or "localhost")
-    os.environ.setdefault("POSTGRES_PORT", str(u.port or 5432))
-    os.environ.setdefault("POSTGRES_DB", (u.path or "/honeywatch_test").lstrip("/"))
+    from sqlalchemy.engine.url import make_url
+
+    url_obj = make_url(TEST_DB_URL)
+    # Overwrite (not setdefault): the developer shell may have POSTGRES_*
+    # exported from the project's .env pointing at the dev database. Alembic
+    # must always target whatever TEST_DATABASE_URL points at.
+    os.environ["POSTGRES_USER"] = url_obj.username or "honeywatch"
+    os.environ["POSTGRES_PASSWORD"] = url_obj.password or "testpass"
+    os.environ["POSTGRES_HOST"] = url_obj.host or "localhost"
+    os.environ["POSTGRES_PORT"] = str(url_obj.port or 5433)
+    os.environ["POSTGRES_DB"] = url_obj.database or "honeywatch_test"
     cfg = AlembicConfig("alembic.ini")
     command.upgrade(cfg, "head")
 

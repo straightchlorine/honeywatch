@@ -5,6 +5,7 @@ from datetime import datetime
 from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
 from src.models.download import Download
+from src.models.geo_location import GeoLocation
 from src.models.session import Session
 from src.services.types import (
     AuthAttemptDict,
@@ -21,47 +22,49 @@ def _iso(dt: datetime | None) -> str | None:
 
 
 class SessionSerializer:
-    """Convert :class:`Session` ORM rows to API response dicts."""
+    """Convert :class:`Session` ORM rows to API response dicts.
+
+    ``src_ip`` is deliberately omitted from every external shape. The IP is
+    retained on the DB column for internal joins (``geo_locations``) only.
+    """
 
     @staticmethod
-    def summary(s: Session) -> SessionSummaryDict:
+    def summary(s: Session, geo: GeoLocation | None) -> SessionSummaryDict:
         """Serialize a Session into the list-endpoint shape.
 
         Args:
             s: Session row with ``auth_attempts`` loaded.
-
-        Returns:
-            The summary dict used by ``GET /api/sessions``.
+            geo: Optional joined :class:`GeoLocation` for the session's source IP.
         """
         return {
             "id": s.id,
-            "src_ip": s.src_ip,
             "src_port": s.src_port,
             "dst_port": s.dst_port,
             "protocol": s.protocol,
+            "country_code": geo.country_code if geo else None,
+            "country": geo.country if geo else None,
             "started_at": _iso(s.started_at),
             "ended_at": _iso(s.ended_at),
             "auth_attempt_count": len(s.auth_attempts),
         }
 
     @staticmethod
-    def detail(s: Session) -> SessionDetailDict:
+    def detail(s: Session, geo: GeoLocation | None) -> SessionDetailDict:
         """Serialize a Session with its children into the detail shape.
 
         Args:
             s: Session row with ``auth_attempts``, ``commands`` and
                 ``downloads`` loaded.
-
-        Returns:
-            The detail dict used by ``GET /api/sessions/<id>``.
+            geo: Optional joined :class:`GeoLocation` for the session's source IP.
         """
         return {
             "id": s.id,
-            "src_ip": s.src_ip,
             "src_port": s.src_port,
             "dst_ip": s.dst_ip,
             "dst_port": s.dst_port,
             "protocol": s.protocol,
+            "country_code": geo.country_code if geo else None,
+            "country": geo.country if geo else None,
             "started_at": _iso(s.started_at),
             "ended_at": _iso(s.ended_at),
             "sensor": s.sensor if s.sensor else None,
