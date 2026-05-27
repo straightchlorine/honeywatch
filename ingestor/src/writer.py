@@ -16,6 +16,7 @@ from src.events import (
     SessionClosed,
     SessionConnect,
 )
+from src.geoip import lookup as geoip_lookup
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,24 @@ _INSERT_COMMAND = """
 _INSERT_DOWNLOAD = """
     INSERT INTO downloads (session_id, url, outfile, sha256, timestamp)
     VALUES (%(session_id)s, %(url)s, %(outfile)s, %(sha256)s, %(timestamp)s)
+"""
+
+_UPSERT_GEO = """
+    INSERT INTO geo_locations
+        (ip, country_code, country, city, latitude, longitude,
+         asn, as_org, last_updated)
+    VALUES
+        (%(ip)s, %(country_code)s, %(country)s, %(city)s, %(latitude)s,
+         %(longitude)s, %(asn)s, %(as_org)s, now())
+    ON CONFLICT (ip) DO UPDATE SET
+        country_code = EXCLUDED.country_code,
+        country      = EXCLUDED.country,
+        city         = EXCLUDED.city,
+        latitude     = EXCLUDED.latitude,
+        longitude    = EXCLUDED.longitude,
+        asn          = EXCLUDED.asn,
+        as_org       = EXCLUDED.as_org,
+        last_updated = now()
 """
 
 
@@ -125,7 +144,7 @@ class EventWriter:
         # sources so they don't inflate session counts or pollute stats.
         if _is_loopback(event.src_ip):
             return
-        with self.pool.connection() as conn:
+        with self.pool.connection() as conn, conn.transaction():
             conn.execute(
                 _INSERT_SESSION,
                 {
@@ -139,6 +158,21 @@ class EventWriter:
                     "sensor": event.sensor,
                 },
             )
+            geo = geoip_lookup(event.src_ip)
+            if geo is not None:
+                conn.execute(
+                    _UPSERT_GEO,
+                    {
+                        "ip": event.src_ip,
+                        "country_code": geo.country_code,
+                        "country": geo.country,
+                        "city": geo.city,
+                        "latitude": geo.latitude,
+                        "longitude": geo.longitude,
+                        "asn": geo.asn,
+                        "as_org": geo.as_org,
+                    },
+                )
 
     def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
         with self.pool.connection() as conn:

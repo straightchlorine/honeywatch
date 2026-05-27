@@ -3,6 +3,10 @@
 .env.local
 .env.*.local
 
+# --- GeoIP databases ---
+# (fetched by scripts/fetch-mmdb.sh, baked into image at build)
+ingestor/data/*.mmdb
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db

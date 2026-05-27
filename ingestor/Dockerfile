@@ -10,7 +10,13 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
-RUN useradd --create-home --shell /bin/bash ingestor && chown -R ingestor:ingestor /app
+# GeoLite2 mmdb files - fetched into data/ by scripts/fetch-mmdb.sh.
+RUN mkdir -p /data/geoip
+COPY data/ /data/geoip/
+ENV GEOIP_DATA_DIR=/data/geoip
+
+RUN useradd --create-home --shell /bin/bash ingestor \
+    && chown -R ingestor:ingestor /app /data/geoip
 USER ingestor
 
 # Use the prebuilt venv directly at runtime; avoids uv cache init at start.
