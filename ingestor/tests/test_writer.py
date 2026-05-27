@@ -18,9 +18,8 @@ from src.writer import EventWriter
 
 @pytest.fixture
 def writer(db_url: str) -> Generator[EventWriter]:
-    w = EventWriter(db_url)
-    yield w
-    w.close()
+    with EventWriter(db_url) as w:
+        yield w
 
 
 def _connect_event() -> SessionConnect:
