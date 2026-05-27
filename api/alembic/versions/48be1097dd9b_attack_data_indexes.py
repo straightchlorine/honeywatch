@@ -16,25 +16,14 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-# Each index backs a specific query path under api/src/services/:
-#
-#   ix_auth_attempts_session_id   - selectinload of auth_attempts when a
-#                                   session detail is fetched, plus FK
-#                                   cascade-delete lookup.
-#   ix_auth_attempts_username     - top_usernames GROUP BY username.
-#   ix_auth_attempts_password     - top_passwords GROUP BY password.
-#   ix_commands_session_id        - selectinload of commands per session.
-#   ix_downloads_session_id       - selectinload of downloads per session.
-#   ix_geo_locations_country_code - top_countries GROUP BY country_code
-#                                   after sessions LEFT JOIN geo_locations.
+# Each index backs a bounded `selectinload` lookup plus FK cascade-delete:
+# selectinload emits `WHERE session_id IN (...)` on every dashboard session
+# page-load, and Postgres does not auto-index FK columns.
 
 _INDEXES: tuple[tuple[str, str, str], ...] = (
     ("ix_auth_attempts_session_id", "auth_attempts", "session_id"),
-    ("ix_auth_attempts_username", "auth_attempts", "username"),
-    ("ix_auth_attempts_password", "auth_attempts", "password"),
     ("ix_commands_session_id", "commands", "session_id"),
     ("ix_downloads_session_id", "downloads", "session_id"),
-    ("ix_geo_locations_country_code", "geo_locations", "country_code"),
 )
 
 

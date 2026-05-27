@@ -40,6 +40,11 @@ def health_ready() -> tuple[Any, int]:
     try:
         session_factory = get_session_factory()
         with session_factory() as db:
+            # Bound the probe so pool exhaustion or a stuck connection makes
+            # the endpoint return 503 fast rather than blocking until the
+            # probe interval lapses (which would mark the api unready while
+            # the application itself is still serving real traffic).
+            db.execute(text("SET LOCAL statement_timeout = '500ms'"))
             db.execute(text("SELECT 1"))
     except SQLAlchemyError:
         # DB outage - recoverable state; warn
