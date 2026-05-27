@@ -111,7 +111,7 @@ function fmtXLabel(iso: string): string {
             <span
               v-if="i % labelStep === 0"
               class="x-lbl"
-              :style="{ left: (i / (data.length - 1)) * 100 + '%' }"
+              :style="{ left: data.length > 1 ? (i / (data.length - 1)) * 100 + '%' : '0%' }"
             >{{ fmtXLabel(item.bucket) }}</span>
           </template>
         </div>

@@ -48,10 +48,17 @@ db-shell:
 test-db-init:
     docker compose up -d postgres
     @echo "waiting for postgres..."
-    @for i in $(seq 1 30); do \
-      docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1 && break; \
+    @ready=0; \
+    for i in $(seq 1 30); do \
+      if docker compose exec -T postgres pg_isready -U "$POSTGRES_USER" >/dev/null 2>&1; then \
+        ready=1; break; \
+      fi; \
       sleep 1; \
-    done
+    done; \
+    if [ "$ready" -ne 1 ]; then \
+      echo "postgres not ready after 30s; aborting" >&2; \
+      exit 1; \
+    fi
     @docker compose exec -T postgres sh -c \
       'psql -U "$POSTGRES_USER" -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='"'"'honeywatch_test'"'"'" | grep -q 1 \
        || psql -U "$POSTGRES_USER" -d postgres -c "CREATE DATABASE honeywatch_test OWNER \"$POSTGRES_USER\""'

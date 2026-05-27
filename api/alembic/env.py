@@ -7,14 +7,9 @@ from alembic import context
 from src.extensions import Base
 from src.models import AuthAttempt, Command, Download, GeoLocation, Session
 
-# Reference each mapped class so Base.metadata is populated for autogenerate.
-_REGISTERED_MODELS: tuple[type[Base], ...] = (
-    AuthAttempt,
-    Command,
-    Download,
-    GeoLocation,
-    Session,
-)
+# Touch each mapped class so its mapper is registered with Base.metadata.
+for _model in (AuthAttempt, Command, Download, GeoLocation, Session):
+    assert _model.__tablename__ in Base.metadata.tables, _model
 
 config = context.config
 

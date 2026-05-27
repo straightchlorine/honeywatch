@@ -46,7 +46,9 @@ function heatColor(count: number): string {
             v-for="cell in row.hours"
             :key="cell.hour"
             class="hm-cell"
+            role="img"
             :style="{ background: heatColor(cell.count) }"
+            :aria-label="`${row.day} ${String(cell.hour).padStart(2, '0')}:00 — ${cell.count} sessions`"
             :title="`${row.day} ${String(cell.hour).padStart(2, '0')}:00 — ${cell.count} sessions`"
           />
         </div>
