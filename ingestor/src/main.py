@@ -59,8 +59,10 @@ def tail_follow(path: str) -> Iterator[str]:
                                 logger.info("File truncated, seeking to beginning")
                                 f.seek(0)
                                 continue
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            # Stat can race with rotation (file briefly missing).
+                            # Log and fall through to sleep; next iteration retries.
+                            logger.debug("stat failed on %s: %s", path, exc)
 
                         time.sleep(0.1)
         except FileNotFoundError:
