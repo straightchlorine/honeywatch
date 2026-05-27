@@ -4,12 +4,24 @@ from typing import Any
 from flask import Blueprint, jsonify, request
 
 from src.extensions import get_session_factory
-from src.services.sessions import get_session_detail, get_sessions_paginated, get_stats
+from src.services.sessions import (
+    get_activity,
+    get_heatmap,
+    get_session_detail,
+    get_sessions_paginated,
+    get_top_countries,
+    get_top_passwords,
+    get_totals,
+    get_trend,
+)
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 
 MAX_PER_PAGE = 100
 MAX_PAGE = 10_000
+MAX_TOP_N = 100
+MAX_PERIOD_DAYS = 365
+VALID_BUCKETS = ("hour", "day", "month")
 SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{1,32}$")
 
 
@@ -68,15 +80,64 @@ def session_detail(session_id: str) -> tuple[Any, int]:
     return jsonify(result), 200
 
 
-@api_bp.route("/stats")
-def stats() -> tuple[Any, int]:
-    """Return aggregate honeypot stats.
-
-    Returns:
-        Tuple of JSON body and HTTP status; see
-        :class:`src.services.stats.StatsService` for the shape.
-    """
+@api_bp.route("/stats/totals")
+def stats_totals() -> tuple[Any, int]:
+    """Return the headline totals (sessions, auth attempts, unique IPs)."""
     session_factory = get_session_factory()
     with session_factory() as db:
-        result = get_stats(db)
+        result = get_totals(db)
+    return jsonify(result), 200
+
+
+@api_bp.route("/stats/top-passwords")
+def stats_top_passwords() -> tuple[Any, int]:
+    """Return the top-N attempted passwords ranked by count."""
+    top_n = _clamp_query_int("top_n", 10, 1, MAX_TOP_N)
+    session_factory = get_session_factory()
+    with session_factory() as db:
+        result = get_top_passwords(db, top_n)
+    return jsonify(result), 200
+
+
+@api_bp.route("/stats/top-countries")
+def stats_top_countries() -> tuple[Any, int]:
+    """Return the top-N attacking countries ranked by session count.
+
+    Empty until the geolocation enricher (PR-B) populates ``geo_locations``.
+    """
+    top_n = _clamp_query_int("top_n", 10, 1, MAX_TOP_N)
+    session_factory = get_session_factory()
+    with session_factory() as db:
+        result = get_top_countries(db, top_n)
+    return jsonify(result), 200
+
+
+@api_bp.route("/stats/activity")
+def stats_activity() -> tuple[Any, int]:
+    """Return session counts grouped by ``bucket`` (``hour|day|month``)."""
+    bucket = request.args.get("bucket", "day")
+    if bucket not in VALID_BUCKETS:
+        return jsonify({"error": f"bucket must be one of {list(VALID_BUCKETS)}"}), 400
+    session_factory = get_session_factory()
+    with session_factory() as db:
+        result = get_activity(db, bucket)
+    return jsonify(result), 200
+
+
+@api_bp.route("/stats/trend")
+def stats_trend() -> tuple[Any, int]:
+    """Return the session-count trend over ``period_days`` vs the prior window."""
+    period_days = _clamp_query_int("period_days", 7, 1, MAX_PERIOD_DAYS)
+    session_factory = get_session_factory()
+    with session_factory() as db:
+        result = get_trend(db, period_days)
+    return jsonify(result), 200
+
+
+@api_bp.route("/stats/heatmap")
+def stats_heatmap() -> tuple[Any, int]:
+    """Return session counts per (weekday, hour) cell."""
+    session_factory = get_session_factory()
+    with session_factory() as db:
+        result = get_heatmap(db)
     return jsonify(result), 200

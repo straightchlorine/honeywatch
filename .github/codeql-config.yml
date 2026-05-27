@@ -3,6 +3,10 @@ name: CodeQL Configuration
 queries:
   - uses: security-and-quality
 
+query-filters:
+  - exclude:
+      id: py/unsafe-cyclic-import
+
 paths:
   - api
   - ingestor

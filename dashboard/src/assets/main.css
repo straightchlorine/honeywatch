@@ -17,15 +17,20 @@ body {
   background: var(--bg);
   color: var(--fg);
   min-height: 100dvh;
-  display: grid;
-  place-items: center;
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
   padding: 2rem;
 }
 
 main {
-  max-width: 40rem;
+  max-width: 72rem;
   width: 100%;
+}
+
+header {
   text-align: center;
+  margin-bottom: 2.5rem;
 }
 
 h1 {
@@ -37,7 +42,6 @@ h1 {
 .tag {
   color: var(--muted);
   margin-top: 0.25rem;
-  margin-bottom: 2.5rem;
   font-size: 0.95rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
@@ -45,12 +49,33 @@ h1 {
 
 .stats {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: repeat(4, 1fr);
   gap: 1.5rem;
   padding: 1.5rem;
   border: 1px solid #1f242b;
   border-radius: 0.75rem;
   background: #101419;
+  margin-bottom: 1.25rem;
+  text-align: center;
+}
+
+@media (max-width: 40rem) {
+  .stats { grid-template-columns: 1fr 1fr; }
+}
+
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+  margin-bottom: 1.25rem;
+}
+
+@media (max-width: 48rem) {
+  .two-col { grid-template-columns: 1fr; }
+}
+
+.analytics > * + * {
+  margin-top: 1.25rem;
 }
 
 .stats .n {
@@ -74,6 +99,9 @@ h1 {
 .err {
   color: var(--err);
 }
+
+.n.up   { color: #4ade80; }
+.n.down { color: var(--err); }
 
 footer {
   margin-top: 3rem;

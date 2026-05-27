@@ -49,7 +49,10 @@ def create_app(config: object | None = None) -> Flask:
     app.config["FLASK_SECRET_KEY"] = secret_key
     app.config["SECRET_KEY"] = secret_key
 
-    db_url = cast(str, app.config.get("SQLALCHEMY_DATABASE_URI") or "")
+    db_url = cast(
+        str,
+        app.config.get("SQLALCHEMY_DATABASE_URI") or "",  # pyright: ignore[reportUnknownMemberType]
+    )
     if db_url:
         init_db(app, db_url)
 

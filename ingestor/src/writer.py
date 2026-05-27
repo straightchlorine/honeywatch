@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+from types import TracebackType
+from typing import Self
 
 from psycopg_pool import ConnectionPool
 
@@ -79,7 +81,22 @@ class EventWriter:
     """
 
     def __init__(self, conninfo: str) -> None:
-        self.pool = ConnectionPool(conninfo)
+        # Defer pool open to __enter__ so I/O doesn't happen at construction.
+        # psycopg_pool deprecates eager-open in a future release.
+        self.pool = ConnectionPool(conninfo, open=False)
+
+    def __enter__(self) -> Self:
+        self.pool.open()
+        self.pool.wait()
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        tb: TracebackType | None,
+    ) -> None:
+        self.pool.close()
 
     def write_event(self, event: CowrieEvent) -> None:
         """Persist a cowrie event to PostgreSQL.
@@ -170,6 +187,3 @@ class EventWriter:
                     "ended_at": event.timestamp,
                 },
             )
-
-    def close(self) -> None:
-        self.pool.close()

@@ -59,8 +59,10 @@ def tail_follow(path: str) -> Iterator[str]:
                                 logger.info("File truncated, seeking to beginning")
                                 f.seek(0)
                                 continue
-                        except OSError:
-                            pass
+                        except OSError as exc:
+                            # Stat can race with rotation (file briefly missing).
+                            # Log and fall through to sleep; next iteration retries.
+                            logger.debug("stat failed on %s: %s", path, exc)
 
                         time.sleep(0.1)
         except FileNotFoundError:
@@ -73,8 +75,6 @@ def main() -> None:
     config = Config.from_env()
     logger.info("Starting ingestor, watching %s", config.log_path)
 
-    writer = EventWriter(config.conninfo)
-
     def _handle_signal(signum: int, _frame: object) -> None:
         logger.info("Received signal %d, shutting down", signum)
         sys.exit(0)
@@ -83,38 +83,39 @@ def main() -> None:
     signal.signal(signal.SIGINT, _handle_signal)
 
     try:
-        for line in tail_follow(config.log_path):
-            # Log the full raw event first so unhandled event types are still
-            # visible. `just logs ingestor` surfaces everything cowrie emits.
-            logger.info("cowrie event: %s", line)
-            event = parse_event(line)
-            if event is None:
-                continue
-            logger.debug("parsed as %s", type(event).__name__)
-            backoff = 1.0
-            for attempt in range(1, 6):
-                try:
-                    writer.write_event(event)
-                    Path("/tmp/healthy").touch()
-                    break
-                except psycopg.Error:
-                    if attempt == 5:
-                        logger.exception(
-                            "Failed to write event after 5 attempts; dropping"
-                        )
+        with EventWriter(config.conninfo) as writer:
+            for line in tail_follow(config.log_path):
+                # Log the full raw event first so unhandled event types are
+                # still visible. `just logs ingestor` surfaces everything
+                # cowrie emits.
+                logger.info("cowrie event: %s", line)
+                event = parse_event(line)
+                if event is None:
+                    continue
+                logger.debug("parsed as %s", type(event).__name__)
+                backoff = 1.0
+                for attempt in range(1, 6):
+                    try:
+                        writer.write_event(event)
+                        Path("/tmp/healthy").touch()
                         break
-                    logger.warning(
-                        "psycopg error on attempt %d/5, retrying in %.0fs",
-                        attempt,
-                        backoff,
-                    )
-                    time.sleep(backoff)
-                    backoff *= 2
-                except (ValueError, TypeError):
-                    logger.exception("Failed to write event")
-                    break
+                    except psycopg.Error:
+                        if attempt == 5:
+                            logger.exception(
+                                "Failed to write event after 5 attempts; dropping"
+                            )
+                            break
+                        logger.warning(
+                            "psycopg error on attempt %d/5, retrying in %.0fs",
+                            attempt,
+                            backoff,
+                        )
+                        time.sleep(backoff)
+                        backoff *= 2
+                    except (ValueError, TypeError):
+                        logger.exception("Failed to write event")
+                        break
     finally:
-        writer.close()
         logger.info("Ingestor shut down")
 
 

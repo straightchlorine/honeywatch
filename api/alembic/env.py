@@ -3,9 +3,13 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
-import src.models  # noqa: F401 - ensure all models are registered
 from alembic import context
 from src.extensions import Base
+from src.models import AuthAttempt, Command, Download, GeoLocation, Session
+
+# Touch each mapped class so its mapper is registered with Base.metadata.
+for _model in (AuthAttempt, Command, Download, GeoLocation, Session):
+    assert _model.__tablename__ in Base.metadata.tables, _model
 
 config = context.config
 

@@ -4,10 +4,20 @@ from sqlalchemy import func, select
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import selectinload
 
+from src.models.geo_location import GeoLocation
 from src.models.session import Session
 from src.services.serializers import SessionSerializer
 from src.services.stats import StatsService
-from src.services.types import SessionDetailDict, SessionsPageDict, StatsDict
+from src.services.types import (
+    ActivityBucketDict,
+    HeatmapPointDict,
+    SessionDetailDict,
+    SessionsPageDict,
+    TopCountryDict,
+    TopPasswordDict,
+    TotalsDict,
+    TrendDict,
+)
 
 
 def get_sessions_paginated(db: DbSession, page: int, per_page: int) -> SessionsPageDict:
@@ -27,16 +37,17 @@ def get_sessions_paginated(db: DbSession, page: int, per_page: int) -> SessionsP
     total = db.execute(select(func.count()).select_from(Session)).scalar_one()
 
     stmt = (
-        select(Session)
+        select(Session, GeoLocation)
+        .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
         .options(selectinload(Session.auth_attempts))
         .order_by(Session.started_at.desc())
         .offset(offset)
         .limit(per_page)
     )
-    sessions = list(db.execute(stmt).scalars().all())
+    rows = list(db.execute(stmt).all())
 
     return {
-        "sessions": [SessionSerializer.summary(s) for s in sessions],
+        "sessions": [SessionSerializer.summary(s, g) for s, g in rows],
         "total": total,
         "page": page,
         "per_page": per_page,
@@ -52,11 +63,12 @@ def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | No
         session_id: Cowrie session identifier.
 
     Returns:
-        A :class:`SessionDetailDict` with auth attempts, commands and
-        downloads, or ``None`` when no session matches.
+        A :class:`SessionDetailDict` with auth attempts, commands, downloads
+        and joined geolocation, or ``None`` when no session matches.
     """
     stmt = (
-        select(Session)
+        select(Session, GeoLocation)
+        .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
         .options(
             selectinload(Session.auth_attempts),
             selectinload(Session.commands),
@@ -64,19 +76,42 @@ def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | No
         )
         .where(Session.id == session_id)
     )
-    session = db.execute(stmt).scalar_one_or_none()
-    if session is None:
+    row = db.execute(stmt).first()
+    if row is None:
         return None
-    return SessionSerializer.detail(session)
+    session, geo = row
+    return SessionSerializer.detail(session, geo)
 
 
-def get_stats(db: DbSession) -> StatsDict:
-    """Return the aggregate stats snapshot for ``GET /api/stats``.
+def get_totals(db: DbSession) -> TotalsDict:
+    """Return total session, auth-attempt and unique-IP counts."""
+    return StatsService(db).totals()
 
-    Args:
-        db: Active SQLAlchemy session.
 
-    Returns:
-        The :class:`StatsDict` snapshot produced by :class:`StatsService`.
+def get_top_passwords(db: DbSession, top_n: int = 10) -> list[TopPasswordDict]:
+    """Return the top-N attempted passwords by count, descending."""
+    return StatsService(db, top_n=top_n).top_passwords()
+
+
+def get_top_countries(db: DbSession, top_n: int = 10) -> list[TopCountryDict]:
+    """Return the top-N attacking countries by session count, descending."""
+    return StatsService(db, top_n=top_n).top_countries()
+
+
+def get_activity(db: DbSession, bucket: str) -> list[ActivityBucketDict]:
+    """Return session counts grouped by the given time bucket.
+
+    Raises:
+        ValueError: For unsupported ``bucket`` values.
     """
-    return StatsService(db).snapshot()
+    return StatsService(db).activity(bucket)
+
+
+def get_trend(db: DbSession, period_days: int = 7) -> TrendDict:
+    """Return the session-count trend over the last ``period_days``."""
+    return StatsService(db).trend(period_days)
+
+
+def get_heatmap(db: DbSession) -> list[HeatmapPointDict]:
+    """Return session counts per (weekday, hour) cell."""
+    return StatsService(db).heatmap()

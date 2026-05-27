@@ -28,10 +28,11 @@ class DownloadDict(TypedDict):
 
 class SessionSummaryDict(TypedDict):
     id: str
-    src_ip: str
     src_port: int
     dst_port: int
     protocol: str
+    country_code: str | None
+    country: str | None
     started_at: str | None
     ended_at: str | None
     auth_attempt_count: int
@@ -39,11 +40,12 @@ class SessionSummaryDict(TypedDict):
 
 class SessionDetailDict(TypedDict):
     id: str
-    src_ip: str
     src_port: int
     dst_ip: str | None
     dst_port: int
     protocol: str
+    country_code: str | None
+    country: str | None
     started_at: str | None
     ended_at: str | None
     sensor: str | None
@@ -70,15 +72,31 @@ class TopPasswordDict(TypedDict):
     count: int
 
 
-class AttacksPerDayDict(TypedDict):
-    date: str
+class TopCountryDict(TypedDict):
+    country_code: str | None
+    country: str | None
     count: int
 
 
-class StatsDict(TypedDict):
+class ActivityBucketDict(TypedDict):
+    bucket: str
+    count: int
+
+
+class TrendDict(TypedDict):
+    current: int
+    previous: int
+    delta: int
+    pct_change: float | None
+
+
+class HeatmapPointDict(TypedDict):
+    hour: int
+    weekday: int
+    count: int
+
+
+class TotalsDict(TypedDict):
     total_sessions: int
     total_auth_attempts: int
     unique_ips: int
-    top_usernames: list[TopUsernameDict]
-    top_passwords: list[TopPasswordDict]
-    attacks_per_day: list[AttacksPerDayDict]
