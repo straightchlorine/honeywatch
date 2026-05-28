@@ -15,11 +15,13 @@ Regenerate the fixture by piping a recorded cowrie session into
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 from typing import cast
 
 import pytest
 
+from src import writer as writer_module
 from src.events import ClientKex, ClientSize, ClientVersion, SessionClosed
 from src.parser import parse_event
 from src.writer import EventWriter
@@ -104,6 +106,121 @@ def test_session_closed_duration_coerces_to_float() -> None:
             assert event.duration > 0
             return
     pytest.fail("fixture has no cowrie.session.closed event")
+
+
+# (table, [SQL fragments the writer issues against this table])
+_WRITER_TABLE_BINDINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "sessions",
+        (writer_module._INSERT_SESSION, writer_module._UPDATE_SESSION_CLOSED),
+    ),
+    ("auth_attempts", (writer_module._INSERT_AUTH_ATTEMPT,)),
+    ("commands", (writer_module._INSERT_COMMAND,)),
+    ("downloads", (writer_module._INSERT_DOWNLOAD,)),
+    ("geo_locations", (writer_module._UPSERT_GEO,)),
+)
+
+_INSERT_COLS_RE = re.compile(
+    r"INSERT\s+INTO\s+\w+\s*\(([^)]+)\)", re.IGNORECASE | re.DOTALL
+)
+_UPDATE_SET_RE = re.compile(
+    r"UPDATE\s+\w+\s+SET\s+(.+?)\s+WHERE", re.IGNORECASE | re.DOTALL
+)
+_UPDATE_WHERE_RE = re.compile(r"WHERE\s+(\w+)\s*=", re.IGNORECASE)
+_ASSIGN_COL_RE = re.compile(r"(\w+)\s*=")
+
+
+def _columns_referenced(sql: str) -> set[str]:
+    """Best-effort column extraction from the writer's SQL strings."""
+    cols: set[str] = set()
+    match = _INSERT_COLS_RE.search(sql)
+    if match:
+        for raw in match.group(1).split(","):
+            cols.add(raw.strip().strip('"'))
+    match = _UPDATE_SET_RE.search(sql)
+    if match:
+        for assignment in match.group(1).split(","):
+            assign = _ASSIGN_COL_RE.match(assignment.strip())
+            if assign:
+                cols.add(assign.group(1).strip('"'))
+    where = _UPDATE_WHERE_RE.search(sql)
+    if where:
+        cols.add(where.group(1).strip('"'))
+    return cols
+
+
+@pytest.mark.parametrize("table,sql_fragments", _WRITER_TABLE_BINDINGS)
+def test_writer_columns_match_table_schema(
+    db_connection: DbConn, table: str, sql_fragments: tuple[str, ...]
+) -> None:
+    """Writer columns ⊆ schema columns; NOT-NULL-no-default columns ⊆ writer columns."""
+    writer_cols: set[str] = set()
+    for fragment in sql_fragments:
+        writer_cols |= _columns_referenced(fragment)
+    assert writer_cols, f"failed to extract any columns for {table}"
+
+    rows = db_connection.execute(
+        "SELECT column_name, is_nullable, column_default "
+        "FROM information_schema.columns "
+        "WHERE table_schema = current_schema() AND table_name = %s",
+        (table,),
+    ).fetchall()
+    assert rows, f"table {table} not present in test DB"
+    table_cols = {r[0] for r in rows}
+    required_cols = {r[0] for r in rows if r[1] == "NO" and r[2] is None}
+
+    unknown = writer_cols - table_cols
+    assert not unknown, (
+        f"{table}: writer references columns absent from the schema: {unknown}. "
+        f"Did a migration drop a column the writer still uses?"
+    )
+
+    missing = required_cols - writer_cols
+    assert not missing, (
+        f"{table}: writer omits NOT NULL no-default columns: {missing}. "
+        f"Did a migration add a NOT NULL column without updating writer.py?"
+    )
+
+
+# Each entry: (table, column, writer-side `_LEN_*` constant).
+# Catches drift between writer caps and DB VARCHAR(N) caps.
+_WRITER_LENGTH_CAPS: tuple[tuple[str, str, int], ...] = (
+    ("sessions", "id", writer_module._LEN_SESSION_ID),
+    ("sessions", "protocol", writer_module._LEN_PROTOCOL),
+    ("sessions", "sensor", writer_module._LEN_SENSOR),
+    ("auth_attempts", "session_id", writer_module._LEN_SESSION_ID),
+    ("auth_attempts", "username", writer_module._LEN_USERNAME),
+    ("auth_attempts", "password", writer_module._LEN_PASSWORD),
+    ("commands", "session_id", writer_module._LEN_SESSION_ID),
+    ("commands", "input", writer_module._LEN_COMMAND_INPUT),
+    ("downloads", "session_id", writer_module._LEN_SESSION_ID),
+    ("downloads", "url", writer_module._LEN_URL),
+    ("downloads", "outfile", writer_module._LEN_OUTFILE),
+    ("downloads", "sha256", writer_module._LEN_SHA256),
+    ("geo_locations", "country_code", writer_module._LEN_COUNTRY_CODE),
+    ("geo_locations", "country", writer_module._LEN_COUNTRY),
+    ("geo_locations", "city", writer_module._LEN_CITY),
+    ("geo_locations", "as_org", writer_module._LEN_AS_ORG),
+)
+
+
+@pytest.mark.parametrize("table,column,writer_cap", _WRITER_LENGTH_CAPS)
+def test_writer_length_caps_match_schema(
+    db_connection: DbConn, table: str, column: str, writer_cap: int
+) -> None:
+    """Writer `_LEN_*` must equal `information_schema.character_maximum_length`."""
+    row = db_connection.execute(
+        "SELECT character_maximum_length FROM information_schema.columns "
+        "WHERE table_schema = current_schema() "
+        "AND table_name = %s AND column_name = %s",
+        (table, column),
+    ).fetchone()
+    assert row is not None, f"{table}.{column} not present in test DB"
+    db_cap = row[0]
+    assert db_cap == writer_cap, (
+        f"{table}.{column}: writer caps at {writer_cap}, DB caps at {db_cap}. "
+        f"Update writer._LEN_* and migration in lockstep with the model."
+    )
 
 
 def test_non_dispatched_client_events_parse() -> None:

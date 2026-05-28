@@ -19,6 +19,22 @@ from src.events import (
     SessionConnect,
 )
 from src.geoip import lookup as geoip_lookup
+from src.sanitize import truncate
+
+# Mirrors VARCHAR(N) in api/src/models/
+_LEN_SESSION_ID = 64
+_LEN_PROTOCOL = 16
+_LEN_SENSOR = 64
+_LEN_USERNAME = 256
+_LEN_PASSWORD = 256
+_LEN_COMMAND_INPUT = 8192
+_LEN_URL = 2048
+_LEN_OUTFILE = 512
+_LEN_SHA256 = 64
+_LEN_COUNTRY_CODE = 2
+_LEN_COUNTRY = 128
+_LEN_CITY = 128
+_LEN_AS_ORG = 256
 
 logger = logging.getLogger(__name__)
 
@@ -155,18 +171,28 @@ class EventWriter:
                 conn.execute(
                     _INSERT_SESSION,
                     {
-                        "id": event.session_id,
+                        "id": truncate(event.session_id, _LEN_SESSION_ID),
                         "src_ip": event.src_ip,
                         "src_port": event.src_port,
                         "dst_ip": event.dst_ip,
                         "dst_port": event.dst_port,
-                        "protocol": event.protocol,
+                        "protocol": truncate(event.protocol, _LEN_PROTOCOL),
                         "started_at": event.timestamp,
-                        "sensor": event.sensor,
+                        "sensor": truncate(event.sensor, _LEN_SENSOR),
                     },
                 )
 
-            geo = geoip_lookup(event.src_ip)
+            try:
+                geo = geoip_lookup(event.src_ip)
+            except Exception:
+                # geoip.lookup is documented as never-raise, but isolate from
+                # session-write outcome defensively.
+                logger.warning(
+                    "geoip lookup raised for %s; continuing without enrichment",
+                    event.src_ip,
+                    exc_info=True,
+                )
+                geo = None
             if geo is None:
                 return
             try:
@@ -175,13 +201,15 @@ class EventWriter:
                         _UPSERT_GEO,
                         {
                             "ip": event.src_ip,
-                            "country_code": geo.country_code,
-                            "country": geo.country,
-                            "city": geo.city,
+                            "country_code": truncate(
+                                geo.country_code, _LEN_COUNTRY_CODE
+                            ),
+                            "country": truncate(geo.country, _LEN_COUNTRY),
+                            "city": truncate(geo.city, _LEN_CITY),
                             "latitude": geo.latitude,
                             "longitude": geo.longitude,
                             "asn": geo.asn,
-                            "as_org": geo.as_org,
+                            "as_org": truncate(geo.as_org, _LEN_AS_ORG),
                         },
                     )
             except psycopg.Error:
@@ -198,9 +226,9 @@ class EventWriter:
                 conn.execute(
                     _INSERT_AUTH_ATTEMPT,
                     {
-                        "session_id": event.session_id,
-                        "username": event.username,
-                        "password": event.password,
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "username": truncate(event.username, _LEN_USERNAME),
+                        "password": truncate(event.password, _LEN_PASSWORD),
                         "success": isinstance(event, LoginSuccess),
                         "timestamp": event.timestamp,
                     },
@@ -214,8 +242,8 @@ class EventWriter:
                 conn.execute(
                     _INSERT_COMMAND,
                     {
-                        "session_id": event.session_id,
-                        "input": event.input,
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "input": truncate(event.input, _LEN_COMMAND_INPUT),
                         "success": True,
                         "timestamp": event.timestamp,
                     },
@@ -229,10 +257,10 @@ class EventWriter:
                 conn.execute(
                     _INSERT_DOWNLOAD,
                     {
-                        "session_id": event.session_id,
-                        "url": event.url,
-                        "outfile": event.outfile,
-                        "sha256": event.sha256,
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "url": truncate(event.url, _LEN_URL),
+                        "outfile": truncate(event.outfile, _LEN_OUTFILE),
+                        "sha256": truncate(event.sha256, _LEN_SHA256),
                         "timestamp": event.timestamp,
                     },
                 )
@@ -244,7 +272,7 @@ class EventWriter:
             cur = conn.execute(
                 _UPDATE_SESSION_CLOSED,
                 {
-                    "id": event.session_id,
+                    "id": truncate(event.session_id, _LEN_SESSION_ID),
                     "ended_at": event.timestamp,
                 },
             )

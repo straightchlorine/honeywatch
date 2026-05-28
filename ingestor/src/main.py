@@ -126,8 +126,11 @@ def main() -> None:
     config = Config.from_env()
     logger.info("Starting ingestor, watching %s", config.log_path)
 
-    start_http_server(config.metrics_port)
-    logger.info("Metrics server listening on :%d", config.metrics_port)
+    if config.metrics_enabled:
+        start_http_server(config.metrics_port)
+        logger.info("Metrics server listening on :%d", config.metrics_port)
+    else:
+        logger.info("Metrics server disabled (METRICS_ENABLED=0)")
 
     stop_event = threading.Event()
 

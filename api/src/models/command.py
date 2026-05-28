@@ -19,9 +19,9 @@ class Command(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+        String(64), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
     )
-    input: Mapped[str] = mapped_column(String, nullable=False)
+    input: Mapped[str] = mapped_column(String(8192), nullable=False)
     success: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

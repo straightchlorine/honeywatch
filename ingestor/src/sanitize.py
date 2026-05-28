@@ -24,3 +24,10 @@ def sanitize(s: str | None, max_len: int = 500) -> str:
         return ""
     truncated = s[:max_len] + ("..." if len(s) > max_len else "")
     return _CONTROL_CHARS.sub(lambda m: f"\\x{ord(m.group()):02x}", truncated)
+
+
+def truncate(s: str | None, max_len: int) -> str | None:
+    """Cap length without escaping; pair with sanitize for log lines."""
+    if s is None or len(s) <= max_len:
+        return s
+    return s[:max_len]

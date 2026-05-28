@@ -18,7 +18,13 @@ def init_db(app: Flask, database_url: str) -> None:
         None. Sets ``app.extensions['db_engine']`` and
         ``app.extensions['db_session_factory']``.
     """
-    engine = create_engine(database_url)
+    engine = create_engine(
+        database_url,
+        pool_size=5,
+        max_overflow=5,
+        pool_pre_ping=True,
+        pool_recycle=300,
+    )
     app.extensions["db_engine"] = engine
     app.extensions["db_session_factory"] = sessionmaker(bind=engine)
 
