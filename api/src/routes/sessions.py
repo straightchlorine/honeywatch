@@ -1,18 +1,28 @@
-import re
+from __future__ import annotations
+
+from datetime import datetime
 from typing import Any
 
-from flask import abort, jsonify, request
-from flask_smorest import Blueprint
+from flask_smorest import Blueprint, abort
 
 from src.extensions import get_session_factory
-from src.schemas.sessions import SessionDetailSchema, SessionsListSchema
+from src.schemas.sessions import (
+    SessionDetailResponse,
+    SessionIdPath,
+    SessionsListQuery,
+    SessionsListResponse,
+)
 from src.schemas.stats import (
-    ActivityBucketSchema,
-    HeatmapPointSchema,
-    TopCountrySchema,
-    TopPasswordSchema,
-    TotalsSchema,
-    TrendSchema,
+    ActivityBucketResponse,
+    ActivityQuery,
+    HeatmapPointResponse,
+    TopCountriesQuery,
+    TopCountryResponse,
+    TopPasswordResponse,
+    TopPasswordsQuery,
+    TotalsResponse,
+    TrendQuery,
+    TrendResponse,
 )
 from src.services.sessions import (
     get_activity,
@@ -25,124 +35,147 @@ from src.services.sessions import (
     get_trend,
 )
 
-api_bp = Blueprint(
-    "api", "api", url_prefix="/api", description="Honeywatch session + stats API"
+sessions_bp = Blueprint(
+    "sessions",
+    "sessions",
+    url_prefix="/api/v1/sessions",
+    description="Honeypot session queries",
+)
+stats_bp = Blueprint(
+    "stats",
+    "stats",
+    url_prefix="/api/v1/stats",
+    description="Aggregate honeypot statistics",
 )
 
-MAX_PER_PAGE = 100
-MAX_PAGE = 10_000
-MAX_TOP_N = 100
-MAX_PERIOD_DAYS = 365
-VALID_BUCKETS = ("hour", "day", "month")
-SESSION_ID_PATTERN = re.compile(r"^[A-Za-z0-9]{1,32}$")
+_DATETIME_KEYS = ("started_at", "ended_at", "timestamp")
 
 
-def _clamp_query_int(name: str, default: int, lo: int, hi: int) -> int:
-    """Read a positive integer query param and clamp it into ``[lo, hi]``.
-
-    Args:
-        name: Query parameter name.
-        default: Value used when the param is missing or non-integer.
-        lo: Inclusive lower bound.
-        hi: Inclusive upper bound.
-
-    Returns:
-        The clamped integer.
-    """
-    raw = request.args.get(name, type=int)
-    value = raw if raw is not None else default
-    return max(lo, min(value, hi))
+def _parse_dt(value: Any) -> Any:
+    if isinstance(value, str):
+        return datetime.fromisoformat(value)
+    return value
 
 
-@api_bp.route("/sessions")
-@api_bp.response(200, SessionsListSchema)
-def list_sessions() -> dict[str, Any]:
-    """Return a paginated list of sessions.
+def _normalize_datetimes(payload: dict[str, Any]) -> dict[str, Any]:
+    for key in _DATETIME_KEYS:
+        if key in payload:
+            payload[key] = _parse_dt(payload[key])
+    for child_key in ("auth_attempts", "commands", "downloads"):
+        children = payload.get(child_key)
+        if isinstance(children, list):
+            for child in children:
+                if isinstance(child, dict):
+                    _normalize_datetimes(child)
+    return payload
 
-    Invalid ``page`` / ``per_page`` values fall back to defaults; both are
-    clamped to configured maxima.
-    """
-    page = _clamp_query_int("page", 1, 1, MAX_PAGE)
-    per_page = _clamp_query_int("per_page", 20, 1, MAX_PER_PAGE)
+
+@sessions_bp.route("/")
+@sessions_bp.doc(operationId="listSessions")
+@sessions_bp.arguments(SessionsListQuery, location="query")
+@sessions_bp.response(200, SessionsListResponse)
+@sessions_bp.alt_response(422, "UnprocessableEntity")
+def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
+    """Return a paginated list of session summaries."""
+    page = query_args["page"]
+    per_page = query_args["per_page"]
     session_factory = get_session_factory()
     with session_factory() as db:
-        return dict(get_sessions_paginated(db, page, per_page))
+        result = get_sessions_paginated(db, page, per_page)
+    items = [_normalize_datetimes(dict(row)) for row in result["sessions"]]
+    return {
+        "items": items,
+        "meta": {
+            "page": result["page"],
+            "per_page": result["per_page"],
+            "pages": result["pages"],
+            "total": result["total"],
+        },
+    }
 
 
-@api_bp.route("/sessions/<session_id>")
-@api_bp.response(200, SessionDetailSchema)
-def session_detail(session_id: str) -> Any:
-    """Return full detail for a single session.
-
-    ``session_id`` must match alphanumeric, 1-32 chars; ``400`` on malformed
-    id, ``404`` on unknown id.
-    """
-    if not SESSION_ID_PATTERN.fullmatch(session_id):
-        return jsonify({"error": "Invalid session id"}), 400
+@sessions_bp.route("/<session_id>")
+@sessions_bp.doc(operationId="getSessionById")
+@sessions_bp.arguments(SessionIdPath, location="view_args")
+@sessions_bp.response(200, SessionDetailResponse)
+@sessions_bp.alt_response(404, "NotFound")
+@sessions_bp.alt_response(422, "UnprocessableEntity")
+def session_detail(path_args: dict[str, Any], session_id: str) -> dict[str, Any]:
+    """Return full detail for a single session."""
+    del path_args
     session_factory = get_session_factory()
     with session_factory() as db:
         result = get_session_detail(db, session_id)
     if result is None:
-        abort(404, description="Session not found")
-    return dict(result)
+        abort(404, message=f"Session {session_id} not found")
+    return _normalize_datetimes(dict(result))
 
 
-@api_bp.route("/stats/totals")
-@api_bp.response(200, TotalsSchema)
+@stats_bp.route("/totals")
+@stats_bp.doc(operationId="statsTotals")
+@stats_bp.response(200, TotalsResponse)
 def stats_totals() -> dict[str, Any]:
-    """Return the headline totals (sessions, auth attempts, unique IPs)."""
+    """Return headline totals (sessions, auth attempts, unique IPs)."""
     session_factory = get_session_factory()
     with session_factory() as db:
         return dict(get_totals(db))
 
 
-@api_bp.route("/stats/top-passwords")
-@api_bp.response(200, TopPasswordSchema(many=True))
-def stats_top_passwords() -> list[dict[str, Any]]:
+@stats_bp.route("/top-passwords")
+@stats_bp.doc(operationId="statsTopPasswords")
+@stats_bp.arguments(TopPasswordsQuery, location="query")
+@stats_bp.response(200, TopPasswordResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+def stats_top_passwords(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the top-N attempted passwords ranked by count."""
-    top_n = _clamp_query_int("top_n", 10, 1, MAX_TOP_N)
+    top_n = query_args["top_n"]
     session_factory = get_session_factory()
     with session_factory() as db:
         return [dict(row) for row in get_top_passwords(db, top_n)]
 
 
-@api_bp.route("/stats/top-countries")
-@api_bp.response(200, TopCountrySchema(many=True))
-def stats_top_countries() -> list[dict[str, Any]]:
-    """Return the top-N attacking countries ranked by session count.
-
-    Empty until the geolocation enricher populates ``geo_locations``.
-    """
-    top_n = _clamp_query_int("top_n", 10, 1, MAX_TOP_N)
+@stats_bp.route("/top-countries")
+@stats_bp.doc(operationId="statsTopCountries")
+@stats_bp.arguments(TopCountriesQuery, location="query")
+@stats_bp.response(200, TopCountryResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+def stats_top_countries(query_args: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the top-N attacking countries ranked by session count."""
+    top_n = query_args["top_n"]
     session_factory = get_session_factory()
     with session_factory() as db:
         return [dict(row) for row in get_top_countries(db, top_n)]
 
 
-@api_bp.route("/stats/activity")
-@api_bp.response(200, ActivityBucketSchema(many=True))
-def stats_activity() -> Any:
-    """Return session counts grouped by ``bucket`` (``hour|day|month``)."""
-    bucket = request.args.get("bucket", "day")
-    if bucket not in VALID_BUCKETS:
-        return jsonify({"error": f"bucket must be one of {list(VALID_BUCKETS)}"}), 400
+@stats_bp.route("/activity")
+@stats_bp.doc(operationId="statsActivity")
+@stats_bp.arguments(ActivityQuery, location="query")
+@stats_bp.response(200, ActivityBucketResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+def stats_activity(query_args: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return session counts grouped by bucket (hour|day|month)."""
+    bucket = query_args["bucket"]
     session_factory = get_session_factory()
     with session_factory() as db:
         return [dict(row) for row in get_activity(db, bucket)]
 
 
-@api_bp.route("/stats/trend")
-@api_bp.response(200, TrendSchema)
-def stats_trend() -> dict[str, Any]:
-    """Return the session-count trend over ``period_days`` vs the prior window."""
-    period_days = _clamp_query_int("period_days", 7, 1, MAX_PERIOD_DAYS)
+@stats_bp.route("/trend")
+@stats_bp.doc(operationId="statsTrend")
+@stats_bp.arguments(TrendQuery, location="query")
+@stats_bp.response(200, TrendResponse)
+@stats_bp.alt_response(422, "UnprocessableEntity")
+def stats_trend(query_args: dict[str, Any]) -> dict[str, Any]:
+    """Return the session-count trend over period_days vs the prior window."""
+    period_days = query_args["period_days"]
     session_factory = get_session_factory()
     with session_factory() as db:
         return dict(get_trend(db, period_days))
 
 
-@api_bp.route("/stats/heatmap")
-@api_bp.response(200, HeatmapPointSchema(many=True))
+@stats_bp.route("/heatmap")
+@stats_bp.doc(operationId="statsHeatmap")
+@stats_bp.response(200, HeatmapPointResponse(many=True))
 def stats_heatmap() -> list[dict[str, Any]]:
     """Return session counts per (weekday, hour) cell."""
     session_factory = get_session_factory()

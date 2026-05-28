@@ -6,13 +6,14 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.extensions import get_session_factory
-from src.schemas.common import HealthSchema, ReadySchema, UnavailableSchema
+from src.schemas.common import HealthResponse, ReadyResponse, UnavailableResponse
 
 health_bp = Blueprint("health", "health", description="Liveness and readiness probes")
 
 
 @health_bp.route("/health")
-@health_bp.response(200, HealthSchema)
+@health_bp.doc(operationId="healthLive")
+@health_bp.response(200, HealthResponse)
 def health_check() -> dict[str, str]:
     """Return a static liveness payload.
 
@@ -22,8 +23,9 @@ def health_check() -> dict[str, str]:
 
 
 @health_bp.route("/health/ready")
-@health_bp.response(200, ReadySchema)
-@health_bp.alt_response(503, schema=UnavailableSchema)
+@health_bp.doc(operationId="healthReady")
+@health_bp.response(200, ReadyResponse)
+@health_bp.alt_response(503, schema=UnavailableResponse)
 def health_ready() -> Any:
     """Verify the api can actually round-trip a query to Postgres.
 

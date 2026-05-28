@@ -74,9 +74,10 @@ dashboard/test-results/
 dashboard/coverage/
 dashboard/.playwright/
 
-# --- Postgres TLS (self-signed, per-env, regen via `just postgres-cert`) ---
-# server.crt + server.key MUST stay out of git. The gen.sh + README live in
-# postgres/tls/ and ARE committed.
+# Generated OpenAPI client (regenerated via `pnpm openapi:gen`)
+dashboard/src/api/generated/
+
+# --- Postgres TLS  ---
 postgres/tls/server.crt
 postgres/tls/server.key
 postgres/tls/*.pem

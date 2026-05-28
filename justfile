@@ -138,32 +138,68 @@ test: test-db-init
     just test-ingestor
     just test-dashboard
 
+# Full local gate: test suite plus OpenAPI drift check.
+check: test openapi-check
+
 # ---------------------------------------------------------------------------
 # dashboard
 # ---------------------------------------------------------------------------
 
+# Install dashboard deps from the committed lockfile (mirrors CI).
+install-dashboard:
+    cd dashboard && pnpm install --frozen-lockfile
+
+# Vite dev server on http://localhost:5173. Use when iterating outside the
+# docker compose stack; otherwise `just dev` runs the full stack.
+dev-dashboard:
+    cd dashboard && pnpm dev
+
+# vue-tsc --noEmit. Fast type-only check, no build artifacts.
+typecheck-dashboard:
+    cd dashboard && pnpm typecheck
+
+# Production build: typecheck + Vite bundle into dashboard/dist/.
+build-dashboard:
+    cd dashboard && pnpm build
+
+# Vitest unit tests.
 test-dashboard-unit:
     cd dashboard && pnpm test
 
+# Playwright e2e suite.
 test-dashboard-e2e:
     cd dashboard && pnpm e2e
 
+# ESLint with --max-warnings 0.
 lint-dashboard:
     cd dashboard && pnpm lint
 
+# Prettier --write across dashboard/.
+format-dashboard:
+    cd dashboard && pnpm format
+
+# Prettier --check; CI-friendly, non-mutating.
+format-check-dashboard:
+    cd dashboard && pnpm format:check
+
+# Regen TS SDK + tanstack-vue-query helpers from api/openapi.json.
+# Output goes to dashboard/src/api/generated/ (gitignored).
 openapi-gen:
-    cd dashboard && pnpm openapi:gen:offline
+    cd dashboard && pnpm openapi:gen
 
-# Dump the live Flask /api/openapi.json into api/openapi.json for offline
-# codegen + CI drift check. Pair with `openapi-gen` to regenerate the
-# dashboard's schema.d.ts from the committed spec.
+# Dump the spec to api/openapi.json via the `flask openapi-dump` CLI
+# registered in src.app:create_app. Output is deterministic (sort_keys=True,
+# trailing newline) with the top-level `servers` array stripped so the
+# generated TS client stays host-agnostic. Pair with `openapi-gen` to refresh
+# the dashboard's SDK.
 api-openapi:
-    cd api && uv run python scripts/dump_openapi.py
+    cd api && FLASK_APP=src.app:create_app FLASK_SECRET_KEY=openapi-dump ENVIRONMENT=development uv run flask openapi-dump --output openapi.json
 
-# Full regen: dump backend spec + regen frontend schema.d.ts.
+# Full regen: dump backend spec + regen frontend SDK.
 # Run after touching any marshmallow schema or Flask route.
 openapi-regen: api-openapi openapi-gen
 
-# CI drift gate: regen + fail if anything changed on disk.
+# CI drift gate: regen + fail if the committed spec changed. The generated
+# TS SDK is gitignored so only api/openapi.json is diff-checked.
 openapi-check: openapi-regen
-    git diff --exit-code api/openapi.json dashboard/src/api/schema.d.ts
+    git diff --exit-code api/openapi.json

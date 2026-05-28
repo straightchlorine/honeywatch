@@ -63,6 +63,54 @@ jobs:
           TEST_DATABASE_URL: postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test
         run: uv run pytest
 
+      - name: Set up pnpm
+        if: matrix.component == 'api'
+        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        with:
+          package_json_file: dashboard/package.json
+
+      - name: Set up Node.js
+        if: matrix.component == 'api'
+        uses: actions/setup-node@48b55a011bda9f5d6aeb4c2d9c7362e8dae4041e # v6.4.0
+        with:
+          node-version: "22"
+          cache: pnpm
+          cache-dependency-path: dashboard/pnpm-lock.yaml
+
+      - name: OpenAPI drift gate
+        if: matrix.component == 'api'
+        working-directory: ${{ github.workspace }}
+        env:
+          FLASK_APP: src.app:create_app
+          FLASK_SECRET_KEY: openapi-dump
+          ENVIRONMENT: development
+        run: |
+          cd api && uv run flask openapi-dump --output openapi.json
+          cd ../dashboard && pnpm install --frozen-lockfile && pnpm openapi:gen
+          cd .. && git diff --exit-code api/openapi.json
+
+  spec-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: stoplightio/spectral-action@latest
+        with:
+          file_glob: 'api/openapi.json'
+          spectral_ruleset: '.spectral.yaml'
+
+  spec-breaking:
+    runs-on: ubuntu-latest
+    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'breaking')
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          fetch-depth: 0
+      - uses: oasdiff/oasdiff-action/breaking@main
+        with:
+          base: origin/master:api/openapi.json
+          revision: api/openapi.json
+          fail-on-diff: true
+
   dashboard:
     runs-on: ubuntu-latest
     defaults:

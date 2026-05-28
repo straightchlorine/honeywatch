@@ -1,7 +1,10 @@
+import json
+import pathlib
 from ipaddress import IPv4Address, IPv6Address
 from typing import Any, cast
 
-from flask import Flask, jsonify
+import click
+from flask import Flask
 from flask.json.provider import DefaultJSONProvider
 from flask_smorest import Api
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -9,6 +12,48 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from src.config import require_secret_key, select_config
 from src.extensions import init_db
 from src.routes import register_blueprints
+
+API_VERSION = "1.0.0"
+OPENAPI_URL_PREFIX = "/api/v1"
+
+API_SPEC_OPTIONS: dict[str, Any] = {
+    "servers": [{"url": "/", "description": "current host"}],
+    "components": {
+        "responses": {
+            "BadRequest": {
+                "description": "Bad request: malformed input.",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/Error"}
+                    }
+                },
+            },
+            "NotFound": {
+                "description": "The requested resource was not found.",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/Error"}
+                    }
+                },
+            },
+            "UnprocessableEntity": {
+                "description": "Request validation failed.",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/Error"}
+                    }
+                },
+            },
+        },
+        "securitySchemes": {
+            "bearerAuth": {
+                "type": "http",
+                "scheme": "bearer",
+                "bearerFormat": "JWT",
+            }
+        },
+    },
+}
 
 
 class _IPAwareJSONProvider(DefaultJSONProvider):
@@ -24,18 +69,16 @@ class _IPAwareJSONProvider(DefaultJSONProvider):
 
 def _configure_openapi(app: Flask) -> None:
     app.config["API_TITLE"] = "Honeywatch"
-    app.config["API_VERSION"] = "1.0"
+    app.config["API_VERSION"] = API_VERSION
     app.config["OPENAPI_VERSION"] = "3.1.0"
-    app.config["OPENAPI_URL_PREFIX"] = "/api"
+    app.config["OPENAPI_URL_PREFIX"] = OPENAPI_URL_PREFIX
     app.config["OPENAPI_JSON_PATH"] = "openapi.json"
     app.config["OPENAPI_SWAGGER_UI_PATH"] = "/swagger"
-    app.config["OPENAPI_SWAGGER_UI_URL"] = (
-        "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
-    )
+    app.config["OPENAPI_SWAGGER_UI_URL"] = "/static/swagger-ui/"
     app.config["OPENAPI_REDOC_PATH"] = "/redoc"
-    app.config["OPENAPI_REDOC_URL"] = (
-        "https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"
-    )
+    app.config["OPENAPI_REDOC_URL"] = "/static/redoc/redoc.standalone.js"
+    app.config["OPENAPI_SWAGGER_UI_CONFIG"] = {"persistAuthorization": True}
+    app.config["API_SPEC_OPTIONS"] = API_SPEC_OPTIONS
 
 
 def create_app(config: object | None = None) -> Flask:
@@ -50,9 +93,9 @@ def create_app(config: object | None = None) -> Flask:
     Returns:
         A fully wired Flask app: IP-aware JSON provider, DB engine and
         session factory attached to ``app.extensions``, blueprints
-        registered, JSON error handlers installed.
+        registered.
     """
-    app = Flask(__name__)
+    app = Flask(__name__, static_folder="../static")
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=0)  # pyright: ignore[reportAttributeAccessIssue]
     app.json = _IPAwareJSONProvider(app)
 
@@ -78,12 +121,31 @@ def create_app(config: object | None = None) -> Flask:
 
     register_blueprints(smorest_api)
 
-    @app.errorhandler(404)
-    def not_found(_error: Exception) -> tuple[Any, int]:  # pyright: ignore[reportUnusedFunction]
-        return jsonify({"error": "Not found"}), 404
-
-    @app.errorhandler(500)
-    def internal_error(_error: Exception) -> tuple[Any, int]:  # pyright: ignore[reportUnusedFunction]
-        return jsonify({"error": "Internal server error"}), 500
+    _register_openapi_cli(app, smorest_api)
 
     return app
+
+
+def _register_openapi_cli(app: Flask, smorest_api: Api) -> None:
+    """Register `flask openapi-dump`: write the spec with deterministic
+    formatting (sort_keys=True, trailing newline) and top-level `servers`
+    stripped so generated TS clients stay host-agnostic.
+    """
+
+    @app.cli.command("openapi-dump")
+    @click.option(
+        "--output",
+        "-o",
+        default="openapi.json",
+        type=click.Path(dir_okay=False, writable=True),
+        show_default=True,
+        help="Path to write the spec to (relative to CWD).",
+    )
+    def openapi_dump(output: str) -> None:  # pyright: ignore[reportUnusedFunction]
+        spec_obj = smorest_api.spec
+        assert spec_obj is not None, "flask-smorest spec not initialised"
+        spec = cast(dict[str, Any], spec_obj.to_dict())
+        spec.pop("servers", None)
+        path = pathlib.Path(output)
+        path.write_text(json.dumps(spec, indent=2, sort_keys=True) + "\n")
+        click.echo(f"wrote {path}")

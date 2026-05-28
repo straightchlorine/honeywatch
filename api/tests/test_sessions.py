@@ -1,44 +1,46 @@
+import json
 from typing import Any
 
 
 def test_list_sessions(client: Any, seed_data: Any) -> None:
-    response = client.get("/api/sessions")
+    response = client.get("/api/v1/sessions/")
     assert response.status_code == 200
     data = response.get_json()
-    assert "sessions" in data
-    assert "total" in data
-    assert data["total"] == 2
-    assert len(data["sessions"]) == 2
+    assert "items" in data
+    assert "meta" in data
+    assert data["meta"]["total"] == 2
+    assert len(data["items"]) == 2
 
 
 def test_list_sessions_no_src_ip_leak(client: Any, seed_data: Any) -> None:
     """Privacy contract: ``src_ip`` must never appear in list responses."""
-    response = client.get("/api/sessions")
+    response = client.get("/api/v1/sessions/")
     assert response.status_code == 200
     assert b"src_ip" not in response.data
-    for s in response.get_json()["sessions"]:
+    for s in response.get_json()["items"]:
         assert "src_ip" not in s
         assert "country_code" in s
         assert "country" in s
 
 
 def test_get_session_not_found(client: Any) -> None:
-    response = client.get("/api/sessions/nonexistent")
+    response = client.get("/api/v1/sessions/nonexistent")
     assert response.status_code == 404
     data = response.get_json()
-    assert "error" in data
+    # flask_smorest abort(404, message=...) produces {code, status, message}
+    assert "message" in data or "errors" in data
 
 
 def test_get_session_detail_with_seed_id(client: Any, seed_data: Any) -> None:
-    # "sess-001" contains a hyphen which the validator rejects; this asserts
-    # the security contract rather than the historical shape.
-    response = client.get("/api/sessions/sess-001")
-    assert response.status_code == 400
+    # "sess-001" contains a hyphen which the validator rejects via 422; this
+    # asserts the security contract rather than the historical shape.
+    response = client.get("/api/v1/sessions/sess-001")
+    assert response.status_code == 422
 
 
 def test_get_session_malformed_id(client: Any) -> None:
-    response = client.get("/api/sessions/..%2F..%2Fetc")
-    assert response.status_code in (400, 404)
+    response = client.get("/api/v1/sessions/..%2F..%2Fetc")
+    assert response.status_code in (404, 422)
 
 
 def test_session_detail_no_src_ip_leak(
@@ -65,7 +67,7 @@ def test_session_detail_no_src_ip_leak(
     )
     db_session.flush()
 
-    response = client.get("/api/sessions/sessAAA001")
+    response = client.get("/api/v1/sessions/sessAAA001")
     assert response.status_code == 200
     assert b"src_ip" not in response.data
     body = response.get_json()
@@ -75,21 +77,26 @@ def test_session_detail_no_src_ip_leak(
 
 
 def test_per_page_is_capped(client: Any, seed_data: Any) -> None:
-    response = client.get("/api/sessions?per_page=99999")
-    assert response.status_code == 200
+    # per_page > 100 fails marshmallow validate.Range(max=100), surfacing 422
+    response = client.get("/api/v1/sessions/?per_page=99999")
+    assert response.status_code == 422
+
+
+def test_sessions_invalid_page_returns_422(client: Any) -> None:
+    response = client.get("/api/v1/sessions/?page=abc")
+    assert response.status_code == 422
     data = response.get_json()
-    assert data["per_page"] == 100
+    assert "errors" in data or "code" in data
 
 
-def test_pagination_rejects_non_integer_page(client: Any, seed_data: Any) -> None:
-    response = client.get("/api/sessions?page=abc")
-    assert response.status_code == 200
+def test_sessions_invalid_session_id_returns_422(client: Any) -> None:
+    response = client.get("/api/v1/sessions/!!!")
+    assert response.status_code == 422
+
+
+def test_sessions_unknown_session_id_returns_404(client: Any) -> None:
+    response = client.get("/api/v1/sessions/aaaaaaaa")
+    assert response.status_code == 404
     data = response.get_json()
-    assert data["page"] == 1
-
-
-def test_pagination_rejects_non_integer_per_page(client: Any, seed_data: Any) -> None:
-    response = client.get("/api/sessions?per_page=xyz")
-    assert response.status_code == 200
-    data = response.get_json()
-    assert data["per_page"] == 20
+    blob = (data.get("message") or "") + json.dumps(data)
+    assert "Session" in blob or "aaaaaaaa" in blob

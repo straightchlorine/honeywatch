@@ -1,7 +1,7 @@
 from flask_smorest import Api
 
 from src.routes.health import health_bp
-from src.routes.sessions import api_bp
+from src.routes.sessions import sessions_bp, stats_bp
 
 
 def register_blueprints(smorest_api: Api) -> None:
@@ -11,4 +11,5 @@ def register_blueprints(smorest_api: Api) -> None:
     app and tracks it for OpenAPI introspection.
     """
     smorest_api.register_blueprint(health_bp)
-    smorest_api.register_blueprint(api_bp)
+    smorest_api.register_blueprint(sessions_bp)
+    smorest_api.register_blueprint(stats_bp)

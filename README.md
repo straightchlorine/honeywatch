@@ -42,3 +42,18 @@ See `justfile` for the full command list.
 - Dashboard: http://localhost:8080
 - API: http://localhost:5000
 - Grafana: http://localhost:3000
+
+## OpenAPI
+
+Spec served at `/api/v1/openapi.json`. Interactive UIs:
+
+- Swagger UI: `/swagger`
+- Redoc: `/redoc`
+
+Conventions: see [docs/api-style.md](docs/api-style.md).
+
+Dashboard TS client is generated from the spec via `pnpm openapi:gen` (or `just openapi-regen`). Generated output is gitignored - run codegen after pulling.
+
+## Attributions
+
+This product includes GeoLite Data created by MaxMind, available from https://www.maxmind.com.
