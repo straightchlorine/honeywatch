@@ -25,10 +25,6 @@ graph LR
 - Serves a Vue 3 dashboard with an IP geolocation map, login attempt timeline, top credentials used by bots, and attack frequency stats
 - Grafana wired in as a Postgres query UI for ad-hoc exploration
 
-## Stack
-
-Cowrie, PostgreSQL, Flask (API + ingestor), Vue 3, Grafana, Docker Compose, GitHub Actions.
-
 ## Running Locally
 
 ```bash

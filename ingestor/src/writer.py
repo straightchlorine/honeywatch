@@ -167,20 +167,24 @@ class EventWriter:
         # - session insert is durable;
         # - geo upsert is best-effort and never rolls back the session row
         with self.pool.connection() as conn:
-            with conn.transaction():
-                conn.execute(
-                    _INSERT_SESSION,
-                    {
-                        "id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "src_ip": event.src_ip,
-                        "src_port": event.src_port,
-                        "dst_ip": event.dst_ip,
-                        "dst_port": event.dst_port,
-                        "protocol": truncate(event.protocol, _LEN_PROTOCOL),
-                        "started_at": event.timestamp,
-                        "sensor": truncate(event.sensor, _LEN_SENSOR),
-                    },
-                )
+            try:
+                with conn.transaction():
+                    conn.execute(
+                        _INSERT_SESSION,
+                        {
+                            "id": truncate(event.session_id, _LEN_SESSION_ID),
+                            "src_ip": event.src_ip,
+                            "src_port": event.src_port,
+                            "dst_ip": event.dst_ip,
+                            "dst_port": event.dst_port,
+                            "protocol": truncate(event.protocol, _LEN_PROTOCOL),
+                            "started_at": event.timestamp,
+                            "sensor": truncate(event.sensor, _LEN_SENSOR),
+                        },
+                    )
+            except psycopg.errors.DataError:
+                self._drop_bad_event("session_connect", event.session_id)
+                return
 
             try:
                 geo = geoip_lookup(event.src_ip)
@@ -235,6 +239,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("auth", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("auth", event.session_id)
 
     def _write_command(self, event: CommandInput) -> None:
         try:
@@ -250,6 +256,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("cmd", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("cmd", event.session_id)
 
     def _write_download(self, event: FileDownload) -> None:
         try:
@@ -266,16 +274,22 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("download", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("download", event.session_id)
 
     def _write_session_closed(self, event: SessionClosed) -> None:
         with self.pool.connection() as conn:
-            cur = conn.execute(
-                _UPDATE_SESSION_CLOSED,
-                {
-                    "id": truncate(event.session_id, _LEN_SESSION_ID),
-                    "ended_at": event.timestamp,
-                },
-            )
+            try:
+                cur = conn.execute(
+                    _UPDATE_SESSION_CLOSED,
+                    {
+                        "id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "ended_at": event.timestamp,
+                    },
+                )
+            except psycopg.errors.DataError:
+                self._drop_bad_event("session_closed", event.session_id)
+                return
             if cur.rowcount == 0:
                 self._log_orphan("session_closed", event.session_id)
 
@@ -289,3 +303,18 @@ class EventWriter:
         """
         metrics.orphan_event_total.labels(kind=kind).inc()
         logger.info("orphan %s event for session_id=%s", kind, session_id)
+
+    @staticmethod
+    def _drop_bad_event(kind: str, session_id: str) -> None:
+        """Skip a row Postgres rejected as malformed (NUL byte, encoding, etc).
+
+        Without this, the writer's retry/fuse keeps replaying the same
+        poison event forever, blocking the queue.
+        """
+        metrics.events_dropped_total.labels(reason="db_data_error").inc()
+        logger.warning(
+            "dropping malformed %s event for session_id=%s",
+            kind,
+            session_id,
+            exc_info=True,
+        )

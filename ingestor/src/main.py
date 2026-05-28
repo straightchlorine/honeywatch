@@ -84,9 +84,16 @@ def _consumer(
         line = item if isinstance(item, str) else ""
         logger.debug("cowrie event: %s", line)
 
-        event = parse_event(line)
-        if event is not None:
-            writer.write(event, line)
+        try:
+            event = parse_event(line)
+            if event is not None:
+                writer.write(event, line)
+        except Exception:
+            # Single bad line shouldn't kill the consumer thread.
+            # Writer/fuse already handles DB faults; this catches the
+            # truly unexpected (parser bug, queue corruption).
+            metrics.events_dropped_total.labels(reason="consumer_error").inc()
+            logger.exception("consumer error processing line; skipping")
 
         _touch_healthy(config)
 
@@ -127,8 +134,9 @@ def main() -> None:
     logger.info("Starting ingestor, watching %s", config.log_path)
 
     if config.metrics_enabled:
-        start_http_server(config.metrics_port)
-        logger.info("Metrics server listening on :%d", config.metrics_port)
+        # Bind loopback only; scraper sidecar / port-forward exposes it.
+        start_http_server(config.metrics_port, addr="127.0.0.1")
+        logger.info("Metrics server listening on 127.0.0.1:%d", config.metrics_port)
     else:
         logger.info("Metrics server disabled (METRICS_ENABLED=0)")
 

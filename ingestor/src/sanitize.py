@@ -27,7 +27,16 @@ def sanitize(s: str | None, max_len: int = 500) -> str:
 
 
 def truncate(s: str | None, max_len: int) -> str | None:
-    """Cap length without escaping; pair with sanitize for log lines."""
-    if s is None or len(s) <= max_len:
+    """Cap length and strip NUL bytes; pair with sanitize for log lines.
+
+    Preserves None (callers depend on this for nullable DB columns).
+    NUL is stripped because Postgres TEXT/VARCHAR rejects U+0000 with
+    `DataError`, which would otherwise poison the per-event write.
+    """
+    if s is None:
+        return s
+    if "\x00" in s:
+        s = s.replace("\x00", "")
+    if len(s) <= max_len:
         return s
     return s[:max_len]

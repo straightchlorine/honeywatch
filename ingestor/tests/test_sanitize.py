@@ -35,6 +35,13 @@ class TestTruncate:
         assert truncate(s, 5) == s
         assert truncate(s, 3) == "ä" * 3
 
+    def test_nul_byte_stripped(self) -> None:
+        # Postgres TEXT/VARCHAR rejects U+0000 with DataError.
+        assert truncate("a\x00b", 10) == "ab"
+
+    def test_nul_only_string_returns_empty(self) -> None:
+        assert truncate("\x00\x00", 10) == ""
+
 
 class TestSanitize:
     def test_none_yields_empty(self) -> None:
