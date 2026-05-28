@@ -19,11 +19,11 @@ class Download(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+        String(64), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
     )
-    url: Mapped[str | None] = mapped_column(String, nullable=True)
-    outfile: Mapped[str | None] = mapped_column(String, nullable=True)
-    sha256: Mapped[str | None] = mapped_column(String, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(2048), nullable=True)
+    outfile: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )

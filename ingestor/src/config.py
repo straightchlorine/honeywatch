@@ -35,6 +35,9 @@ class Config:
     # node_exporter conventionally takes 9100; pick the next free port.
     metrics_port: int = 9101
 
+    # Off by default; counters still populate. Flip on when a scraper is wired.
+    metrics_enabled: bool = False
+
     @classmethod
     def from_env(cls) -> Config:
         """Build a Config from environment variables.
@@ -61,6 +64,7 @@ class Config:
             queue_max=int(os.environ.get("QUEUE_MAX", "10000")),
             healthcheck_path=Path(os.environ.get("HEALTHCHECK_PATH", "/tmp/healthy")),
             metrics_port=int(os.environ.get("METRICS_PORT", "9101")),
+            metrics_enabled=os.environ.get("METRICS_ENABLED", "0") == "1",
         )
 
     @property

@@ -24,3 +24,19 @@ def sanitize(s: str | None, max_len: int = 500) -> str:
         return ""
     truncated = s[:max_len] + ("..." if len(s) > max_len else "")
     return _CONTROL_CHARS.sub(lambda m: f"\\x{ord(m.group()):02x}", truncated)
+
+
+def truncate(s: str | None, max_len: int) -> str | None:
+    """Cap length and strip NUL bytes; pair with sanitize for log lines.
+
+    Preserves None (callers depend on this for nullable DB columns).
+    NUL is stripped because Postgres TEXT/VARCHAR rejects U+0000 with
+    `DataError`, which would otherwise poison the per-event write.
+    """
+    if s is None:
+        return s
+    if "\x00" in s:
+        s = s.replace("\x00", "")
+    if len(s) <= max_len:
+        return s
+    return s[:max_len]

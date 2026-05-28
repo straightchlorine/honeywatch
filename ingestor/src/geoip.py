@@ -8,6 +8,9 @@ Files live under GEOIP_DATA_DIR (default /data/geoip) and are baked into
 the ingestor image at build time. If the files are absent, every lookup
 returns None and the ingestor keeps running unenriched. The absence is
 logged once at warning level, not per-event.
+
+`lookup` never raises - all geoip2 errors are caught and converted to None
+so the writer's session-insert path is not corrupted by enrichment failures.
 """
 
 from __future__ import annotations
@@ -16,6 +19,7 @@ import ipaddress
 import logging
 import os
 from dataclasses import dataclass
+from functools import lru_cache
 from pathlib import Path
 from threading import Lock
 
@@ -43,9 +47,12 @@ class GeoData:
 _lock = Lock()
 _city_reader: geoip2.database.Reader | None = None
 _asn_reader: geoip2.database.Reader | None = None
-# Set of warning keys already emitted, so each "databases missing"
-# warning fires once per process instead of once per event.
+# One-shot warning keys so each condition fires once per process, not per event.
 _warned: set[str] = set()
+
+
+class _ReadersGone(Exception):
+    """Raised inside the cached path when readers became unavailable; never cached."""
 
 
 _ReaderPair = tuple["geoip2.database.Reader | None", "geoip2.database.Reader | None"]
@@ -92,16 +99,32 @@ def _is_public(ip: str) -> bool:
 
 
 def lookup(ip: str | None) -> GeoData | None:
-    """Resolve City + ASN for a public IP. Returns None for private/missing.
+    """Resolve City + ASN for a public IP. None for private/missing/error.
 
-    Safe to call with None or with private/reserved IPs - they short-circuit
-    before touching the readers.
+    Results LRU-cached by IP. Never raises.
     """
     if not ip or not _is_public(ip):
         return None
+    try:
+        return _lookup_cached(ip)
+    except _ReadersGone:
+        return None
+    except geoip2.errors.GeoIP2Error:
+        if "lookup_error" not in _warned:
+            logger.warning(
+                "geoip lookup error (mmdb may be corrupt); enrichment disabled "
+                "for this process",
+                exc_info=True,
+            )
+            _warned.add("lookup_error")
+        return None
+
+
+@lru_cache(maxsize=4096)
+def _lookup_cached(ip: str) -> GeoData | None:
     city_reader, asn_reader = _open_readers()
     if city_reader is None or asn_reader is None:
-        return None
+        raise _ReadersGone
 
     country_code = country = city = None
     latitude = longitude = None
@@ -122,11 +145,8 @@ def lookup(ip: str | None) -> GeoData | None:
         asn = a.autonomous_system_number
         as_org = a.autonomous_system_organization
     except geoip2.errors.AddressNotFoundError:
-        # ASN DB doesn't cover this IP - keep any partial city-only
-        # result. Treated as a full miss only if city was also empty
         pass
 
-    # If neither DB had anything, treat as miss.
     if country_code is None and asn is None:
         return None
 
@@ -145,6 +165,7 @@ def close() -> None:
     """Close readers; called once at process shutdown if needed."""
     global _city_reader, _asn_reader
     with _lock:
+        _lookup_cached.cache_clear()
         if _city_reader is not None:
             _city_reader.close()
             _city_reader = None

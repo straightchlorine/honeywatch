@@ -19,10 +19,10 @@ class AuthAttempt(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     session_id: Mapped[str] = mapped_column(
-        String, ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
+        String(64), ForeignKey("sessions.id", ondelete="CASCADE"), nullable=False
     )
-    username: Mapped[str] = mapped_column(String, nullable=False)
-    password: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[str] = mapped_column(String(256), nullable=False)
+    password: Mapped[str] = mapped_column(String(256), nullable=False)
     success: Mapped[bool] = mapped_column(Boolean, default=False)
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
