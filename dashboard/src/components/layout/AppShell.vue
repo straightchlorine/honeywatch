@@ -1,32 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
-import { storeToRefs } from 'pinia'
 import IconLink from '../IconLink.vue'
-import ConnectionStatus from '../base/ConnectionStatus.vue'
-import { useStreamStore } from '../../stores/stream'
-import { fmtRelativeTime } from '../../utils/format'
-
-const stream = useStreamStore()
-const { status, lastEventAt } = storeToRefs(stream)
-
-const now = ref(Date.now())
-let tickHandle: ReturnType<typeof setInterval> | null = null
-
-onMounted(() => {
-  tickHandle = setInterval(() => {
-    now.value = Date.now()
-  }, 1000)
-})
-
-onUnmounted(() => {
-  if (tickHandle !== null) clearInterval(tickHandle)
-})
-
-const updatedLabel = computed(() => {
-  if (!lastEventAt.value) return 'No events yet'
-  void now.value
-  return `Updated ${fmtRelativeTime(lastEventAt.value)}`
-})
 </script>
 
 <template>
@@ -51,11 +24,6 @@ const updatedLabel = computed(() => {
             Credentials
           </RouterLink>
         </nav>
-
-        <div class="shell-status">
-          <span class="updated">{{ updatedLabel }}</span>
-          <ConnectionStatus :status="status" />
-        </div>
       </div>
     </header>
 
@@ -216,19 +184,6 @@ const updatedLabel = computed(() => {
 .nav-link-active {
   color: var(--accent);
   background: var(--surface);
-}
-
-.shell-status {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-3);
-}
-
-.updated {
-  color: var(--text-dim);
-  font-size: var(--type-xs);
-  line-height: var(--type-xs-lh);
-  font-variant-numeric: tabular-nums;
 }
 
 .shell-main {

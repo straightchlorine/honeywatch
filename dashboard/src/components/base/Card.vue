@@ -3,6 +3,11 @@
 
   type Padding = 'sm' | 'md' | 'lg'
 
+  /**
+   * Title precedence: the `title` slot wins over the `title` prop. If both are
+   * given, the slot replaces the default h3 entirely (callers can render their
+   * own heading + actions). If only `title` prop is set, an h3 is rendered.
+   */
   const props = withDefaults(
     defineProps<{
       title?: string

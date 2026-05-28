@@ -6,15 +6,29 @@
   const props = withDefaults(
     defineProps<{
       size?: Size
+      decorative?: boolean
     }>(),
-    { size: 'md' },
+    { size: 'md', decorative: false },
   )
 
   const sizeClass = computed(() => `size-${props.size}`)
 </script>
 
 <template>
-  <span class="spinner" :class="sizeClass" role="status" aria-live="polite" aria-label="Loading">
+  <span
+    v-if="decorative"
+    class="spinner"
+    :class="sizeClass"
+    aria-hidden="true"
+  />
+  <span
+    v-else
+    class="spinner"
+    :class="sizeClass"
+    role="status"
+    aria-live="polite"
+    aria-label="Loading"
+  >
     <span class="visually-hidden">Loading</span>
   </span>
 </template>
@@ -46,18 +60,6 @@
     width: 32px;
     height: 32px;
     border-width: 3px;
-  }
-
-  .visually-hidden {
-    position: absolute;
-    width: 1px;
-    height: 1px;
-    padding: 0;
-    margin: -1px;
-    overflow: hidden;
-    clip: rect(0, 0, 0, 0);
-    white-space: nowrap;
-    border: 0;
   }
 
   @keyframes spin {

@@ -3,6 +3,10 @@
 
   type Trend = 'up' | 'down' | 'neutral'
 
+  /**
+   * Trend is caller-supplied semantics, not derived from delta. The caller decides
+   * whether an upward delta is "good" (up) or "bad" (down) for the metric.
+   */
   const props = defineProps<{
     value: number | string
     label: string

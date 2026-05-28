@@ -19,7 +19,7 @@ const rootClass = computed(() => `loading loading-${props.variant}`)
 
 <template>
   <div :class="rootClass" role="status" aria-live="polite">
-    <Spinner :size="size" />
+    <Spinner :size="size" decorative />
     <span class="loading-label">{{ label }}</span>
   </div>
 </template>

@@ -16,7 +16,7 @@
 
     --text: #f5e6c8;
     --text-muted: #c9b48a;
-    --text-dim: #9c8763;
+    --text-dim: #b59c75;
 
     --accent: #f59e0b;
     --accent-strong: #d97706;
@@ -102,6 +102,20 @@
 
   a:hover {
     text-decoration: underline;
+  }
+}
+
+@layer utilities {
+  .visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
   }
 }
 

@@ -22,38 +22,3 @@ export function fmtRelativeTime(iso: string): string {
   const diffD = Math.round(diffH / 24)
   return `${diffD}d ago`
 }
-
-export function fmtDateTime(iso: string): string {
-  const d = new Date(iso)
-  return d.toLocaleString('en', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  })
-}
-
-export function bucketKey(iso: string, granularity: 'minute' | 'hour' | 'day'): string {
-  const d = new Date(iso)
-  if (granularity === 'day') {
-    return d.toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
-  }
-  if (granularity === 'hour') {
-    return d.toLocaleString('en', {
-      month: 'short',
-      day: 'numeric',
-      hour: '2-digit',
-      hour12: false,
-      timeZone: 'UTC',
-    })
-  }
-  return d.toLocaleString('en', {
-    hour: '2-digit',
-    minute: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  })
-}

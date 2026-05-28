@@ -11,40 +11,47 @@ SSH honeypot with real-time attack visualization and threat analysis.
 
 ```mermaid
 graph LR
-    A[Cowrie SSH Honeypot] -->|JSON logs| B[Log Ingestor]
-    B -->|inserts| C[(PostgreSQL)]
-    C -->|queries| D[Flask API]
-    D -.->|Headscale tailnet| E[k3s: ts-egress + dashboard]
-    E -->|HTTPS| F[Public: honey.piotrkrzysztof.dev]
-    C -->|datasource| G[Grafana]
+    subgraph honeypot["Honeypot VPS (CentOS, Headscale tailnet)"]
+        Cowrie[Cowrie SSH :22] -.->|HTTP only| Egress[egress-proxy]
+        Cowrie -->|JSON logs| Ingestor
+        Ingestor -->|INSERT as honeywatch_ingestor| PG[(Postgres)]
+        API[Flask API] -->|SELECT as honeywatch_api| PG
+        Grafana --> PG
+        Nginx[nginx<br/>binds TS_IP only] --> API
+        Nginx --> Grafana
+    end
+
+    subgraph k3s["Hetzner k3s (ArgoCD managed)"]
+        Traefik[Traefik + cert-manager] --> Dashboard[Dashboard SPA]
+        Traefik -->|/api/*| TSE[ts-egress sidecar]
+    end
+
+    Net((Internet)) -->|HTTPS<br/>honey.piotrkrzysztof.dev| Traefik
+    TSE -.->|Tailnet| Nginx
 ```
 
-The honeypot VPS runs Cowrie, Postgres, the ingestor, the Flask API, and Grafana. It joins a Headscale tailnet and binds its internal nginx to the tailnet interface only, so the API is never reachable from the public internet directly.
+The honeypot VPS runs Cowrie, the ingestor, Postgres, the
+Flask API, Grafana, and an internal nginx that binds only to the Headscale
+tailnet interface.
 
-A Hetzner k3s cluster runs a Tailscale egress sidecar (reached at `honey.piotrkrzysztof.dev/api/*`) and serves the dashboard SPA at `/`. Public access goes Internet -> Traefik -> {dashboard Service | honeypot-api Service -> ts-egress pod -> tailnet -> honeypot}.
+Cowrie has no direct internet egress; outbound traffic is forced through
+a tinyproxy sidecar (`egress-proxy`).
 
-Cluster manifests live in [straightchlorine/fleet](https://codeberg.org/piotrkrzysztof/fleet) under `clusters/hetzner/honeywatch/`.
+The dashboard routes `/api/*` through a Tailscale egress pod across the tailnet
+to the honeypot's nginx. All k8s manifests, including the ArgoCD `Application`,
+live in `k8s/`.
 
 ## What It Does
 
 - Runs a Cowrie SSH honeypot that captures brute-force attempts
-- Ingests logs into PostgreSQL
-- Serves a Vue 3 dashboard with an IP geolocation map, login attempt timeline, top credentials used by bots, and attack frequency stats
+- Ingests Cowrie's JSON event log into PostgreSQL
+- Serves a Vue 3 dashboard
 - Exposes a public read-only REST API (Flask + flask-smorest, OpenAPI 3.1)
-- Grafana wired in as a Postgres query UI for ad-hoc exploration
-
-## Stack
-
-- Cowrie (SSH honeypot)
-- PostgreSQL
-- Python (Flask API + log ingestor)
-- Vue 3 (dashboard, deployed via k3s)
-- Grafana
-- Docker Compose (honeypot VPS)
-- Kubernetes (k3s on Hetzner, managed via ArgoCD)
-- GitHub Actions (CI/CD)
+- Grafana wired in as a Postgres query UI for ad-hoc exploration and metrics
 
 ## Running Locally
+
+Prerequisites: Docker, [just](https://github.com/casey/just), [uv](https://docs.astral.sh/uv/), pnpm 10.x.
 
 ```bash
 cp .env.example .env
@@ -56,10 +63,21 @@ just down         # stop the stack
 
 See `justfile` for the full command list.
 
+### Dashboard development
+
+Iterating on the Vue 3 dashboard outside the docker compose stack:
+
+```bash
+just dev-dashboard          # Vite dev server on http://localhost:5173
+just test-dashboard-unit    # vitest run
+just test-dashboard-e2e     # playwright (preview server on :4173, axe smoke)
+just openapi-regen          # regenerate api/openapi.json + dashboard TS SDK
+```
+
 ## URLs
 
 - Dashboard: http://localhost:8080
-- API: http://localhost:5000 (browse `/api/v1/swagger` for the interactive spec)
+- API: http://localhost:5000 (docs at `/api/v1/swagger`)
 - Grafana: http://localhost:3000
 
 ## OpenAPI
@@ -75,21 +93,6 @@ TypeScript SDK. When you change a route or marshmallow schema:
 ```bash
 just openapi-regen   # `flask openapi-dump` + dashboard codegen
 just check           # full local gate; runs `openapi-check` drift gate
-```
-
-CI fails if `api/openapi.json` is out of date. Conventions: see
-[docs/api-style.md](docs/api-style.md).
-
-## Deploying (honeypot VPS)
-
-```bash
-# One-time: install tailscale and join the tailnet
-curl -fsSL https://tailscale.com/install.sh | sh
-sudo tailscale up --login-server=https://vpn.codextechnologies.org \
-    --advertise-tags=tag:honeypot
-
-# Note the tailnet IP, set TS_IP in .env, then:
-docker compose -f docker-compose.prod.yml up -d
 ```
 
 ## Attributions

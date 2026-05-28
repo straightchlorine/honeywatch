@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed } from "vue";
 import { ICONS, type IconName } from "./icons";
 
 const props = defineProps<{
@@ -6,11 +7,22 @@ const props = defineProps<{
   href: string;
   label: string;
 }>();
+
+const safeHref = computed(() => {
+  const h = props.href;
+  if (h.startsWith("/") || h.startsWith("#") || /^https?:\/\//i.test(h)) {
+    return h;
+  }
+  if (import.meta.env.DEV) {
+    console.warn("[IconLink] Blocked disallowed href scheme:", h);
+  }
+  return "#";
+});
 </script>
 
 <template>
   <a
-    :href="href"
+    :href="safeHref"
     :aria-label="label"
     :title="label"
     target="_blank"

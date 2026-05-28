@@ -1,15 +1,19 @@
 <script setup lang="ts">
-  defineProps<{
-    title: string
-    hint?: string
-    icon?: string
-  }>()
+  withDefaults(
+    defineProps<{
+      title: string
+      hint?: string
+      icon?: string
+      headingLevel?: 2 | 3 | 4
+    }>(),
+    { headingLevel: 2 },
+  )
 </script>
 
 <template>
-  <div class="empty" role="status">
+  <div class="empty">
     <div v-if="icon" class="empty-icon" aria-hidden="true">{{ icon }}</div>
-    <h4 class="empty-title">{{ title }}</h4>
+    <component :is="`h${headingLevel}`" class="empty-title">{{ title }}</component>
     <p v-if="hint" class="empty-hint">{{ hint }}</p>
     <slot />
   </div>
