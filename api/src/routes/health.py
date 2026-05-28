@@ -1,27 +1,30 @@
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify
+from flask import current_app, jsonify
+from flask_smorest import Blueprint
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.extensions import get_session_factory
+from src.schemas.common import HealthSchema, ReadySchema, UnavailableSchema
 
-health_bp = Blueprint("health", __name__)
+health_bp = Blueprint("health", "health", description="Liveness and readiness probes")
 
 
 @health_bp.route("/health")
-def health_check() -> tuple[Any, int]:
+@health_bp.response(200, HealthSchema)
+def health_check() -> dict[str, str]:
     """Return a static liveness payload.
 
-    Returns:
-        ``({"status": "ok"}, 200)``. No DB access; this endpoint is wired
-        for nginx / Docker healthchecks only.
+    No DB access; this endpoint is wired for nginx / Docker healthchecks only.
     """
-    return jsonify({"status": "ok"}), 200
+    return {"status": "ok"}
 
 
 @health_bp.route("/health/ready")
-def health_ready() -> tuple[Any, int]:
+@health_bp.response(200, ReadySchema)
+@health_bp.alt_response(503, schema=UnavailableSchema)
+def health_ready() -> Any:
     """Verify the api can actually round-trip a query to Postgres.
 
     A separate endpoint from ``/health`` on purpose: Docker's
@@ -31,11 +34,9 @@ def health_ready() -> tuple[Any, int]:
     This endpoint is for external readiness probes - Gatus, the release
     workflow's post-rollout poll, future k8s ``readinessProbe``.
 
-    Returns:
-        ``({"status": "ready"}, 200)`` when ``SELECT 1`` round-trips.
-        ``({"status": "unavailable", "reason": "db"}, 503)`` when the
-        DB session raises any ``SQLAlchemyError`` (connect refused,
-        timeout, pool exhausted).
+    Returns 200 ``{"status": "ready"}`` when ``SELECT 1`` round-trips;
+    503 ``{"status": "unavailable", "reason": "db"}`` on any
+    ``SQLAlchemyError`` (connect refused, timeout, pool exhausted).
     """
     try:
         session_factory = get_session_factory()
@@ -47,7 +48,6 @@ def health_ready() -> tuple[Any, int]:
             db.execute(text("SET LOCAL statement_timeout = '500ms'"))
             db.execute(text("SELECT 1"))
     except SQLAlchemyError:
-        # DB outage - recoverable state; warn
         current_app.logger.warning("/health/ready: db unavailable")
         return jsonify({"status": "unavailable", "reason": "db"}), 503
-    return jsonify({"status": "ready"}), 200
+    return {"status": "ready"}

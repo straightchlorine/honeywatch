@@ -3,6 +3,7 @@ from typing import Any, cast
 
 from flask import Flask, jsonify
 from flask.json.provider import DefaultJSONProvider
+from flask_smorest import Api
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.config import require_secret_key, select_config
@@ -19,6 +20,22 @@ class _IPAwareJSONProvider(DefaultJSONProvider):
         if isinstance(o, (IPv4Address, IPv6Address)):
             return str(o)
         return DefaultJSONProvider.default(o)
+
+
+def _configure_openapi(app: Flask) -> None:
+    app.config["API_TITLE"] = "Honeywatch"
+    app.config["API_VERSION"] = "1.0"
+    app.config["OPENAPI_VERSION"] = "3.1.0"
+    app.config["OPENAPI_URL_PREFIX"] = "/api"
+    app.config["OPENAPI_JSON_PATH"] = "openapi.json"
+    app.config["OPENAPI_SWAGGER_UI_PATH"] = "/swagger"
+    app.config["OPENAPI_SWAGGER_UI_URL"] = (
+        "https://cdn.jsdelivr.net/npm/swagger-ui-dist/"
+    )
+    app.config["OPENAPI_REDOC_PATH"] = "/redoc"
+    app.config["OPENAPI_REDOC_URL"] = (
+        "https://cdn.jsdelivr.net/npm/redoc@next/bundles/redoc.standalone.js"
+    )
 
 
 def create_app(config: object | None = None) -> Flask:
@@ -49,6 +66,9 @@ def create_app(config: object | None = None) -> Flask:
     app.config["FLASK_SECRET_KEY"] = secret_key
     app.config["SECRET_KEY"] = secret_key
 
+    _configure_openapi(app)
+    smorest_api = Api(app)
+
     db_url = cast(
         str,
         app.config.get("SQLALCHEMY_DATABASE_URI") or "",  # pyright: ignore[reportUnknownMemberType]
@@ -56,7 +76,7 @@ def create_app(config: object | None = None) -> Flask:
     if db_url:
         init_db(app, db_url)
 
-    register_blueprints(app)
+    register_blueprints(smorest_api)
 
     @app.errorhandler(404)
     def not_found(_error: Exception) -> tuple[Any, int]:  # pyright: ignore[reportUnusedFunction]

@@ -137,3 +137,33 @@ test: test-db-init
     cd ingestor && uv run pyright
     just test-ingestor
     just test-dashboard
+
+# ---------------------------------------------------------------------------
+# dashboard
+# ---------------------------------------------------------------------------
+
+test-dashboard-unit:
+    cd dashboard && pnpm test
+
+test-dashboard-e2e:
+    cd dashboard && pnpm e2e
+
+lint-dashboard:
+    cd dashboard && pnpm lint
+
+openapi-gen:
+    cd dashboard && pnpm openapi:gen:offline
+
+# Dump the live Flask /api/openapi.json into api/openapi.json for offline
+# codegen + CI drift check. Pair with `openapi-gen` to regenerate the
+# dashboard's schema.d.ts from the committed spec.
+api-openapi:
+    cd api && uv run python scripts/dump_openapi.py
+
+# Full regen: dump backend spec + regen frontend schema.d.ts.
+# Run after touching any marshmallow schema or Flask route.
+openapi-regen: api-openapi openapi-gen
+
+# CI drift gate: regen + fail if anything changed on disk.
+openapi-check: openapi-regen
+    git diff --exit-code api/openapi.json dashboard/src/api/schema.d.ts

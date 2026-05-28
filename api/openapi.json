@@ -1,0 +1,803 @@
+{
+  "components": {
+    "responses": {
+      "DEFAULT_ERROR": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Default error response"
+      }
+    },
+    "schemas": {
+      "ActivityBucket": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "type": "string"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket",
+          "count"
+        ],
+        "type": "object"
+      },
+      "AuthAttempt": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "password": {
+            "type": "string"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "password",
+          "success",
+          "timestamp",
+          "username"
+        ],
+        "type": "object"
+      },
+      "Command": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "input": {
+            "type": "string"
+          },
+          "success": {
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "input",
+          "success",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "Download": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "outfile": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "outfile",
+          "sha256",
+          "timestamp",
+          "url"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Error code",
+            "type": "integer"
+          },
+          "errors": {
+            "additionalProperties": {},
+            "description": "Errors",
+            "type": "object"
+          },
+          "message": {
+            "description": "Error message",
+            "type": "string"
+          },
+          "status": {
+            "description": "Error name",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "Health": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "HeatmapPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "hour": {
+            "type": "integer"
+          },
+          "weekday": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "hour",
+          "weekday"
+        ],
+        "type": "object"
+      },
+      "PaginationMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "first_page": {
+            "description": "First available page number.",
+            "type": "integer"
+          },
+          "last_page": {
+            "description": "Last available page number.",
+            "type": "integer"
+          },
+          "next_page": {
+            "description": "Next page number.",
+            "type": "integer"
+          },
+          "page": {
+            "description": "Current page number.",
+            "type": "integer"
+          },
+          "previous_page": {
+            "description": "Previous page number.",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items.",
+            "type": "integer"
+          },
+          "total_pages": {
+            "description": "Total number of pages.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "Ready": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "SessionDetail": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_attempts": {
+            "items": {
+              "$ref": "#/components/schemas/AuthAttempt"
+            },
+            "type": "array"
+          },
+          "commands": {
+            "items": {
+              "$ref": "#/components/schemas/Command"
+            },
+            "type": "array"
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "downloads": {
+            "items": {
+              "$ref": "#/components/schemas/Download"
+            },
+            "type": "array"
+          },
+          "dst_ip": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dst_port": {
+            "type": "integer"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "sensor": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "src_port": {
+            "type": "integer"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "auth_attempts",
+          "commands",
+          "country",
+          "country_code",
+          "downloads",
+          "dst_ip",
+          "dst_port",
+          "ended_at",
+          "id",
+          "protocol",
+          "sensor",
+          "src_port",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "SessionSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_attempt_count": {
+            "type": "integer"
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dst_port": {
+            "type": "integer"
+          },
+          "ended_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "type": "string"
+          },
+          "protocol": {
+            "type": "string"
+          },
+          "src_port": {
+            "type": "integer"
+          },
+          "started_at": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "auth_attempt_count",
+          "country",
+          "country_code",
+          "dst_port",
+          "ended_at",
+          "id",
+          "protocol",
+          "src_port",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "SessionsList": {
+        "additionalProperties": false,
+        "properties": {
+          "page": {
+            "type": "integer"
+          },
+          "pages": {
+            "type": "integer"
+          },
+          "per_page": {
+            "type": "integer"
+          },
+          "sessions": {
+            "items": {
+              "$ref": "#/components/schemas/SessionSummary"
+            },
+            "type": "array"
+          },
+          "total": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "pages",
+          "per_page",
+          "sessions",
+          "total"
+        ],
+        "type": "object"
+      },
+      "TopCountry": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "country": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "country",
+          "country_code"
+        ],
+        "type": "object"
+      },
+      "TopPassword": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "type": "integer"
+          },
+          "password": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "password"
+        ],
+        "type": "object"
+      },
+      "Totals": {
+        "additionalProperties": false,
+        "properties": {
+          "total_auth_attempts": {
+            "type": "integer"
+          },
+          "total_sessions": {
+            "type": "integer"
+          },
+          "unique_ips": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_auth_attempts",
+          "total_sessions",
+          "unique_ips"
+        ],
+        "type": "object"
+      },
+      "Trend": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "type": "integer"
+          },
+          "delta": {
+            "type": "integer"
+          },
+          "pct_change": {
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "previous": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "delta",
+          "pct_change",
+          "previous"
+        ],
+        "type": "object"
+      },
+      "Unavailable": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "type": "string"
+          },
+          "status": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "status"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Honeywatch",
+    "version": "1.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/sessions": {
+      "get": {
+        "description": "Invalid ``page`` / ``per_page`` values fall back to defaults; both are\nclamped to configured maxima.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsList"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return a paginated list of sessions.",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/sessions/{session_id}": {
+      "get": {
+        "description": "``session_id`` must match alphanumeric, 1-32 chars; ``400`` on malformed\nid, ``404`` on unknown id.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetail"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return full detail for a single session.",
+        "tags": [
+          "api"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/stats/activity": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityBucket"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return session counts grouped by ``bucket`` (``hour|day|month``).",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/stats/heatmap": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HeatmapPoint"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return session counts per (weekday, hour) cell.",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/stats/top-countries": {
+      "get": {
+        "description": "Empty until the geolocation enricher populates ``geo_locations``.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopCountry"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N attacking countries ranked by session count.",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/stats/top-passwords": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopPassword"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N attempted passwords ranked by count.",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/stats/totals": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Totals"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the headline totals (sessions, auth attempts, unique IPs).",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/stats/trend": {
+      "get": {
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Trend"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the session-count trend over ``period_days`` vs the prior window.",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "description": "No DB access; this endpoint is wired for nginx / Docker healthchecks only.",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Health"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return a static liveness payload.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "description": "A separate endpoint from ``/health`` on purpose: Docker's\n``healthcheck`` directive must NOT depend on Postgres reachability,\nor a transient DB blip would mark the api container ``unhealthy``\nand cascade through ``proxy: depends_on: api: service_healthy``.\nThis endpoint is for external readiness probes - Gatus, the release\nworkflow's post-rollout poll, future k8s ``readinessProbe``.\n\nReturns 200 ``{\"status\": \"ready\"}`` when ``SELECT 1`` round-trips;\n503 ``{\"status\": \"unavailable\", \"reason\": \"db\"}`` on any\n``SQLAlchemyError`` (connect refused, timeout, pool exhausted).",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Ready"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Unavailable"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Verify the api can actually round-trip a query to Postgres.",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Liveness and readiness probes",
+      "name": "health"
+    },
+    {
+      "description": "Honeywatch session + stats API",
+      "name": "api"
+    }
+  ]
+}
