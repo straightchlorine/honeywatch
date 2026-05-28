@@ -3,6 +3,7 @@ from __future__ import annotations
 from marshmallow import fields, validate
 
 from src.schemas.common import BaseSchema
+from src.services.stats import VALID_BUCKETS
 
 
 class TotalsResponse(BaseSchema):
@@ -152,7 +153,7 @@ class TopCountriesQuery(BaseSchema):
 class ActivityQuery(BaseSchema):
     bucket = fields.Str(
         load_default="day",
-        validate=validate.OneOf(["hour", "day", "month"]),
+        validate=validate.OneOf(sorted(VALID_BUCKETS)),
         metadata={"description": "Aggregation bucket width.", "example": "day"},
     )
 

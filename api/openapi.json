@@ -683,13 +683,6 @@
         ],
         "type": "object"
       }
-    },
-    "securitySchemes": {
-      "bearerAuth": {
-        "bearerFormat": "JWT",
-        "scheme": "bearer",
-        "type": "http"
-      }
     }
   },
   "info": {
@@ -759,12 +752,12 @@
         "parameters": [
           {
             "description": "Session identifier.",
-            "in": "view_args",
+            "in": "path",
             "name": "session_id",
             "required": true,
             "schema": {
-              "example": "abc123",
-              "pattern": "^[A-Za-z0-9]{1,32}$",
+              "example": "abc-123",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
               "type": "string"
             }
           }
@@ -819,8 +812,8 @@
             "schema": {
               "default": "day",
               "enum": [
-                "hour",
                 "day",
+                "hour",
                 "month"
               ],
               "example": "day",
@@ -1040,7 +1033,6 @@
     },
     "/health": {
       "get": {
-        "description": "No DB access; this endpoint is wired for nginx / Docker healthchecks only.",
         "operationId": "healthLive",
         "responses": {
           "200": {
@@ -1065,7 +1057,6 @@
     },
     "/health/ready": {
       "get": {
-        "description": "A separate endpoint from ``/health`` on purpose: Docker's\n``healthcheck`` directive must NOT depend on Postgres reachability,\nor a transient DB blip would mark the api container ``unhealthy``\nand cascade through ``proxy: depends_on: api: service_healthy``.\nThis endpoint is for external readiness probes - Gatus, the release\nworkflow's post-rollout poll, future k8s ``readinessProbe``.\n\nReturns 200 ``{\"status\": \"ready\"}`` when ``SELECT 1`` round-trips;\n503 ``{\"status\": \"unavailable\", \"reason\": \"db\"}`` on any\n``SQLAlchemyError`` (connect refused, timeout, pool exhausted).",
         "operationId": "healthReady",
         "responses": {
           "200": {
@@ -1092,7 +1083,7 @@
             "$ref": "#/components/responses/DEFAULT_ERROR"
           }
         },
-        "summary": "Verify the api can actually round-trip a query to Postgres.",
+        "summary": "Return 200 when the DB is reachable, 503 otherwise.",
         "tags": [
           "health"
         ]

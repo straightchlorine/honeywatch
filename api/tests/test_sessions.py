@@ -32,10 +32,12 @@ def test_get_session_not_found(client: Any) -> None:
 
 
 def test_get_session_detail_with_seed_id(client: Any, seed_data: Any) -> None:
-    # "sess-001" contains a hyphen which the validator rejects via 422; this
-    # asserts the security contract rather than the historical shape.
+    del seed_data
     response = client.get("/api/v1/sessions/sess-001")
-    assert response.status_code == 422
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body["id"] == "sess-001"
+    assert "src_ip" not in body
 
 
 def test_get_session_malformed_id(client: Any) -> None:

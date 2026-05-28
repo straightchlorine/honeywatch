@@ -14,16 +14,35 @@ graph LR
     A[Cowrie SSH Honeypot] -->|JSON logs| B[Log Ingestor]
     B -->|inserts| C[(PostgreSQL)]
     C -->|queries| D[Flask API]
-    D -->|REST| E[Vue Dashboard]
-    C -->|datasource| F[Grafana]
+    D -.->|Headscale tailnet| E[k3s: ts-egress + dashboard]
+    E -->|HTTPS| F[Public: honey.piotrkrzysztof.dev]
+    C -->|datasource| G[Grafana]
 ```
+
+The honeypot VPS runs Cowrie, Postgres, the ingestor, the Flask API, and Grafana. It joins a Headscale tailnet and binds its internal nginx to the tailnet interface only, so the API is never reachable from the public internet directly.
+
+A Hetzner k3s cluster runs a Tailscale egress sidecar (reached at `honey.piotrkrzysztof.dev/api/*`) and serves the dashboard SPA at `/`. Public access goes Internet -> Traefik -> {dashboard Service | honeypot-api Service -> ts-egress pod -> tailnet -> honeypot}.
+
+Cluster manifests live in [straightchlorine/fleet](https://codeberg.org/piotrkrzysztof/fleet) under `clusters/hetzner/honeywatch/`.
 
 ## What It Does
 
 - Runs a Cowrie SSH honeypot that captures brute-force attempts
 - Ingests logs into PostgreSQL
 - Serves a Vue 3 dashboard with an IP geolocation map, login attempt timeline, top credentials used by bots, and attack frequency stats
+- Exposes a public read-only REST API (Flask + flask-smorest, OpenAPI 3.1)
 - Grafana wired in as a Postgres query UI for ad-hoc exploration
+
+## Stack
+
+- Cowrie (SSH honeypot)
+- PostgreSQL
+- Python (Flask API + log ingestor)
+- Vue 3 (dashboard, deployed via k3s)
+- Grafana
+- Docker Compose (honeypot VPS)
+- Kubernetes (k3s on Hetzner, managed via ArgoCD)
+- GitHub Actions (CI/CD)
 
 ## Running Locally
 
@@ -40,19 +59,38 @@ See `justfile` for the full command list.
 ## URLs
 
 - Dashboard: http://localhost:8080
-- API: http://localhost:5000
+- API: http://localhost:5000 (browse `/api/v1/swagger` for the interactive spec)
 - Grafana: http://localhost:3000
 
 ## OpenAPI
 
 Spec served at `/api/v1/openapi.json`. Interactive UIs:
 
-- Swagger UI: `/swagger`
-- Redoc: `/redoc`
+- Swagger UI: `/api/v1/swagger` (proxy redirects `/swagger` to it)
+- Redoc: `/api/v1/redoc` (proxy redirects `/redoc` to it)
 
-Conventions: see [docs/api-style.md](docs/api-style.md).
+The committed `api/openapi.json` is the source of truth for the dashboard
+TypeScript SDK. When you change a route or marshmallow schema:
 
-Dashboard TS client is generated from the spec via `pnpm openapi:gen` (or `just openapi-regen`). Generated output is gitignored - run codegen after pulling.
+```bash
+just openapi-regen   # `flask openapi-dump` + dashboard codegen
+just check           # full local gate; runs `openapi-check` drift gate
+```
+
+CI fails if `api/openapi.json` is out of date. Conventions: see
+[docs/api-style.md](docs/api-style.md).
+
+## Deploying (honeypot VPS)
+
+```bash
+# One-time: install tailscale and join the tailnet
+curl -fsSL https://tailscale.com/install.sh | sh
+sudo tailscale up --login-server=https://vpn.codextechnologies.org \
+    --advertise-tags=tag:honeypot
+
+# Note the tailnet IP, set TS_IP in .env, then:
+docker compose -f docker-compose.prod.yml up -d
+```
 
 ## Attributions
 

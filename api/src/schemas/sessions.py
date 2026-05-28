@@ -306,6 +306,6 @@ class SessionsListQuery(BaseSchema):
 class SessionIdPath(BaseSchema):
     session_id = fields.Str(
         required=True,
-        validate=validate.Regexp(r"^[A-Za-z0-9]{1,32}$"),
-        metadata={"description": "Session identifier.", "example": "abc123"},
+        validate=validate.Regexp(r"^[A-Za-z0-9_-]{1,64}$"),
+        metadata={"description": "Session identifier.", "example": "abc-123"},
     )

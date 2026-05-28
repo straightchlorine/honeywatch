@@ -1,20 +1,26 @@
+from __future__ import annotations
+
 import json
 import pathlib
-from ipaddress import IPv4Address, IPv6Address
 from typing import Any, cast
 
-import click
 from flask import Flask
-from flask.json.provider import DefaultJSONProvider
 from flask_smorest import Api
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from src.config import require_secret_key, select_config
+from src.error_handlers import init_error_handlers
 from src.extensions import init_db
+from src.logging_config import configure_logging
+from src.openapi_cli import register_openapi_cli
+from src.request_id import init_request_id
 from src.routes import register_blueprints
+from src.security_headers import init_security_headers
 
 API_VERSION = "1.0.0"
-OPENAPI_URL_PREFIX = "/api/v1"
+API_V1_PREFIX = "/api/v1"
+OPENAPI_URL_PREFIX = API_V1_PREFIX
+STATIC_DIR = pathlib.Path(__file__).resolve().parent.parent / "static"
 
 API_SPEC_OPTIONS: dict[str, Any] = {
     "servers": [{"url": "/", "description": "current host"}],
@@ -45,29 +51,17 @@ API_SPEC_OPTIONS: dict[str, Any] = {
                 },
             },
         },
-        "securitySchemes": {
-            "bearerAuth": {
-                "type": "http",
-                "scheme": "bearer",
-                "bearerFormat": "JWT",
-            }
-        },
     },
 }
 
 
-class _IPAwareJSONProvider(DefaultJSONProvider):
-    """JSON provider that serialises psycopg ``IPv4Address`` / ``IPv6Address``
-    values (returned from Postgres INET columns) as strings."""
-
-    @staticmethod
-    def default(o: Any) -> Any:  # pyright: ignore[reportIncompatibleMethodOverride]
-        if isinstance(o, (IPv4Address, IPv6Address)):
-            return str(o)
-        return DefaultJSONProvider.default(o)
-
-
 def _configure_openapi(app: Flask) -> None:
+    """Set flask-smorest config keys driving the spec + bundled UIs.
+
+    Swagger UI / ReDoc assets are served from ``/static/*`` (committed under
+    ``api/static/``) so the docs pages do not fetch JS from a CDN — keeps the
+    OpenAPI surface working offline and behind tight CSP.
+    """
     app.config["API_TITLE"] = "Honeywatch"
     app.config["API_VERSION"] = API_VERSION
     app.config["OPENAPI_VERSION"] = "3.1.0"
@@ -84,30 +78,23 @@ def _configure_openapi(app: Flask) -> None:
 def create_app(config: object | None = None) -> Flask:
     """Build and configure the Flask application.
 
-    Args:
-        config: Optional config class/object. When ``None``, the class is
-            resolved from ``ENVIRONMENT`` via :func:`select_config`
-            (``development``/``production``). Tests inject
-            :class:`TestingConfig` directly.
-
-    Returns:
-        A fully wired Flask app: IP-aware JSON provider, DB engine and
-        session factory attached to ``app.extensions``, blueprints
-        registered.
+    Order matters: ``configure_logging`` runs BEFORE ``Flask(__name__)`` so
+    Flask's default handler is never attached and INFO-level records survive
+    under gunicorn.
     """
-    app = Flask(__name__, static_folder="../static")
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=0)  # pyright: ignore[reportAttributeAccessIssue]
-    app.json = _IPAwareJSONProvider(app)
+    configure_logging()
+
+    app = Flask(__name__, static_folder=str(STATIC_DIR))
+    # nginx terminates TLS and forwards Host; x_host=1 lets url_for(_external=True)
+    # produce correct absolute URLs. x_for=1, x_proto=1 match a single proxy hop.
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # pyright: ignore[reportAttributeAccessIssue]
 
     if config is None:
         config = select_config()
     app.config.from_object(config)
 
     app.config["MAX_CONTENT_LENGTH"] = 8192
-
-    secret_key = require_secret_key()
-    app.config["FLASK_SECRET_KEY"] = secret_key
-    app.config["SECRET_KEY"] = secret_key
+    app.config["SECRET_KEY"] = require_secret_key()
 
     _configure_openapi(app)
     smorest_api = Api(app)
@@ -119,33 +106,31 @@ def create_app(config: object | None = None) -> Flask:
     if db_url:
         init_db(app, db_url)
 
+    init_request_id(app)
+    init_security_headers(app)
+    init_error_handlers(app)
     register_blueprints(smorest_api)
-
-    _register_openapi_cli(app, smorest_api)
+    _install_openapi_cache(app, smorest_api)
+    register_openapi_cli(app, smorest_api)
 
     return app
 
 
-def _register_openapi_cli(app: Flask, smorest_api: Api) -> None:
-    """Register `flask openapi-dump`: write the spec with deterministic
-    formatting (sort_keys=True, trailing newline) and top-level `servers`
-    stripped so generated TS clients stay host-agnostic.
-    """
+def _install_openapi_cache(app: Flask, smorest_api: Api) -> None:
+    """Override smorest's openapi.json view with a startup-cached body.
 
-    @app.cli.command("openapi-dump")
-    @click.option(
-        "--output",
-        "-o",
-        default="openapi.json",
-        type=click.Path(dir_okay=False, writable=True),
-        show_default=True,
-        help="Path to write the spec to (relative to CWD).",
-    )
-    def openapi_dump(output: str) -> None:  # pyright: ignore[reportUnusedFunction]
-        spec_obj = smorest_api.spec
-        assert spec_obj is not None, "flask-smorest spec not initialised"
-        spec = cast(dict[str, Any], spec_obj.to_dict())
-        spec.pop("servers", None)
-        path = pathlib.Path(output)
-        path.write_text(json.dumps(spec, indent=2, sort_keys=True) + "\n")
-        click.echo(f"wrote {path}")
+    flask-smorest rebuilds ``spec.to_dict()`` on every GET; for our spec that
+    is wasted CPU per request. We materialise the JSON once after blueprint
+    registration and return the cached bytes via a thin view function.
+    """
+    spec_obj = smorest_api.spec
+    if spec_obj is None:
+        return
+    spec = cast(dict[str, Any], spec_obj.to_dict())
+    body = json.dumps(spec)
+    endpoint = "api-docs.openapi_json"
+
+    def _cached_openapi() -> tuple[str, int, dict[str, str]]:
+        return body, 200, {"Content-Type": "application/json"}
+
+    app.view_functions[endpoint] = _cached_openapi

@@ -16,7 +16,6 @@ import json
 from pathlib import Path
 from typing import Any
 
-
 OPENAPI_URL = "/api/v1/openapi.json"
 
 
@@ -109,10 +108,11 @@ def test_openapi_snapshot_matches_committed(client: Any) -> None:
     Drift here means codegen consumers see a different spec than CI.
     Regenerate via the spec-dump justfile recipe to refresh the snapshot.
     """
-    snapshot_path = Path(__file__).resolve().parents[2] / "api" / "openapi.json"
-    if not snapshot_path.exists():
-        # Fallback in case the test is invoked from a different layout.
-        snapshot_path = Path("/home/zweiss/code/honeywatch/api/openapi.json")
+    snapshot_path = Path(__file__).resolve().parents[1] / "openapi.json"
+    assert snapshot_path.exists(), (
+        f"committed openapi.json missing at {snapshot_path}; "
+        "regenerate via `just api-openapi`"
+    )
     with snapshot_path.open() as fh:
         committed = json.load(fh)
 
@@ -140,8 +140,7 @@ def test_openapi_snapshot_matches_committed(client: Any) -> None:
             "schemas_only_in_committed": only_committed_schemas,
             "schemas_only_in_fresh": only_fresh_schemas,
         }
-        print(f"openapi snapshot drift: {json.dumps(diff_summary, indent=2)}")
         raise AssertionError(
-            "committed api/openapi.json is out of date — regenerate via the "
-            "spec-dump recipe"
+            "committed api/openapi.json is out of date - regenerate via "
+            "`just api-openapi`. drift summary:\n" + json.dumps(diff_summary, indent=2)
         )

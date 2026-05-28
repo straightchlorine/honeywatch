@@ -23,10 +23,12 @@ def init_db(app: Flask, database_url: str) -> None:
         pool_size=5,
         max_overflow=5,
         pool_pre_ping=True,
-        pool_recycle=300,
+        pool_recycle=1800,
     )
     app.extensions["db_engine"] = engine
-    app.extensions["db_session_factory"] = sessionmaker(bind=engine)
+    app.extensions["db_session_factory"] = sessionmaker(
+        bind=engine, expire_on_commit=False
+    )
 
 
 def get_session_factory() -> sessionmaker[Session]:

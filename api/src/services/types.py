@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime
 from typing import TypedDict
 
 
@@ -8,14 +9,14 @@ class AuthAttemptDict(TypedDict):
     username: str
     password: str
     success: bool
-    timestamp: str | None
+    timestamp: datetime | None
 
 
 class CommandDict(TypedDict):
     id: int
     input: str
     success: bool | None
-    timestamp: str | None
+    timestamp: datetime | None
 
 
 class DownloadDict(TypedDict):
@@ -23,7 +24,7 @@ class DownloadDict(TypedDict):
     url: str | None
     outfile: str | None
     sha256: str | None
-    timestamp: str | None
+    timestamp: datetime | None
 
 
 class SessionSummaryDict(TypedDict):
@@ -33,8 +34,8 @@ class SessionSummaryDict(TypedDict):
     protocol: str
     country_code: str | None
     country: str | None
-    started_at: str | None
-    ended_at: str | None
+    started_at: datetime | None
+    ended_at: datetime | None
     auth_attempt_count: int
 
 
@@ -46,8 +47,8 @@ class SessionDetailDict(TypedDict):
     protocol: str
     country_code: str | None
     country: str | None
-    started_at: str | None
-    ended_at: str | None
+    started_at: datetime | None
+    ended_at: datetime | None
     sensor: str | None
     auth_attempts: list[AuthAttemptDict]
     commands: list[CommandDict]
