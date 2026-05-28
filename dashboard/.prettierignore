@@ -3,3 +3,4 @@ node_modules
 pnpm-lock.yaml
 *.svg
 src/api/schema.d.ts
+src/api/generated

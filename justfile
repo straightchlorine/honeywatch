@@ -7,9 +7,7 @@ default:
 # Dev stack
 # ---------------------------------------------------------------------------
 
-# Bring up the dev stack (cowrie, postgres, ingestor, api, dashboard, grafana).
-# Dashboard on http://localhost:8080, API on :5000, Grafana on :3000, dev
-# postgres on :${POSTGRES_HOST_PORT:-5433}.
+# Bring up the dev stack.
 dev:
     docker compose up -d --build
 
@@ -183,23 +181,17 @@ format-check-dashboard:
     cd dashboard && pnpm format:check
 
 # Regen TS SDK + tanstack-vue-query helpers from api/openapi.json.
-# Output goes to dashboard/src/api/generated/ (gitignored).
 openapi-gen:
     cd dashboard && pnpm openapi:gen
 
-# Dump the spec to api/openapi.json via the `flask openapi-dump` CLI
-# registered in src.app:create_app. Output is deterministic (sort_keys=True,
-# trailing newline) with the top-level `servers` array stripped so the
-# generated TS client stays host-agnostic. Pair with `openapi-gen` to refresh
-# the dashboard's SDK.
+# Dump the spec to api/openapi.json.
 api-openapi:
     cd api && FLASK_APP=src.app:create_app FLASK_SECRET_KEY=openapi-dump ENVIRONMENT=development uv run flask openapi-dump --output openapi.json
 
 # Full regen: dump backend spec + regen frontend SDK.
-# Run after touching any marshmallow schema or Flask route.
 openapi-regen: api-openapi openapi-gen
 
-# CI drift gate: regen + fail if the committed spec changed. The generated
-# TS SDK is gitignored so only api/openapi.json is diff-checked.
+# CI drift gate: regen + fail if the committed spec or generated client drifted.
 openapi-check: openapi-regen
-    git diff --exit-code api/openapi.json
+    git add -A -- api/openapi.json dashboard/src/api/generated
+    git diff --cached --exit-code -- api/openapi.json dashboard/src/api/generated

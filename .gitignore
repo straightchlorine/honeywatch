@@ -74,9 +74,6 @@ dashboard/test-results/
 dashboard/coverage/
 dashboard/.playwright/
 
-# Generated OpenAPI client (regenerated via `pnpm openapi:gen`)
-dashboard/src/api/generated/
-
 # openapi-ts crash logs (written to dashboard/ on codegen failure)
 dashboard/openapi-ts-error-*.log
 

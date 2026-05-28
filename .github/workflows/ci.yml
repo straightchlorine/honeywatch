@@ -87,7 +87,9 @@ jobs:
         run: |
           cd api && uv run flask openapi-dump --output openapi.json
           cd ../dashboard && pnpm install --frozen-lockfile && pnpm openapi:gen
-          cd .. && git diff --exit-code api/openapi.json
+          cd ..
+          git add -A -- api/openapi.json dashboard/src/api/generated
+          git diff --cached --exit-code -- api/openapi.json dashboard/src/api/generated
 
   spec-lint:
     runs-on: ubuntu-latest
