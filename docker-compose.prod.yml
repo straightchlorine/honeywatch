@@ -17,24 +17,24 @@ services:
     volumes:
       - cowrie-logs:/cowrie/cowrie-git/var/log/cowrie
       - cowrie-state:/cowrie/cowrie-git/var/lib/cowrie
-      - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro
-      - ./cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro
-      - ./cowrie/honeyfs/etc/passwd:/cowrie/cowrie-git/honeyfs/etc/passwd:ro
-      - ./cowrie/honeyfs/etc/shadow:/cowrie/cowrie-git/honeyfs/etc/shadow:ro
-      - ./cowrie/honeyfs/etc/group:/cowrie/cowrie-git/honeyfs/etc/group:ro
-      - ./cowrie/honeyfs/etc/issue:/cowrie/cowrie-git/honeyfs/etc/issue:ro
-      - ./cowrie/honeyfs/etc/issue.net:/cowrie/cowrie-git/honeyfs/etc/issue.net:ro
-      - ./cowrie/honeyfs/etc/motd:/cowrie/cowrie-git/honeyfs/etc/motd:ro
-      - ./cowrie/honeyfs/etc/os-release:/cowrie/cowrie-git/honeyfs/etc/os-release:ro
-      - ./cowrie/honeyfs/etc/hostname:/cowrie/cowrie-git/honeyfs/etc/hostname:ro
-      - ./cowrie/honeyfs/etc/hosts:/cowrie/cowrie-git/honeyfs/etc/hosts:ro
-      - ./cowrie/honeyfs/etc/resolv.conf:/cowrie/cowrie-git/honeyfs/etc/resolv.conf:ro
-      - ./cowrie/honeyfs/etc/redhat-release:/cowrie/cowrie-git/honeyfs/etc/redhat-release:ro
-      - ./cowrie/honeyfs/proc/version:/cowrie/cowrie-git/honeyfs/proc/version:ro
-      - ./cowrie/honeyfs/proc/cpuinfo:/cowrie/cowrie-git/honeyfs/proc/cpuinfo:ro
-      - ./cowrie/honeyfs/proc/meminfo:/cowrie/cowrie-git/honeyfs/proc/meminfo:ro
-      - ./cowrie/honeyfs/proc/mounts:/cowrie/cowrie-git/honeyfs/proc/mounts:ro
-      - ./cowrie/honeyfs/proc/modules:/cowrie/cowrie-git/honeyfs/proc/modules:ro
+      - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro,Z
+      - ./cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro,Z
+      - ./cowrie/honeyfs/etc/passwd:/cowrie/cowrie-git/honeyfs/etc/passwd:ro,Z
+      - ./cowrie/honeyfs/etc/shadow:/cowrie/cowrie-git/honeyfs/etc/shadow:ro,Z
+      - ./cowrie/honeyfs/etc/group:/cowrie/cowrie-git/honeyfs/etc/group:ro,Z
+      - ./cowrie/honeyfs/etc/issue:/cowrie/cowrie-git/honeyfs/etc/issue:ro,Z
+      - ./cowrie/honeyfs/etc/issue.net:/cowrie/cowrie-git/honeyfs/etc/issue.net:ro,Z
+      - ./cowrie/honeyfs/etc/motd:/cowrie/cowrie-git/honeyfs/etc/motd:ro,Z
+      - ./cowrie/honeyfs/etc/os-release:/cowrie/cowrie-git/honeyfs/etc/os-release:ro,Z
+      - ./cowrie/honeyfs/etc/hostname:/cowrie/cowrie-git/honeyfs/etc/hostname:ro,Z
+      - ./cowrie/honeyfs/etc/hosts:/cowrie/cowrie-git/honeyfs/etc/hosts:ro,Z
+      - ./cowrie/honeyfs/etc/resolv.conf:/cowrie/cowrie-git/honeyfs/etc/resolv.conf:ro,Z
+      - ./cowrie/honeyfs/etc/redhat-release:/cowrie/cowrie-git/honeyfs/etc/redhat-release:ro,Z
+      - ./cowrie/honeyfs/proc/version:/cowrie/cowrie-git/honeyfs/proc/version:ro,Z
+      - ./cowrie/honeyfs/proc/cpuinfo:/cowrie/cowrie-git/honeyfs/proc/cpuinfo:ro,Z
+      - ./cowrie/honeyfs/proc/meminfo:/cowrie/cowrie-git/honeyfs/proc/meminfo:ro,Z
+      - ./cowrie/honeyfs/proc/mounts:/cowrie/cowrie-git/honeyfs/proc/mounts:ro,Z
+      - ./cowrie/honeyfs/proc/modules:/cowrie/cowrie-git/honeyfs/proc/modules:ro,Z
     networks:
       - honeypot
       - cowrie-ingress
@@ -121,7 +121,8 @@ services:
       - "127.0.0.1:5000:5000"
       - "127.0.0.1:3000:3000"
     volumes:
-      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+      # `:Z` private label - nginx is the only consumer (see cowrie block).
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro,Z
     networks:
       - backend
       - expose
@@ -170,9 +171,9 @@ services:
       - hba_file=/etc/postgresql/pg_hba.conf
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ./postgres/init.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro
-      - ./postgres/init.sql:/etc/honeywatch/init.sql:ro
-      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro
+      - ./postgres/init.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro,Z
+      - ./postgres/init.sql:/etc/honeywatch/init.sql:ro,Z
+      - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro,Z
     networks:
       - backend
     cap_drop:
@@ -338,8 +339,8 @@ services:
       GF_USERS_ALLOW_SIGN_UP: "false"
     volumes:
       - grafana-data:/var/lib/grafana
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro
+      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro,Z
+      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro,Z
     networks:
       - backend
     read_only: true
