@@ -1,6 +1,6 @@
 # Honeywatch
 
-SSH honeypot with real-time attack visualization and threat analysis.
+SSH honeypot with attack visualization and threat analysis.
 
 |           | Health | Uptime (24h) |
 |-----------|:------:|:------------:|
