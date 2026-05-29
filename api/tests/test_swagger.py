@@ -18,6 +18,6 @@ def test_redoc_route_200(client: Any) -> None:
 
 
 def test_static_swagger_index_served(client: Any) -> None:
-    response = client.get("/static/swagger-ui/index.html")
+    response = client.get("/api/v1/static/swagger-ui/index.html")
     assert response.status_code == 200
     assert b"<html" in response.data.lower()
