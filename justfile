@@ -7,9 +7,7 @@ default:
 # Dev stack
 # ---------------------------------------------------------------------------
 
-# Bring up the dev stack (cowrie, postgres, ingestor, api, dashboard, grafana).
-# Dashboard on http://localhost:8080, API on :5000, Grafana on :3000, dev
-# postgres on :${POSTGRES_HOST_PORT:-5433}.
+# Bring up the dev stack.
 dev:
     docker compose up -d --build
 
@@ -124,9 +122,11 @@ test-ingestor:
 test-dashboard:
     cd dashboard && pnpm install --frozen-lockfile && pnpm build
 
-# Full CI mirror: ruff + pyright + pytest (api + ingestor) + dashboard build.
-# Ensures the dev postgres is up and the test DB exists. Green here means
-# green in `.github/workflows/ci.yml`.
+# Full CI mirror: ruff + pyright + pytest (api + ingestor) + dashboard
+# build/lint/typecheck/unit. Ensures the dev postgres is up and the test DB
+# exists. Green here means green in `.github/workflows/ci.yml` -- except the
+# Playwright/axe e2e, which CI runs but is omitted here to avoid a browser
+# download on every local run (use `just test-dashboard-e2e` for that).
 test: test-db-init
     cd api && uv run ruff check .
     cd api && uv run ruff format --check .
@@ -136,4 +136,67 @@ test: test-db-init
     cd ingestor && uv run ruff format --check .
     cd ingestor && uv run pyright
     just test-ingestor
+    just lint-dashboard
+    just typecheck-dashboard
     just test-dashboard
+    just test-dashboard-unit
+
+# Full local gate: test suite plus OpenAPI drift check.
+check: test openapi-check
+
+# ---------------------------------------------------------------------------
+# dashboard
+# ---------------------------------------------------------------------------
+
+# Install dashboard deps from the committed lockfile (mirrors CI).
+install-dashboard:
+    cd dashboard && pnpm install --frozen-lockfile
+
+# Vite dev server on http://localhost:5173. Use when iterating outside the
+# docker compose stack; otherwise `just dev` runs the full stack.
+dev-dashboard:
+    cd dashboard && pnpm dev
+
+# vue-tsc --noEmit. Fast type-only check, no build artifacts.
+typecheck-dashboard:
+    cd dashboard && pnpm typecheck
+
+# Production build: typecheck + Vite bundle into dashboard/dist/.
+build-dashboard:
+    cd dashboard && pnpm build
+
+# Vitest unit tests with the coverage gate (mirrors CI).
+test-dashboard-unit:
+    cd dashboard && pnpm test --coverage
+
+# Playwright e2e suite.
+test-dashboard-e2e:
+    cd dashboard && pnpm e2e
+
+# ESLint with --max-warnings 0.
+lint-dashboard:
+    cd dashboard && pnpm lint
+
+# Prettier --write across dashboard/.
+format-dashboard:
+    cd dashboard && pnpm format
+
+# Prettier --check; CI-friendly, non-mutating.
+format-check-dashboard:
+    cd dashboard && pnpm format:check
+
+# Regen TS SDK + tanstack-vue-query helpers from api/openapi.json.
+openapi-gen:
+    cd dashboard && pnpm openapi:gen
+
+# Dump the spec to api/openapi.json.
+api-openapi:
+    cd api && FLASK_APP=src.app:create_app FLASK_SECRET_KEY=openapi-dump ENVIRONMENT=development uv run flask openapi-dump --output openapi.json
+
+# Full regen: dump backend spec + regen frontend SDK.
+openapi-regen: api-openapi openapi-gen
+
+# CI drift gate: regen + fail if the committed spec or generated client drifted.
+openapi-check: openapi-regen
+    git add -A -- api/openapi.json dashboard/src/api/generated
+    git diff --cached --exit-code -- api/openapi.json dashboard/src/api/generated

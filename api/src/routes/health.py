@@ -1,53 +1,45 @@
 from typing import Any
 
-from flask import Blueprint, current_app, jsonify
+from flask import current_app, jsonify
+from flask_smorest import Blueprint
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
 from src.extensions import get_session_factory
+from src.schemas.common import HealthResponse, ReadyResponse, UnavailableResponse
 
-health_bp = Blueprint("health", __name__)
+health_bp = Blueprint("health", "health", description="Liveness and readiness probes")
 
 
 @health_bp.route("/health")
-def health_check() -> tuple[Any, int]:
-    """Return a static liveness payload.
-
-    Returns:
-        ``({"status": "ok"}, 200)``. No DB access; this endpoint is wired
-        for nginx / Docker healthchecks only.
-    """
-    return jsonify({"status": "ok"}), 200
+@health_bp.doc(operationId="healthLive")
+@health_bp.response(200, HealthResponse)
+def health_check() -> dict[str, str]:
+    """Return a static liveness payload."""
+    return {"status": "ok"}
 
 
 @health_bp.route("/health/ready")
-def health_ready() -> tuple[Any, int]:
-    """Verify the api can actually round-trip a query to Postgres.
-
-    A separate endpoint from ``/health`` on purpose: Docker's
-    ``healthcheck`` directive must NOT depend on Postgres reachability,
-    or a transient DB blip would mark the api container ``unhealthy``
-    and cascade through ``proxy: depends_on: api: service_healthy``.
-    This endpoint is for external readiness probes - Gatus, the release
-    workflow's post-rollout poll, future k8s ``readinessProbe``.
-
-    Returns:
-        ``({"status": "ready"}, 200)`` when ``SELECT 1`` round-trips.
-        ``({"status": "unavailable", "reason": "db"}, 503)`` when the
-        DB session raises any ``SQLAlchemyError`` (connect refused,
-        timeout, pool exhausted).
-    """
+@health_bp.doc(operationId="healthReady")
+@health_bp.response(200, ReadyResponse)
+@health_bp.alt_response(503, schema=UnavailableResponse)
+def health_ready() -> Any:
+    """Return 200 when the DB is reachable, 503 otherwise."""
+    # NOTE (not in spec): kept distinct from /health so a transient DB blip
+    # does not cascade through docker compose service_healthy dependencies.
+    # Probe bound at 500ms so pool exhaustion fails fast.
     try:
         session_factory = get_session_factory()
         with session_factory() as db:
-            # Bound the probe so pool exhaustion or a stuck connection makes
-            # the endpoint return 503 fast rather than blocking until the
-            # probe interval lapses (which would mark the api unready while
-            # the application itself is still serving real traffic).
             db.execute(text("SET LOCAL statement_timeout = '500ms'"))
             db.execute(text("SELECT 1"))
-    except SQLAlchemyError:
-        # DB outage - recoverable state; warn
-        current_app.logger.warning("/health/ready: db unavailable")
+    except SQLAlchemyError as exc:
+        current_app.logger.warning(
+            "/health/ready: db unavailable type=%s msg=%s",
+            type(exc).__name__,
+            str(exc)[:200],
+        )
+        # jsonify (not bare dict) so flask-smorest's @response(200, ReadyResponse)
+        # does not reshape the 503 body through the success schema.
         return jsonify({"status": "unavailable", "reason": "db"}), 503
-    return jsonify({"status": "ready"}), 200
+    return {"status": "ready"}

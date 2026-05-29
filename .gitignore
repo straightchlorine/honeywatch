@@ -67,3 +67,17 @@ node_modules/
 .pnpm-debug.log*
 npm-debug.log*
 yarn-error.log*
+
+# Playwright / Vitest artifacts
+dashboard/playwright-report/
+dashboard/test-results/
+dashboard/coverage/
+dashboard/.playwright/
+
+# openapi-ts crash logs (written to dashboard/ on codegen failure)
+dashboard/openapi-ts-error-*.log
+
+# --- Postgres TLS  ---
+postgres/tls/server.crt
+postgres/tls/server.key
+postgres/tls/*.pem

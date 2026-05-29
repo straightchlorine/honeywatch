@@ -1,0 +1,1141 @@
+{
+  "components": {
+    "responses": {
+      "BadRequest": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Bad request: malformed input."
+      },
+      "DEFAULT_ERROR": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Default error response"
+      },
+      "InternalServerError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "An unexpected server error occurred."
+      },
+      "NotFound": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "The requested resource was not found."
+      },
+      "UnprocessableEntity": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "Request validation failed."
+      }
+    },
+    "schemas": {
+      "ActivityBucketResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "bucket": {
+            "description": "Bucket label (ISO 8601 truncated to bucket width).",
+            "example": "2026-05-28",
+            "type": "string"
+          },
+          "count": {
+            "description": "Number of sessions in the bucket.",
+            "example": 17,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "bucket",
+          "count"
+        ],
+        "type": "object"
+      },
+      "AuthAttemptResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Auth attempt row id.",
+            "example": 1234,
+            "type": "integer"
+          },
+          "password": {
+            "description": "Password supplied by the attacker.",
+            "example": "123456",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether the credential pair was accepted by the honeypot.",
+            "example": false,
+            "type": "boolean"
+          },
+          "timestamp": {
+            "description": "ISO 8601 UTC timestamp of the auth attempt.",
+            "example": "2026-05-28T12:34:56Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "description": "Username supplied by the attacker.",
+            "example": "root",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "password",
+          "success",
+          "timestamp",
+          "username"
+        ],
+        "type": "object"
+      },
+      "CommandResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Command row id.",
+            "example": 4321,
+            "type": "integer"
+          },
+          "input": {
+            "description": "Command line entered in the honeypot shell.",
+            "example": "uname -a",
+            "type": "string"
+          },
+          "success": {
+            "description": "Whether command was reported successful (null if unknown).",
+            "example": true,
+            "type": [
+              "boolean",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "description": "ISO 8601 UTC timestamp of when the command ran.",
+            "example": "2026-05-28T12:35:10Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "input",
+          "success",
+          "timestamp"
+        ],
+        "type": "object"
+      },
+      "DownloadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "description": "Download row id.",
+            "example": 99,
+            "type": "integer"
+          },
+          "outfile": {
+            "description": "Local path where the honeypot saved the captured payload.",
+            "example": "/data/downloads/abc123",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sha256": {
+            "description": "SHA-256 hex digest of the captured payload.",
+            "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "timestamp": {
+            "description": "ISO 8601 UTC timestamp of the download event.",
+            "example": "2026-05-28T12:36:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "url": {
+            "description": "Source URL the attacker attempted to fetch.",
+            "example": "http://example.invalid/payload.sh",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "id",
+          "outfile",
+          "sha256",
+          "timestamp",
+          "url"
+        ],
+        "type": "object"
+      },
+      "Error": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "description": "Error code",
+            "type": "integer"
+          },
+          "errors": {
+            "additionalProperties": {},
+            "description": "Errors",
+            "type": "object"
+          },
+          "message": {
+            "description": "Error message",
+            "type": "string"
+          },
+          "status": {
+            "description": "Error name",
+            "type": "string"
+          }
+        },
+        "type": "object"
+      },
+      "HealthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "description": "Liveness status string.",
+            "example": "ok",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "HeatmapPointResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Number of sessions in this hour/weekday cell.",
+            "example": 8,
+            "type": "integer"
+          },
+          "hour": {
+            "description": "Hour of day (0-23, UTC).",
+            "example": 14,
+            "type": "integer"
+          },
+          "weekday": {
+            "description": "Day of week (0=Monday, 6=Sunday).",
+            "example": 2,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "hour",
+          "weekday"
+        ],
+        "type": "object"
+      },
+      "PaginationMeta": {
+        "additionalProperties": false,
+        "properties": {
+          "page": {
+            "description": "Current page number (1-indexed).",
+            "example": 1,
+            "type": "integer"
+          },
+          "pages": {
+            "description": "Total number of pages available.",
+            "example": 5,
+            "type": "integer"
+          },
+          "per_page": {
+            "description": "Number of items per page.",
+            "example": 20,
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items across all pages.",
+            "example": 97,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "page",
+          "pages",
+          "per_page",
+          "total"
+        ],
+        "type": "object"
+      },
+      "PaginationMetadata": {
+        "additionalProperties": false,
+        "properties": {
+          "first_page": {
+            "description": "First available page number.",
+            "type": "integer"
+          },
+          "last_page": {
+            "description": "Last available page number.",
+            "type": "integer"
+          },
+          "next_page": {
+            "description": "Next page number.",
+            "type": "integer"
+          },
+          "page": {
+            "description": "Current page number.",
+            "type": "integer"
+          },
+          "previous_page": {
+            "description": "Previous page number.",
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total number of items.",
+            "type": "integer"
+          },
+          "total_pages": {
+            "description": "Total number of pages.",
+            "type": "integer"
+          }
+        },
+        "type": "object"
+      },
+      "ReadyResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "status": {
+            "description": "Readiness status string.",
+            "example": "ready",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status"
+        ],
+        "type": "object"
+      },
+      "SessionDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_attempts": {
+            "description": "Authentication attempts recorded during the session.",
+            "items": {
+              "$ref": "#/components/schemas/AuthAttemptResponse"
+            },
+            "type": "array"
+          },
+          "commands": {
+            "description": "Commands executed during the session.",
+            "items": {
+              "$ref": "#/components/schemas/CommandResponse"
+            },
+            "type": "array"
+          },
+          "country": {
+            "description": "Human-readable country name of the source IP.",
+            "example": "United States",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code of the source IP.",
+            "example": "US",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "downloads": {
+            "description": "File download attempts recorded during the session.",
+            "items": {
+              "$ref": "#/components/schemas/DownloadResponse"
+            },
+            "type": "array"
+          },
+          "dst_ip": {
+            "description": "Destination IP address of the honeypot.",
+            "example": "10.0.0.5",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dst_port": {
+            "description": "Destination TCP port that received the connection.",
+            "example": 22,
+            "type": "integer"
+          },
+          "ended_at": {
+            "description": "ISO 8601 UTC timestamp when the session ended.",
+            "example": "2026-05-28T12:40:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Honeypot session identifier.",
+            "example": "abc123",
+            "type": "string"
+          },
+          "protocol": {
+            "description": "Application protocol observed.",
+            "example": "ssh",
+            "type": "string"
+          },
+          "sensor": {
+            "description": "Identifier of the sensor that captured the session.",
+            "example": "sensor-01",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "src_port": {
+            "description": "Source TCP port of the attacker connection.",
+            "example": 51234,
+            "type": "integer"
+          },
+          "started_at": {
+            "description": "ISO 8601 UTC timestamp when the session began.",
+            "example": "2026-05-28T12:34:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "auth_attempts",
+          "commands",
+          "country",
+          "country_code",
+          "downloads",
+          "dst_ip",
+          "dst_port",
+          "ended_at",
+          "id",
+          "protocol",
+          "sensor",
+          "src_port",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "SessionSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "auth_attempt_count": {
+            "description": "Number of authentication attempts in this session.",
+            "example": 5,
+            "type": "integer"
+          },
+          "country": {
+            "description": "Human-readable country name of the source IP.",
+            "example": "United States",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code of the source IP.",
+            "example": "US",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "dst_port": {
+            "description": "Destination TCP port that received the connection.",
+            "example": 22,
+            "type": "integer"
+          },
+          "ended_at": {
+            "description": "ISO 8601 UTC timestamp when the session ended.",
+            "example": "2026-05-28T12:40:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "id": {
+            "description": "Honeypot session identifier.",
+            "example": "abc123",
+            "type": "string"
+          },
+          "protocol": {
+            "description": "Application protocol observed.",
+            "example": "ssh",
+            "type": "string"
+          },
+          "src_port": {
+            "description": "Source TCP port of the attacker connection.",
+            "example": 51234,
+            "type": "integer"
+          },
+          "started_at": {
+            "description": "ISO 8601 UTC timestamp when the session began.",
+            "example": "2026-05-28T12:34:00Z",
+            "format": "date-time",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "auth_attempt_count",
+          "country",
+          "country_code",
+          "dst_port",
+          "ended_at",
+          "id",
+          "protocol",
+          "src_port",
+          "started_at"
+        ],
+        "type": "object"
+      },
+      "SessionsListResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "Page of session summaries.",
+            "items": {
+              "$ref": "#/components/schemas/SessionSummaryResponse"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "description": "Pagination metadata for the response page."
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "TopCountryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Number of sessions originating from this country.",
+            "example": 137,
+            "type": "integer"
+          },
+          "country": {
+            "description": "Human-readable country name.",
+            "example": "China",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "CN",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "country",
+          "country_code"
+        ],
+        "type": "object"
+      },
+      "TopPasswordResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Number of times this password was attempted.",
+            "example": 42,
+            "type": "integer"
+          },
+          "password": {
+            "description": "Password value attempted.",
+            "example": "123456",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "password"
+        ],
+        "type": "object"
+      },
+      "TotalsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "total_auth_attempts": {
+            "description": "Total auth attempts across all sessions.",
+            "example": 9876,
+            "type": "integer"
+          },
+          "total_sessions": {
+            "description": "Total number of honeypot sessions recorded.",
+            "example": 1234,
+            "type": "integer"
+          },
+          "unique_ips": {
+            "description": "Number of distinct source IP addresses observed.",
+            "example": 321,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "total_auth_attempts",
+          "total_sessions",
+          "unique_ips"
+        ],
+        "type": "object"
+      },
+      "TrendResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "current": {
+            "description": "Count for the current period.",
+            "example": 100,
+            "type": "integer"
+          },
+          "delta": {
+            "description": "Absolute difference (current - previous).",
+            "example": 20,
+            "type": "integer"
+          },
+          "pct_change": {
+            "description": "Percentage change (null if previous is zero).",
+            "example": 25.0,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "previous": {
+            "description": "Count for the prior period of equal length.",
+            "example": 80,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "current",
+          "delta",
+          "pct_change",
+          "previous"
+        ],
+        "type": "object"
+      },
+      "UnavailableResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "reason": {
+            "description": "Human-readable reason the service is unavailable.",
+            "example": "database connection failed",
+            "type": "string"
+          },
+          "status": {
+            "description": "Readiness status string.",
+            "example": "unavailable",
+            "type": "string"
+          }
+        },
+        "required": [
+          "reason",
+          "status"
+        ],
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "title": "Honeywatch",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v1/sessions/": {
+      "get": {
+        "operationId": "listSessions",
+        "parameters": [
+          {
+            "description": "Page number to fetch (1-indexed).",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "example": 1,
+              "maximum": 10000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items per page (max 100).",
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "example": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionsListResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return a paginated list of session summaries.",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/v1/sessions/{session_id}": {
+      "get": {
+        "operationId": "getSessionById",
+        "parameters": [
+          {
+            "description": "Session identifier.",
+            "in": "path",
+            "name": "session_id",
+            "required": true,
+            "schema": {
+              "example": "abc-123",
+              "pattern": "^[A-Za-z0-9_-]{1,64}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SessionDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return full detail for a single session.",
+        "tags": [
+          "sessions"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "session_id",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/stats/activity": {
+      "get": {
+        "operationId": "statsActivity",
+        "parameters": [
+          {
+            "description": "Aggregation bucket width.",
+            "in": "query",
+            "name": "bucket",
+            "required": false,
+            "schema": {
+              "default": "day",
+              "enum": [
+                "day",
+                "hour",
+                "month"
+              ],
+              "example": "day",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/ActivityBucketResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return session counts grouped by bucket (hour|day|month).",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/heatmap": {
+      "get": {
+        "operationId": "statsHeatmap",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/HeatmapPointResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return session counts per (weekday, hour) cell.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/top-countries": {
+      "get": {
+        "operationId": "statsTopCountries",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopCountryResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N attacking countries ranked by session count.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/top-passwords": {
+      "get": {
+        "operationId": "statsTopPasswords",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopPasswordResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N attempted passwords ranked by count.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/totals": {
+      "get": {
+        "operationId": "statsTotals",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TotalsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return headline totals (sessions, auth attempts, unique IPs).",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/trend": {
+      "get": {
+        "operationId": "statsTrend",
+        "parameters": [
+          {
+            "description": "Length of the comparison window in days.",
+            "in": "query",
+            "name": "period_days",
+            "required": false,
+            "schema": {
+              "default": 7,
+              "example": 7,
+              "maximum": 365,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TrendResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the session-count trend over period_days vs the prior window.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "healthLive",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HealthResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return a static liveness payload.",
+        "tags": [
+          "health"
+        ]
+      }
+    },
+    "/health/ready": {
+      "get": {
+        "operationId": "healthReady",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReadyResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UnavailableResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return 200 when the DB is reachable, 503 otherwise.",
+        "tags": [
+          "health"
+        ]
+      }
+    }
+  },
+  "tags": [
+    {
+      "description": "Liveness and readiness probes",
+      "name": "health"
+    },
+    {
+      "description": "Honeypot session queries",
+      "name": "sessions"
+    },
+    {
+      "description": "Aggregate honeypot statistics",
+      "name": "stats"
+    }
+  ]
+}
