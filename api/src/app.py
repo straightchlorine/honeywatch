@@ -71,9 +71,8 @@ API_SPEC_OPTIONS: dict[str, Any] = {
 def _configure_openapi(app: Flask) -> None:
     """Set flask-smorest config keys driving the spec + bundled UIs.
 
-    Swagger UI / ReDoc assets are served from ``/static/*`` (committed under
-    ``api/static/``) so the docs pages do not fetch JS from a CDN — keeps the
-    OpenAPI surface working offline and behind tight CSP.
+    Swagger UI / ReDoc assets are served from ``/api/v1/static/*`` so the docs
+    pages do not fetch JS from a CDN - keeps the OpenAPI surface working offline.
     """
     app.config["API_TITLE"] = "Honeywatch"
     app.config["API_VERSION"] = API_VERSION
@@ -81,9 +80,11 @@ def _configure_openapi(app: Flask) -> None:
     app.config["OPENAPI_URL_PREFIX"] = OPENAPI_URL_PREFIX
     app.config["OPENAPI_JSON_PATH"] = "openapi.json"
     app.config["OPENAPI_SWAGGER_UI_PATH"] = "/swagger"
-    app.config["OPENAPI_SWAGGER_UI_URL"] = "/static/swagger-ui/"
+    app.config["OPENAPI_SWAGGER_UI_URL"] = f"{API_V1_PREFIX}/static/swagger-ui/"
     app.config["OPENAPI_REDOC_PATH"] = "/redoc"
-    app.config["OPENAPI_REDOC_URL"] = "/static/redoc/redoc.standalone.js"
+    app.config["OPENAPI_REDOC_URL"] = (
+        f"{API_V1_PREFIX}/static/redoc/redoc.standalone.js"
+    )
     app.config["OPENAPI_SWAGGER_UI_CONFIG"] = {"persistAuthorization": True}
     app.config["API_SPEC_OPTIONS"] = API_SPEC_OPTIONS
 
@@ -97,7 +98,11 @@ def create_app(config: object | None = None) -> Flask:
     """
     configure_logging()
 
-    app = Flask(__name__, static_folder=str(STATIC_DIR))
+    app = Flask(
+        __name__,
+        static_folder=str(STATIC_DIR),
+        static_url_path=f"{API_V1_PREFIX}/static",
+    )
     # nginx terminates TLS and forwards Host; x_host=1 lets url_for(_external=True)
     # produce correct absolute URLs. x_for=1, x_proto=1 match a single proxy hop.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # pyright: ignore[reportAttributeAccessIssue]
