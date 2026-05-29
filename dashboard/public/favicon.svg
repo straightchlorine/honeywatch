@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" role="img" aria-label="Honeywatch">
+  <rect width="32" height="32" rx="7" fill="#1a1410" />
+  <path
+    d="M26.5 16 L21.25 25.09 L10.75 25.09 L5.5 16 L10.75 6.91 L21.25 6.91 Z"
+    fill="none"
+    stroke="#f59e0b"
+    stroke-width="2.4"
+    stroke-linejoin="round"
+  />
+  <circle cx="16" cy="16" r="3" fill="#f59e0b" />
+</svg>
