@@ -165,17 +165,29 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_INGESTOR_PASSWORD: ${POSTGRES_INGESTOR_PASSWORD:?POSTGRES_INGESTOR_PASSWORD must be set}
       POSTGRES_API_PASSWORD: ${POSTGRES_API_PASSWORD:?POSTGRES_API_PASSWORD must be set}
+      POSTGRES_STREAM_PASSWORD: ${POSTGRES_STREAM_PASSWORD:?POSTGRES_STREAM_PASSWORD must be set}
       POSTGRES_INITDB_ARGS: >-
         -c password_encryption=scram-sha-256 -c log_connections=on -c log_disconnections=on -c log_statement=ddl -c shared_preload_libraries=pg_stat_statements -c shared_buffers=128MB -c work_mem=4MB -c max_connections=50 -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
     command:
       - postgres
       - -c
       - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - ssl=on
+      - -c
+      - ssl_cert_file=/etc/postgresql/tls/server.crt
+      - -c
+      - ssl_key_file=/etc/postgresql/tls/server.key
+    ports:
+      - "${TS_IP:?TS_IP must be set to the honeypot's Headscale tailnet IP}:5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro,Z
       - ./postgres/init.sql:/etc/honeywatch/init.sql:ro,Z
       - ./postgres/pg_hba.conf:/etc/postgresql/pg_hba.conf:ro,Z
+      - ./postgres/tls/server.crt:/etc/postgresql/tls/server.crt:ro,Z
+      - ./postgres/tls/server.key:/etc/postgresql/tls/server.key:ro,Z
     networks:
       - backend
     cap_drop:
