@@ -6,13 +6,11 @@ from marshmallow import Schema, fields
 class BaseSchema(Schema):
     """Project-wide base schema.
 
-    ``ordered = True`` keeps generated OpenAPI properties in declaration order
-    so the spec (and any committed ``openapi.json`` / ``schema.d.ts``)
-    produces stable diffs across regenerations.
+    Marshmallow 4 preserves field declaration order natively, so OpenAPI
+    properties stay in a stable order across regenerations without any ``Meta``
+    config (the old ``ordered = True`` is a no-op on MM4). Kept as the shared
+    base for future cross-cutting schema config.
     """
-
-    class Meta:
-        ordered = True
 
 
 class PaginationMeta(BaseSchema):

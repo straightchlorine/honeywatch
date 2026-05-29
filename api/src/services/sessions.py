@@ -7,17 +7,7 @@ from sqlalchemy.orm import selectinload
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
 from src.services.serializers import SessionSerializer
-from src.services.stats import StatsService
-from src.services.types import (
-    ActivityBucketDict,
-    HeatmapPointDict,
-    SessionDetailDict,
-    SessionsPageDict,
-    TopCountryDict,
-    TopPasswordDict,
-    TotalsDict,
-    TrendDict,
-)
+from src.services.types import SessionDetailDict, SessionsPageDict
 
 
 def get_sessions_paginated(db: DbSession, page: int, per_page: int) -> SessionsPageDict:
@@ -81,37 +71,3 @@ def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | No
         return None
     session, geo = row
     return SessionSerializer.detail(session, geo)
-
-
-def get_totals(db: DbSession) -> TotalsDict:
-    """Return total session, auth-attempt and unique-IP counts."""
-    return StatsService(db).totals()
-
-
-def get_top_passwords(db: DbSession, top_n: int = 10) -> list[TopPasswordDict]:
-    """Return the top-N attempted passwords by count, descending."""
-    return StatsService(db, top_n=top_n).top_passwords()
-
-
-def get_top_countries(db: DbSession, top_n: int = 10) -> list[TopCountryDict]:
-    """Return the top-N attacking countries by session count, descending."""
-    return StatsService(db, top_n=top_n).top_countries()
-
-
-def get_activity(db: DbSession, bucket: str) -> list[ActivityBucketDict]:
-    """Return session counts grouped by the given time bucket.
-
-    Raises:
-        ValueError: For unsupported ``bucket`` values.
-    """
-    return StatsService(db).activity(bucket)
-
-
-def get_trend(db: DbSession, period_days: int = 7) -> TrendDict:
-    """Return the session-count trend over the last ``period_days``."""
-    return StatsService(db).trend(period_days)
-
-
-def get_heatmap(db: DbSession) -> list[HeatmapPointDict]:
-    """Return session counts per (weekday, hour) cell."""
-    return StatsService(db).heatmap()

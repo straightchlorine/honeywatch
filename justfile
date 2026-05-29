@@ -122,9 +122,11 @@ test-ingestor:
 test-dashboard:
     cd dashboard && pnpm install --frozen-lockfile && pnpm build
 
-# Full CI mirror: ruff + pyright + pytest (api + ingestor) + dashboard build.
-# Ensures the dev postgres is up and the test DB exists. Green here means
-# green in `.github/workflows/ci.yml`.
+# Full CI mirror: ruff + pyright + pytest (api + ingestor) + dashboard
+# build/lint/typecheck/unit. Ensures the dev postgres is up and the test DB
+# exists. Green here means green in `.github/workflows/ci.yml` -- except the
+# Playwright/axe e2e, which CI runs but is omitted here to avoid a browser
+# download on every local run (use `just test-dashboard-e2e` for that).
 test: test-db-init
     cd api && uv run ruff check .
     cd api && uv run ruff format --check .
@@ -134,7 +136,10 @@ test: test-db-init
     cd ingestor && uv run ruff format --check .
     cd ingestor && uv run pyright
     just test-ingestor
+    just lint-dashboard
+    just typecheck-dashboard
     just test-dashboard
+    just test-dashboard-unit
 
 # Full local gate: test suite plus OpenAPI drift check.
 check: test openapi-check
@@ -160,9 +165,9 @@ typecheck-dashboard:
 build-dashboard:
     cd dashboard && pnpm build
 
-# Vitest unit tests.
+# Vitest unit tests with the coverage gate (mirrors CI).
 test-dashboard-unit:
-    cd dashboard && pnpm test
+    cd dashboard && pnpm test --coverage
 
 # Playwright e2e suite.
 test-dashboard-e2e:

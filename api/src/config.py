@@ -38,6 +38,25 @@ def require_secret_key() -> str:
     )
 
 
+def require_db_password() -> str:
+    """Resolve the Postgres password, failing closed in production.
+
+    Mirrors :func:`require_secret_key`: ``POSTGRES_PASSWORD`` must be set for
+    any non-dev deployment. In development the insecure ``changeme`` default is
+    allowed; in production an unset value raises rather than silently booting
+    against the well-known default.
+    """
+    value = os.environ.get("POSTGRES_PASSWORD")
+    if value:
+        return value
+    if current_env() == "development":
+        return "changeme"
+    raise RuntimeError(
+        "POSTGRES_PASSWORD is not set; refusing to start with the insecure "
+        "default. Set it in the environment, or set ENVIRONMENT=development."
+    )
+
+
 class Config:
     """Base application configuration.
 
@@ -54,10 +73,12 @@ class Config:
     POSTGRES_PASSWORD = os.environ.get("POSTGRES_PASSWORD", "changeme")
     POSTGRES_DB = os.environ.get("POSTGRES_DB", "honeywatch")
     POSTGRES_HOST = os.environ.get("POSTGRES_HOST", "localhost")
+    POSTGRES_PORT = os.environ.get("POSTGRES_PORT", "5432")
+    POSTGRES_SSLMODE = os.environ.get("POSTGRES_SSLMODE", "disable")
 
     SQLALCHEMY_DATABASE_URI = (
         f"postgresql+psycopg://{POSTGRES_USER}:{POSTGRES_PASSWORD}"
-        f"@{POSTGRES_HOST}:5432/{POSTGRES_DB}?sslmode=disable"
+        f"@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}?sslmode={POSTGRES_SSLMODE}"
     )
 
 

@@ -128,18 +128,9 @@ class HeatmapPointResponse(BaseSchema):
     )
 
 
-class TopPasswordsQuery(BaseSchema):
-    top_n = fields.Int(
-        load_default=10,
-        validate=validate.Range(min=1, max=100),
-        metadata={
-            "description": "Number of top entries to return (max 100).",
-            "example": 10,
-        },
-    )
+class TopNQuery(BaseSchema):
+    """Shared query args for the top-N leaderboards (passwords, countries)."""
 
-
-class TopCountriesQuery(BaseSchema):
     top_n = fields.Int(
         load_default=10,
         validate=validate.Range(min=1, max=100),

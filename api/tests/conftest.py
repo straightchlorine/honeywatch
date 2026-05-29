@@ -15,6 +15,7 @@ from src.config import TestingConfig
 from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
 from src.models.download import Download
+from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
 
 
@@ -132,6 +133,23 @@ def seed_data(db_session: Session) -> dict[str, Any]:
     db_session.add_all([session1, session2])
     db_session.flush()
 
+    # Geo-enrich session1 only; session2 stays geo-less so both the populated
+    # join branch (US) and the Unknown-bucket branch are exercised. The
+    # no-src-ip privacy assertions then run against the enriched path too.
+    geo1 = GeoLocation(
+        ip="192.168.1.100",
+        country_code="US",
+        country="United States",
+        city="Ashburn",
+        latitude=39.04,
+        longitude=-77.49,
+        asn=14618,
+        as_org="Example Org",
+        last_updated=now,
+    )
+    db_session.add(geo1)
+    db_session.flush()
+
     auth1 = AuthAttempt(
         session_id="sess-001",
         username="root",
@@ -175,6 +193,7 @@ def seed_data(db_session: Session) -> dict[str, Any]:
 
     return {
         "sessions": [session1, session2],
+        "geo": [geo1],
         "auth_attempts": [auth1, auth2, auth3],
         "commands": [cmd1],
         "downloads": [dl1],

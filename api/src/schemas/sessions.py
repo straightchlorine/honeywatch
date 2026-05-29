@@ -91,7 +91,7 @@ class DownloadResponse(BaseSchema):
         allow_none=True,
         metadata={
             "description": "Local path where the honeypot saved the captured payload.",
-            "example": "/var/lib/cowrie/downloads/abc123",
+            "example": "/data/downloads/abc123",
         },
     )
     sha256 = fields.Str(
@@ -255,7 +255,7 @@ class SessionDetailResponse(BaseSchema):
         allow_none=True,
         metadata={
             "description": "Identifier of the sensor that captured the session.",
-            "example": "cowrie-1",
+            "example": "sensor-01",
         },
     )
     auth_attempts = fields.List(

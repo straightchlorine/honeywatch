@@ -378,6 +378,10 @@ export type ListSessionsErrors = {
      */
     422: Error;
     /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
      * Default error response
      */
     default: Error;
@@ -416,6 +420,10 @@ export type GetSessionByIdErrors = {
      */
     422: Error;
     /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
      * Default error response
      */
     default: Error;
@@ -450,6 +458,10 @@ export type StatsActivityErrors = {
      */
     422: Error;
     /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
      * Default error response
      */
     default: Error;
@@ -474,6 +486,10 @@ export type StatsHeatmapData = {
 };
 
 export type StatsHeatmapErrors = {
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
     /**
      * Default error response
      */
@@ -509,6 +525,10 @@ export type StatsTopCountriesErrors = {
      */
     422: Error;
     /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
      * Default error response
      */
     default: Error;
@@ -543,6 +563,10 @@ export type StatsTopPasswordsErrors = {
      */
     422: Error;
     /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
      * Default error response
      */
     default: Error;
@@ -567,6 +591,10 @@ export type StatsTotalsData = {
 };
 
 export type StatsTotalsErrors = {
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
     /**
      * Default error response
      */
@@ -601,6 +629,10 @@ export type StatsTrendErrors = {
      * Request validation failed.
      */
     422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
     /**
      * Default error response
      */

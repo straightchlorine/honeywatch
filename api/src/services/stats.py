@@ -13,7 +13,6 @@ from src.services.types import (
     HeatmapPointDict,
     TopCountryDict,
     TopPasswordDict,
-    TopUsernameDict,
     TotalsDict,
     TrendDict,
 )
@@ -49,16 +48,6 @@ class StatsService:
         return self.db.execute(
             select(func.count(func.distinct(Session.src_ip)))
         ).scalar_one()
-
-    def top_usernames(self) -> list[TopUsernameDict]:
-        """Return the top-N attempted usernames by count, descending."""
-        rows = self.db.execute(
-            select(AuthAttempt.username, func.count().label("count"))
-            .group_by(AuthAttempt.username)
-            .order_by(func.count().desc())
-            .limit(self.top_n)
-        ).all()
-        return [{"username": row[0], "count": row[1]} for row in rows]
 
     def top_passwords(self) -> list[TopPasswordDict]:
         """Return the top-N attempted passwords by count, descending."""
@@ -145,11 +134,30 @@ class StatsService:
         }
 
     def totals(self) -> TotalsDict:
-        """Return the three headline counters in a single roll-up."""
+        """Return the three headline counters in a single DB round-trip.
+
+        Each counter is a scalar subquery, so Postgres returns all three from
+        one statement instead of three sequential COUNT round-trips.
+        """
+        row = self.db.execute(
+            select(
+                select(func.count())
+                .select_from(Session)
+                .scalar_subquery()
+                .label("total_sessions"),
+                select(func.count())
+                .select_from(AuthAttempt)
+                .scalar_subquery()
+                .label("total_auth_attempts"),
+                select(func.count(func.distinct(Session.src_ip)))
+                .scalar_subquery()
+                .label("unique_ips"),
+            )
+        ).one()
         return {
-            "total_sessions": self.total_sessions(),
-            "total_auth_attempts": self.total_auth_attempts(),
-            "unique_ips": self.unique_ips(),
+            "total_sessions": row.total_sessions,
+            "total_auth_attempts": row.total_auth_attempts,
+            "unique_ips": row.unique_ips,
         }
 
     def heatmap(self) -> list[HeatmapPointDict]:
@@ -169,3 +177,45 @@ class StatsService:
             .order_by(dow_col, hour_col)
         ).all()
         return [{"hour": int(r[0]), "weekday": int(r[1]), "count": r[2]} for r in rows]
+
+
+# Thin functional wrappers so route handlers depend on this module (the actual
+# owner of stats logic) rather than reaching through services.sessions.
+
+
+def get_totals(db: DbSession) -> TotalsDict:
+    """Return total session, auth-attempt and unique-IP counts."""
+    return StatsService(db).totals()
+
+
+def get_top_passwords(
+    db: DbSession, top_n: int = DEFAULT_TOP_N
+) -> list[TopPasswordDict]:
+    """Return the top-N attempted passwords by count, descending."""
+    return StatsService(db, top_n=top_n).top_passwords()
+
+
+def get_top_countries(
+    db: DbSession, top_n: int = DEFAULT_TOP_N
+) -> list[TopCountryDict]:
+    """Return the top-N attacking countries by session count, descending."""
+    return StatsService(db, top_n=top_n).top_countries()
+
+
+def get_activity(db: DbSession, bucket: str) -> list[ActivityBucketDict]:
+    """Return session counts grouped by the given time bucket.
+
+    Raises:
+        ValueError: For unsupported ``bucket`` values.
+    """
+    return StatsService(db).activity(bucket)
+
+
+def get_trend(db: DbSession, period_days: int = 7) -> TrendDict:
+    """Return the session-count trend over the last ``period_days``."""
+    return StatsService(db).trend(period_days)
+
+
+def get_heatmap(db: DbSession) -> list[HeatmapPointDict]:
+    """Return session counts per (weekday, hour) cell."""
+    return StatsService(db).heatmap()

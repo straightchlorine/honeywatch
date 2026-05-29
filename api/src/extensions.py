@@ -1,4 +1,4 @@
-from flask import Flask, current_app
+from flask import Flask, current_app, g
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
@@ -30,6 +30,12 @@ def init_db(app: Flask, database_url: str) -> None:
         bind=engine, expire_on_commit=False
     )
 
+    @app.teardown_appcontext
+    def _close_db(_exc: BaseException | None) -> None:  # pyright: ignore[reportUnusedFunction]
+        db: Session | None = g.pop("_db", None)
+        if db is not None:
+            db.close()
+
 
 def get_session_factory() -> sessionmaker[Session]:
     """Return the session factory bound to the current Flask app.
@@ -47,3 +53,17 @@ def get_session_factory() -> sessionmaker[Session]:
             "Call init_db(app, database_url) in create_app()."
         )
     return factory
+
+
+def get_db() -> Session:
+    """Return the request-scoped SQLAlchemy session, created lazily on ``g``.
+
+    One read-only session per request, closed automatically at app-context
+    teardown (registered in :func:`init_db`). Centralizes the per-request
+    session so route handlers don't each manage a ``with`` block.
+    """
+    db: Session | None = getattr(g, "_db", None)
+    if db is None:
+        db = get_session_factory()()
+        g._db = db
+    return db

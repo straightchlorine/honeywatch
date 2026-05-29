@@ -102,3 +102,19 @@ def test_sessions_unknown_session_id_returns_404(client: Any) -> None:
     data = response.get_json()
     blob = (data.get("message") or "") + json.dumps(data)
     assert "Session" in blob or "aaaaaaaa" in blob
+
+
+def test_session_detail_geo_enriched(client: Any, seed_data: Any) -> None:
+    """A geo-enriched session exposes country/country_code, never src_ip.
+
+    Exercises the populated GeoLocation join branch (seed gives sess-001 a US
+    geo row) that the privacy gate would otherwise never cover.
+    """
+    del seed_data
+    response = client.get("/api/v1/sessions/sess-001")
+    assert response.status_code == 200
+    assert b"src_ip" not in response.data
+    body = response.get_json()
+    assert body["country"] == "United States"
+    assert body["country_code"] == "US"
+    assert "src_ip" not in body

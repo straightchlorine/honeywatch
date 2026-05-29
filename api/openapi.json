@@ -21,6 +21,16 @@
         },
         "description": "Default error response"
       },
+      "InternalServerError": {
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/Error"
+            }
+          }
+        },
+        "description": "An unexpected server error occurred."
+      },
       "NotFound": {
         "content": {
           "application/json": {
@@ -154,7 +164,7 @@
           },
           "outfile": {
             "description": "Local path where the honeypot saved the captured payload.",
-            "example": "/var/lib/cowrie/downloads/abc123",
+            "example": "/data/downloads/abc123",
             "type": [
               "string",
               "null"
@@ -412,7 +422,7 @@
           },
           "sensor": {
             "description": "Identifier of the sensor that captured the session.",
-            "example": "cowrie-1",
+            "example": "sensor-01",
             "type": [
               "string",
               "null"
@@ -736,6 +746,9 @@
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
           }
@@ -778,6 +791,9 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
@@ -838,6 +854,9 @@
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
           }
@@ -864,6 +883,9 @@
               }
             },
             "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
@@ -910,6 +932,9 @@
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
           }
@@ -955,6 +980,9 @@
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
           },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
           }
@@ -978,6 +1006,9 @@
               }
             },
             "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"
@@ -1020,6 +1051,9 @@
           },
           "422": {
             "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
           },
           "default": {
             "$ref": "#/components/responses/DEFAULT_ERROR"

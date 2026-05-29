@@ -7,13 +7,10 @@
 
 from __future__ import annotations
 
-import logging
 from typing import Any
 
 from flask import Flask, current_app, jsonify, request
 from werkzeug.exceptions import HTTPException
-
-logger = logging.getLogger(__name__)
 
 
 def _envelope(
@@ -45,11 +42,7 @@ def init_error_handlers(app: Flask) -> None:
             )
         else:
             current_app.logger.info(
-                "http %s on %s %s remote=%s",
-                code,
-                request.method,
-                request.path,
-                request.remote_addr,
+                "http %s on %s %s", code, request.method, request.path
             )
         return jsonify(_envelope(code, status, message, errors)), code
 

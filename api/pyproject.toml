@@ -10,6 +10,8 @@ requires-python = ">=3.13"
 dependencies = [
     "flask>=3.1",
     "flask-smorest>=0.47,<0.48",
+    "marshmallow>=4,<5",
+    "apispec[marshmallow]>=6,<7",
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",
     "alembic>=1.14",

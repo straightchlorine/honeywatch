@@ -8,11 +8,16 @@ from flask import Flask
 from flask_smorest import Api
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from src.config import require_secret_key, select_config
+from src.config import (
+    current_env,
+    require_db_password,
+    require_secret_key,
+    select_config,
+)
 from src.error_handlers import init_error_handlers
 from src.extensions import init_db
 from src.logging_config import configure_logging
-from src.openapi_cli import register_openapi_cli
+from src.openapi_cli import build_spec_dict, register_openapi_cli
 from src.request_id import init_request_id
 from src.routes import register_blueprints
 from src.security_headers import init_security_headers
@@ -44,6 +49,14 @@ API_SPEC_OPTIONS: dict[str, Any] = {
             },
             "UnprocessableEntity": {
                 "description": "Request validation failed.",
+                "content": {
+                    "application/json": {
+                        "schema": {"$ref": "#/components/schemas/Error"}
+                    }
+                },
+            },
+            "InternalServerError": {
+                "description": "An unexpected server error occurred.",
                 "content": {
                     "application/json": {
                         "schema": {"$ref": "#/components/schemas/Error"}
@@ -96,6 +109,9 @@ def create_app(config: object | None = None) -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = 8192
     app.config["SECRET_KEY"] = require_secret_key()
 
+    if not app.config.get("TESTING"):
+        require_db_password()
+
     _configure_openapi(app)
     smorest_api = Api(app)
 
@@ -105,6 +121,11 @@ def create_app(config: object | None = None) -> Flask:
     )
     if db_url:
         init_db(app, db_url)
+    else:
+        app.logger.warning(
+            "SQLALCHEMY_DATABASE_URI is empty; database not initialized - "
+            "data routes will fail until it is configured"
+        )
 
     init_request_id(app)
     init_security_headers(app)
@@ -113,6 +134,12 @@ def create_app(config: object | None = None) -> Flask:
     _install_openapi_cache(app, smorest_api)
     register_openapi_cli(app, smorest_api)
 
+    app.logger.info(
+        "honeywatch api %s starting (env=%s, db=%s)",
+        API_VERSION,
+        current_env(),
+        "on" if db_url else "OFF",
+    )
     return app
 
 
@@ -123,10 +150,13 @@ def _install_openapi_cache(app: Flask, smorest_api: Api) -> None:
     is wasted CPU per request. We materialise the JSON once after blueprint
     registration and return the cached bytes via a thin view function.
     """
-    spec_obj = smorest_api.spec
-    if spec_obj is None:
+    try:
+        spec = build_spec_dict(smorest_api)
+    except RuntimeError:
+        app.logger.warning(
+            "openapi spec unavailable at boot; serving smorest's per-request spec"
+        )
         return
-    spec = cast(dict[str, Any], spec_obj.to_dict())
     body = json.dumps(spec)
     endpoint = "api-docs.openapi_json"
 

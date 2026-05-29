@@ -121,3 +121,15 @@ def test_heatmap(client: Any, seed_data: Any) -> None:
         assert set(row.keys()) == {"hour", "weekday", "count"}
         assert 0 <= row["hour"] <= 23
         assert 0 <= row["weekday"] <= 6
+
+
+def test_top_countries_includes_geo_enriched(client: Any, seed_data: Any) -> None:
+    """The populated geo branch surfaces the enriched country (US), not Unknown."""
+    del seed_data
+    response = client.get("/api/v1/stats/top-countries")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert any(
+        row["country"] == "United States" and row["country_code"] == "US"
+        for row in data
+    ), data

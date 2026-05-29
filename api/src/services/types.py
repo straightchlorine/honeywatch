@@ -63,11 +63,6 @@ class SessionsPageDict(TypedDict):
     pages: int
 
 
-class TopUsernameDict(TypedDict):
-    username: str
-    count: int
-
-
 class TopPasswordDict(TypedDict):
     password: str
     count: int

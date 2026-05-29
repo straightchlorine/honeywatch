@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import logging.config
 import os
@@ -26,6 +27,23 @@ class RequestIdFilter(logging.Filter):
         return True
 
 
+class JsonFormatter(logging.Formatter):
+    """Emit one JSON object per record so a log pipeline (Loki/ELK) can index
+    ``request_id``, ``level``, ``logger`` and ``message`` without regex."""
+
+    def format(self, record: logging.LogRecord) -> str:
+        payload: dict[str, Any] = {
+            "ts": self.formatTime(record, "%Y-%m-%dT%H:%M:%S%z"),
+            "level": record.levelname,
+            "logger": record.name,
+            "request_id": getattr(record, "request_id", "-"),
+            "message": record.getMessage(),
+        }
+        if record.exc_info:
+            payload["exc_info"] = self.formatException(record.exc_info)
+        return json.dumps(payload, default=str)
+
+
 _configured = False
 
 
@@ -40,6 +58,11 @@ def configure_logging(level: str | None = None) -> None:
         return
 
     resolved = (level or os.environ.get("LOG_LEVEL", "INFO")).upper()
+    env = os.environ.get("ENVIRONMENT", "production").strip().lower()
+    log_format = (
+        os.environ.get("LOG_FORMAT") or ("json" if env == "production" else "text")
+    ).lower()
+    handler_formatter = "json" if log_format == "json" else "default"
 
     config: dict[str, Any] = {
         "version": 1,
@@ -55,12 +78,13 @@ def configure_logging(level: str | None = None) -> None:
                 ),
                 "datefmt": "%Y-%m-%dT%H:%M:%S%z",
             },
+            "json": {"()": "src.logging_config.JsonFormatter"},
         },
         "handlers": {
             "stderr": {
                 "class": "logging.StreamHandler",
                 "stream": "ext://sys.stderr",
-                "formatter": "default",
+                "formatter": handler_formatter,
                 "filters": ["request_id"],
             },
         },

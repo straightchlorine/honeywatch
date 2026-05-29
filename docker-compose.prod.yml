@@ -123,6 +123,8 @@ services:
     volumes:
       # `:Z` private label - nginx is the only consumer (see cowrie block).
       - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro,Z
+      # Shared security-header snippet
+      - ./proxy/security-headers.conf:/etc/nginx/security-headers.conf:ro,Z
     networks:
       - backend
       - expose

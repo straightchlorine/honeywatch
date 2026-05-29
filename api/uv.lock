@@ -145,9 +145,11 @@ version = "0.1.0"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
+    { name = "apispec", extra = ["marshmallow"] },
     { name = "flask" },
     { name = "flask-smorest" },
     { name = "gunicorn" },
+    { name = "marshmallow" },
     { name = "psycopg", extra = ["binary"] },
     { name = "sqlalchemy" },
 ]
@@ -162,9 +164,11 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "alembic", specifier = ">=1.14" },
+    { name = "apispec", extras = ["marshmallow"], specifier = ">=6,<7" },
     { name = "flask", specifier = ">=3.1" },
     { name = "flask-smorest", specifier = ">=0.47,<0.48" },
     { name = "gunicorn", specifier = ">=23.0" },
+    { name = "marshmallow", specifier = ">=4,<5" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0" },
