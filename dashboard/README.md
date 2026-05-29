@@ -7,8 +7,7 @@ served at `/api/v1/*` (same-origin in production, configurable in dev via
 ## Stack
 
 - Vue 3 + `<script setup>` SFCs
-- Pinia (state)
-- TanStack Vue Query (server cache, polling)
+- TanStack Vue Query (server cache; 30s stale, no refetch-on-focus, 5xx retry ×2)
 - Vite (bundler) + vue-tsc (type checking)
 - Vitest + jsdom + @vue/test-utils (unit)
 - Playwright + @axe-core/playwright (e2e + accessibility smoke)
@@ -18,20 +17,19 @@ served at `/api/v1/*` (same-origin in production, configurable in dev via
 
 ```
 src/
-  api/            hand-written wrappers around the generated client
-    generated/    openapi-ts output (gitignored, regenerate via just openapi-regen)
+  api/            thin wrappers + retry predicate around the generated client
+    generated/    openapi-ts output (committed + drift-gated; regen via just openapi-regen)
   assets/         tokens.css and global styles
   components/
-    base/         reusable primitives (Card, Stat, Spinner, LoadingState, EmptyState, BarList)
+    base/         reusable primitives (Card, Stat, Spinner, LoadingState, EmptyState, BarList, PageHeader, ErrorBoundary, Pagination)
     layout/       AppShell and friends
   views/          route-level components
   router/         vue-router config
-  stores/         Pinia stores
-  utils/          format helpers etc.
+  utils/          format + attacker-text sanitize helpers
 tests/
-  setup.ts        jsdom polyfills (matchMedia, IntersectionObserver, EventSource)
+  setup.ts        jsdom polyfills (matchMedia, IntersectionObserver, ResizeObserver, EventSource)
   helpers/
-    mount.ts      mountWithProviders helper (pinia + router + vue-query)
+    mount.ts      mountWithProviders helper (router + vue-query)
   unit/           vitest specs, mirroring src/ layout
   e2e/            playwright specs (smoke + axe)
 ```
@@ -41,7 +39,8 @@ tests/
 The backend Flask app emits an OpenAPI 3.1 spec to `api/openapi.json` (the
 committed file is the source of truth). `@hey-api/openapi-ts` reads that spec
 and writes a typed fetch client + tanstack-vue-query helpers into
-`src/api/generated/` (gitignored).
+`src/api/generated/` (committed and drift-gated, so Docker/CI builds are
+hermetic and API-surface changes show up in PR diffs).
 
 Regenerate the spec and the client together:
 
@@ -62,8 +61,8 @@ pnpm test:watch
 
 `tests/setup.ts` installs minimal polyfills for browser APIs that jsdom does
 not implement (matchMedia, IntersectionObserver, ResizeObserver, EventSource).
-`tests/helpers/mount.ts` exports `mountWithProviders`, which wires Pinia, a
-memory-history vue-router, and a non-retrying TanStack Query client around the
+`tests/helpers/mount.ts` exports `mountWithProviders`, which wires a
+memory-history vue-router and a non-retrying TanStack Query client around the
 component under test.
 
 E2E (Playwright + axe):

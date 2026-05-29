@@ -5,15 +5,18 @@
 
   /**
    * Title precedence: the `title` slot wins over the `title` prop. If both are
-   * given, the slot replaces the default h3 entirely (callers can render their
-   * own heading + actions). If only `title` prop is set, an h3 is rendered.
+   * given, the slot replaces the default heading entirely (callers can render
+   * their own heading + actions). If only `title` prop is set, a heading of
+   * `headingLevel` (default h2, since cards sit directly under a page h1) is
+   * rendered so the document outline stays contiguous.
    */
   const props = withDefaults(
     defineProps<{
       title?: string
       padding?: Padding
+      headingLevel?: 2 | 3 | 4
     }>(),
-    { padding: 'md' },
+    { padding: 'md', headingLevel: 2 },
   )
 
   const slots = useSlots()
@@ -27,7 +30,9 @@
   <div class="card" :class="paddingClass">
     <header v-if="hasHeader" class="card-header">
       <slot name="title">
-        <h3 v-if="title" class="card-title">{{ title }}</h3>
+        <component :is="`h${headingLevel}`" v-if="title" class="card-title">
+          {{ title }}
+        </component>
       </slot>
     </header>
     <div class="card-body">

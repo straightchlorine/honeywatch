@@ -5,7 +5,13 @@ import pluginA11y from 'eslint-plugin-vuejs-accessibility'
 
 export default [
   {
-    ignores: ['dist/**', 'node_modules/**', 'src/api/schema.d.ts', 'src/api/generated/**'],
+    ignores: [
+      'dist/**',
+      'coverage/**',
+      'node_modules/**',
+      'src/api/schema.d.ts',
+      'src/api/generated/**',
+    ],
   },
   js.configs.recommended,
   ...pluginVue.configs['flat/recommended'],

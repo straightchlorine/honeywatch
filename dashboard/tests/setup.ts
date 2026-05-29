@@ -54,9 +54,10 @@ type GlobalWithPolyfills = typeof globalThis & {
   EventSource?: unknown
 }
 const g = globalThis as GlobalWithPolyfills
-g.IntersectionObserver ??= NoopObserver
-g.ResizeObserver ??= NoopObserver
-g.EventSource ??= NoopEventSource
+// jsdom lacks these; the Noop stubs only need to exist, not be spec-complete.
+g.IntersectionObserver ??= NoopObserver as unknown as typeof IntersectionObserver
+g.ResizeObserver ??= NoopObserver as unknown as typeof ResizeObserver
+g.EventSource ??= NoopEventSource as unknown as typeof EventSource
 
 afterEach(() => {
   vi.clearAllMocks()

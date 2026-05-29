@@ -10,7 +10,6 @@ import {
 import Card from '@/components/base/Card.vue'
 import Stat from '@/components/base/Stat.vue'
 import EmptyState from '@/components/base/EmptyState.vue'
-import ErrorBoundary from '@/components/base/ErrorBoundary.vue'
 import BarList from '@/components/base/BarList.vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import { fmtNumber, fmtDelta } from '@/utils/format'
@@ -75,59 +74,63 @@ const countryRows = computed(() => {
 })
 </script>
 
+<!--
+  No per-view ErrorBoundary here: the awaited suspense() above rejects during
+  setup, before any boundary in this template could mount, so a load failure
+  always propagates to the App-level ErrorBoundary (which wraps <Suspense>).
+  Canonical pattern: the boundary lives OUTSIDE Suspense (see App.vue).
+-->
 <template>
-  <ErrorBoundary fallback-title="Could not load overview">
-    <div class="overview">
-      <PageHeader title="Overview" sub="Aggregated activity across all sensors." />
+  <div class="overview">
+    <PageHeader title="Overview" sub="Aggregated activity across all sensors." />
 
-      <section class="stats-grid" aria-label="Key totals">
-        <Card padding="md">
-          <Stat :value="fmtNumber(totals.total_sessions)" label="Sessions" />
-        </Card>
-        <Card padding="md">
-          <Stat :value="fmtNumber(totals.unique_ips)" label="Unique IPs" />
-        </Card>
-        <Card padding="md">
-          <Stat :value="fmtNumber(totals.total_auth_attempts)" label="Auth attempts" />
-        </Card>
-        <Card padding="md">
-          <Stat
-            :value="fmtNumber(trend.current)"
-            label="Trend (7d)"
-            :trend="trendTone"
-            :delta="trendLabel"
-          />
-        </Card>
-      </section>
+    <section class="stats-grid" aria-label="Key totals">
+      <Card padding="md">
+        <Stat :value="fmtNumber(totals.total_sessions)" label="Sessions" />
+      </Card>
+      <Card padding="md">
+        <Stat :value="fmtNumber(totals.unique_ips)" label="Unique IPs" />
+      </Card>
+      <Card padding="md">
+        <Stat :value="fmtNumber(totals.total_auth_attempts)" label="Auth attempts" />
+      </Card>
+      <Card padding="md">
+        <Stat
+          :value="fmtNumber(trend.current)"
+          label="Trend (7d)"
+          :trend="trendTone"
+          :delta="trendLabel"
+        />
+      </Card>
+    </section>
 
-      <section class="two-col" aria-label="Top lists">
-        <Card title="Top passwords">
-          <BarList
-            :items="passwordRows"
-            label="Top passwords by attempt count"
-            empty-text="No passwords seen yet"
-          />
-        </Card>
+    <section class="two-col" aria-label="Top lists">
+      <Card title="Top passwords">
+        <BarList
+          :items="passwordRows"
+          label="Top passwords by attempt count"
+          empty-text="No passwords seen yet"
+        />
+      </Card>
 
-        <Card title="Top countries">
-          <BarList
-            :items="countryRows"
-            label="Top countries by attempt count"
-            empty-text="No country data yet"
-          />
-        </Card>
-      </section>
+      <Card title="Top countries">
+        <BarList
+          :items="countryRows"
+          label="Top countries by attempt count"
+          empty-text="No country data yet"
+        />
+      </Card>
+    </section>
 
-      <section class="two-col" aria-label="Activity">
-        <Card title="Activity">
-          <EmptyState title="Chart coming soon" />
-        </Card>
-        <Card title="Heatmap">
-          <EmptyState title="Chart coming soon" />
-        </Card>
-      </section>
-    </div>
-  </ErrorBoundary>
+    <section class="two-col" aria-label="Activity">
+      <Card title="Activity">
+        <EmptyState title="Chart coming soon" :heading-level="3" />
+      </Card>
+      <Card title="Heatmap">
+        <EmptyState title="Chart coming soon" :heading-level="3" />
+      </Card>
+    </section>
+  </div>
 </template>
 
 <style scoped>

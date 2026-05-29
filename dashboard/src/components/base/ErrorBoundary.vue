@@ -1,5 +1,7 @@
 <script setup lang="ts">
   import { computed, onErrorCaptured, ref } from 'vue'
+  import { useQueryClient } from '@tanstack/vue-query'
+  import { sanitizeAttackerText } from '@/utils/sanitize'
 
   withDefaults(
     defineProps<{
@@ -9,27 +11,45 @@
   )
 
   const error = ref<Error | null>(null)
+  const queryClient = useQueryClient()
+
+  // The generated client throws the API error envelope (a plain object with a
+  // string `message`), not an Error, so unwrap it instead of rendering
+  // "[object Object]".
+  function toError(err: unknown): Error {
+    if (err instanceof Error) return err
+    if (err && typeof err === 'object') {
+      const message = (err as { message?: unknown }).message
+      if (typeof message === 'string' && message) return new Error(message)
+      try {
+        return new Error(JSON.stringify(err))
+      } catch {
+        return new Error('Unknown error')
+      }
+    }
+    return new Error(String(err))
+  }
 
   onErrorCaptured((err, _instance, info) => {
-    console.error('[ErrorBoundary]', err, info)
-    error.value = err instanceof Error ? err : new Error(String(err))
+    if (import.meta.env.DEV) console.error('[ErrorBoundary]', err, info)
+    error.value = toError(err)
     return false
   })
 
-  // Strip C0/C1 control chars and bidi overrides; truncate to 500 chars.
-  const CONTROL_CHARS = new RegExp(
-    // eslint-disable-next-line no-control-regex
-    '[\\u0000-\\u001f\\u007f-\\u009f\\u200e\\u200f\\u202a-\\u202e\\u2066-\\u2069]',
-    'g',
-  )
-
+  // Strip control chars + bidi overrides from attacker-derived messages and cap
+  // length. Shared rule lives in utils/sanitize.
   const safeMessage = computed(() => {
-    const raw = error.value?.message ?? ''
-    const cleaned = raw.replace(CONTROL_CHARS, '')
+    const cleaned = sanitizeAttackerText(error.value?.message ?? '', {
+      mode: 'strip',
+      allowWhitespace: false,
+    })
     return cleaned.length > 500 ? cleaned.slice(0, 500) + '...' : cleaned
   })
 
   function reset() {
+    // Reset cached query state so a re-render actually refetches instead of
+    // immediately re-throwing the cached rejection.
+    void queryClient.resetQueries()
     error.value = null
   }
 </script>

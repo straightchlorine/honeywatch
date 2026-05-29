@@ -1,10 +1,31 @@
 <script setup lang="ts">
+import { nextTick, ref, watch } from 'vue'
+import { useRoute } from 'vue-router'
+import { useIsFetching } from '@tanstack/vue-query'
 import IconLink from '../IconLink.vue'
+
+const route = useRoute()
+const routeAnnounce = ref('')
+// Reflect in-flight fetches (incl. keepPreviousData paging) so AT can perceive
+// busy/idle transitions on the main region.
+const isFetching = useIsFetching()
+
+// On navigation: announce the new page to assistive tech (polite live region)
+// and move focus to <main> so keyboard/SR users are not stranded on a removed
+// node. Not immediate, so the initial mount does not steal focus.
+watch(
+  () => route.fullPath,
+  () => {
+    routeAnnounce.value = (route.meta.title as string | undefined) ?? 'Honeywatch'
+    void nextTick(() => document.getElementById('main')?.focus())
+  },
+)
 </script>
 
 <template>
   <div class="shell">
     <a class="skip-link" href="#main">Skip to main content</a>
+    <div class="visually-hidden" role="status" aria-live="polite">{{ routeAnnounce }}</div>
 
     <header class="shell-header">
       <div class="shell-header-inner">
@@ -17,17 +38,11 @@ import IconLink from '../IconLink.vue'
           <RouterLink to="/" class="nav-link" exact-active-class="nav-link-active">
             Overview
           </RouterLink>
-          <RouterLink to="/sessions" class="nav-link" active-class="nav-link-active">
-            Sessions
-          </RouterLink>
-          <RouterLink to="/credentials" class="nav-link" active-class="nav-link-active">
-            Credentials
-          </RouterLink>
         </nav>
       </div>
     </header>
 
-    <main id="main" class="shell-main" tabindex="-1">
+    <main id="main" class="shell-main" tabindex="-1" :aria-busy="isFetching > 0">
       <div class="shell-main-inner">
         <slot />
       </div>

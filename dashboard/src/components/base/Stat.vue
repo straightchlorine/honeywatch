@@ -18,13 +18,26 @@
     if (!props.trend) return ''
     return `trend-${props.trend}`
   })
+
+  // Non-color cues so trend direction is not conveyed by color alone (WCAG 1.4.1).
+  const trendSymbol = computed(() =>
+    props.trend === 'up' ? '▲' : props.trend === 'down' ? '▼' : '',
+  )
+  const trendWord = computed(() =>
+    props.trend === 'up' ? 'increase' : props.trend === 'down' ? 'decrease' : '',
+  )
 </script>
 
 <template>
   <div class="stat">
     <div class="stat-line">
       <span class="stat-value">{{ value }}</span>
-      <span v-if="delta" class="stat-delta" :class="deltaClass">{{ delta }}</span>
+      <span v-if="delta" class="stat-delta" :class="deltaClass">
+        <span v-if="trendSymbol" class="stat-trend-symbol" aria-hidden="true">{{
+          trendSymbol
+        }}</span>
+        <span v-if="trendWord" class="visually-hidden">{{ trendWord }}: </span>{{ delta }}
+      </span>
     </div>
     <span class="stat-label">{{ label }}</span>
   </div>
@@ -67,6 +80,10 @@
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     flex-shrink: 0;
+  }
+
+  .stat-trend-symbol {
+    margin-right: 2px;
   }
 
   .trend-up {

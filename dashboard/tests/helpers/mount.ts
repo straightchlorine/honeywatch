@@ -1,4 +1,3 @@
-import { createPinia } from 'pinia'
 import { createRouter, createMemoryHistory, type RouteRecordRaw } from 'vue-router'
 import { mount, type ComponentMountingOptions } from '@vue/test-utils'
 import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query'
@@ -18,12 +17,7 @@ export function mountWithProviders<T extends Component>(
     ...options,
     global: {
       ...(options.global ?? {}),
-      plugins: [
-        createPinia(),
-        router,
-        [VueQueryPlugin, { queryClient }],
-        ...extraPlugins,
-      ],
+      plugins: [router, [VueQueryPlugin, { queryClient }], ...extraPlugins],
     },
   })
 }

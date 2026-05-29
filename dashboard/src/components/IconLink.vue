@@ -43,13 +43,13 @@ const safeHref = computed(() => {
   width: 2rem;
   height: 2rem;
   border-radius: 0.375rem;
-  color: var(--muted);
+  color: var(--text-muted);
   transition: color 120ms ease, background 120ms ease;
 }
 
 .icon-link:hover {
-  color: var(--fg);
-  background: #1a1f26;
+  color: var(--text);
+  background: var(--surface-hover);
 }
 
 .icon-link svg {
