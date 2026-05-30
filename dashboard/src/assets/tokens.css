@@ -27,6 +27,16 @@
     --warning: #fbbf24;
     --error: #f87171;
 
+    /* World map (choropleth). Layered dark -> light so countries read against
+       the ocean: ocean (darkest) < card surface < no-data land < amber data
+       ramp (--accent-dim -> --accent -> --warning). */
+    --map-ocean: #14100c;
+    --map-ocean-edge: #0d0a07;
+    --map-land: #3a2c22;
+    --map-border: rgba(245, 158, 11, 0.4);
+    --map-coast: rgba(245, 158, 11, 0.6);
+    --map-graticule: rgba(245, 158, 11, 0.05);
+
     --space-1: 4px;
     --space-2: 8px;
     --space-3: 12px;

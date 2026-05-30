@@ -106,6 +106,7 @@ watch(
   display: flex;
   flex-direction: column;
   height: 100vh;
+  height: 100dvh; /* dvh tracks the mobile URL bar so the page fits, not 100vh */
   background: var(--bg-0);
   color: var(--text);
   overflow: hidden;
@@ -212,6 +213,12 @@ watch(
   max-width: 1280px;
   margin: 0 auto;
   padding: var(--space-4) var(--space-5);
+  /* Cap to the viewport so flex:1 children (e.g. the map) shrink to fit and the
+     page doesn't scroll on desktop; content that genuinely overflows (short /
+     mobile viewports) still scrolls via .shell-main's overflow-y:auto. */
+  height: 100%;
+  display: flex;
+  flex-direction: column;
 }
 
 .shell-main:focus-visible {
