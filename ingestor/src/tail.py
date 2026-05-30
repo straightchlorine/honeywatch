@@ -39,6 +39,7 @@ def tail_follow(path: str, poll_interval: float = 0.1) -> Iterator[str]:
                 logger.info("Opened %s, seeking to end (position %d)", path, f.tell())
 
                 while True:
+                    pos = f.tell()
                     try:
                         line = f.readline(MAX_LINE_BYTES)
                     except OSError as exc:
@@ -48,6 +49,16 @@ def tail_follow(path: str, poll_interval: float = 0.1) -> Iterator[str]:
                         break
                     if line:
                         if not line.endswith("\n"):
+                            # No trailing newline means one of two things, and
+                            # they must be handled differently:
+                            #  - len < cap: a partial read of a line the writer
+                            #    hasn't finished flushing. Rewind and re-read it
+                            #    next poll.
+                            #  - len == cap: a genuinely oversize line. Drain it.
+                            if len(line) < MAX_LINE_BYTES:
+                                f.seek(pos)
+                                time.sleep(poll_interval)
+                                continue
                             try:
                                 drained_ok = _drain_oversize(f)
                             except OSError as exc:

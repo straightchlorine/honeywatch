@@ -236,3 +236,29 @@ def test_tail_survives_invalid_utf8(tmp_path: Path) -> None:
     if first != "good":
         second = _drain_next(it, timeout=5.0)
         assert second == "good"
+
+
+def test_tail_rereads_partial_line_until_complete(tmp_path: Path) -> None:
+    """A line the writer hasn't finished (no trailing newline yet) must be
+    re-read once complete -- NOT mis-classified as oversize and drained, which
+    would drop a real event and split the next line into a JSON fragment."""
+    path = tmp_path / "log.jsonl"
+    path.write_text("")
+    before = _dropped("oversize_line")
+    it = tail_follow(str(path), poll_interval=0.01)
+
+    def writer() -> None:
+        time.sleep(0.05)
+        with path.open("a") as f:
+            f.write("partial-")  # mid-write: no trailing newline yet
+            f.flush()
+        time.sleep(0.2)
+        with path.open("a") as f:
+            f.write("line\n")  # writer completes the line
+            f.flush()
+
+    _spawn_writer(writer)
+    # The whole line arrives intact (not just the "line" tail), and the partial
+    # was never counted as an oversize drop.
+    assert _drain_next(it, timeout=5.0) == "partial-line"
+    assert _dropped("oversize_line") == before

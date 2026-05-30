@@ -27,15 +27,15 @@ const trendQ = useQuery({
   ...statsTrendOptions({ query: { period_days: 7 } }),
   refetchInterval: POLL_MS,
 })
-// Overview shows a top-5 summary; the map is the anchor and full leaderboards
-// live on their own detail pages. Fewer rows also frees vertical space so the
-// whole page fits the viewport.
+// Overview shows a top-4 summary; the map is the anchor and full leaderboards
+// live on their own detail pages. Capped at 4 rows so the lists can never grow
+// tall enough to squeeze the map, on top of the flex:0 0 auto pin below.
 const topPasswordsQ = useQuery({
-  ...statsTopPasswordsOptions({ query: { top_n: 5 } }),
+  ...statsTopPasswordsOptions({ query: { top_n: 4 } }),
   refetchInterval: POLL_MS,
 })
 const topCountriesQ = useQuery({
-  ...statsTopCountriesOptions({ query: { top_n: 5 } }),
+  ...statsTopCountriesOptions({ query: { top_n: 4 } }),
   refetchInterval: POLL_MS,
 })
 // The map consumes the same endpoint at the API's max top_n (100) - a separate
@@ -190,13 +190,18 @@ const countryRows = computed(() => {
   min-height: 0;
 }
 
+/* KPI strip + lists are fixed-height (flex:0 0 auto) so they neither grow nor
+   shrink - the map (.map-pane, the only flex:1 item) always takes exactly the
+   leftover height. */
 .stats-grid {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: var(--space-3);
 }
 
 .two-col {
+  flex: 0 0 auto;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-3);
