@@ -38,10 +38,12 @@ const topCountriesQ = useQuery({
   ...statsTopCountriesOptions({ query: { top_n: 5 } }),
   refetchInterval: POLL_MS,
 })
-// The map consumes the same endpoint at a higher top_n -- a separate query key,
-// so no cache collision with the top-10 BarList above. Same poll cadence.
+// The map consumes the same endpoint at the API's max top_n (100) - a separate
+// query key, so no cache collision with the top-10 BarList above. 100 covers
+// every country with meaningful traffic; the long tail beyond rank 100 (1-2
+// hits each) would be the faintest amber anyway. Same poll cadence.
 const mapCountriesQ = useQuery({
-  ...statsTopCountriesOptions({ query: { top_n: 250 } }),
+  ...statsTopCountriesOptions({ query: { top_n: 100 } }),
   refetchInterval: POLL_MS,
 })
 
