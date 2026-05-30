@@ -15,8 +15,10 @@
       title?: string
       padding?: Padding
       headingLevel?: 2 | 3 | 4
+      /** Fill the parent's height and let the body flex (for hero panes). */
+      fill?: boolean
     }>(),
-    { padding: 'md', headingLevel: 2 },
+    { padding: 'md', headingLevel: 2, fill: false },
   )
 
   const slots = useSlots()
@@ -27,7 +29,7 @@
 </script>
 
 <template>
-  <div class="card" :class="paddingClass">
+  <div class="card" :class="[paddingClass, { 'card-fill': fill }]">
     <header v-if="hasHeader" class="card-header">
       <slot name="title">
         <component :is="`h${headingLevel}`" v-if="title" class="card-title">
@@ -77,5 +79,16 @@
 
   .card-body {
     color: var(--text);
+  }
+
+  .card-fill {
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .card-fill .card-body {
+    flex: 1 1 auto;
+    min-height: 0;
   }
 </style>

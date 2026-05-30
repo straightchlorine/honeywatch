@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, defineAsyncComponent } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import {
   statsTotalsOptions,
@@ -9,27 +9,66 @@ import {
 } from '@/api/queries'
 import Card from '@/components/base/Card.vue'
 import Stat from '@/components/base/Stat.vue'
-import EmptyState from '@/components/base/EmptyState.vue'
 import BarList from '@/components/base/BarList.vue'
 import PageHeader from '@/components/base/PageHeader.vue'
 import { fmtNumber, fmtDelta } from '@/utils/format'
+import { ALPHA2_TO_NUMERIC } from '@/components/map/alpha2-to-numeric'
 
-const totalsQ = useQuery(statsTotalsOptions())
-const trendQ = useQuery(statsTrendOptions({ query: { period_days: 7 } }))
-const topPasswordsQ = useQuery(statsTopPasswordsOptions({ query: { top_n: 10 } }))
-const topCountriesQ = useQuery(statsTopCountriesOptions({ query: { top_n: 10 } }))
+// The world map lazy-loads its own chunk (d3-geo + topojson) so it stays out
+// of the main bundle; it Suspends on the TopoJSON fetch independently of stats.
+const WorldMap = defineAsyncComponent(() => import('@/components/map/WorldMap.vue'))
+
+// Poll aggregates so the dashboard tracks attacks without SSE. 10s is well
+// under the 60-req/min per-IP API rate limit (4 queries x 6/min = 24/min) and
+// is decoupled from attack volume -- a scan storm never raises the poll rate.
+const POLL_MS = 10_000
+const totalsQ = useQuery({ ...statsTotalsOptions(), refetchInterval: POLL_MS })
+const trendQ = useQuery({
+  ...statsTrendOptions({ query: { period_days: 7 } }),
+  refetchInterval: POLL_MS,
+})
+// Overview shows a top-5 summary; the map is the anchor and full leaderboards
+// live on their own detail pages. Fewer rows also frees vertical space so the
+// whole page fits the viewport.
+const topPasswordsQ = useQuery({
+  ...statsTopPasswordsOptions({ query: { top_n: 5 } }),
+  refetchInterval: POLL_MS,
+})
+const topCountriesQ = useQuery({
+  ...statsTopCountriesOptions({ query: { top_n: 5 } }),
+  refetchInterval: POLL_MS,
+})
+// The map consumes the same endpoint at a higher top_n -- a separate query key,
+// so no cache collision with the top-10 BarList above. Same poll cadence.
+const mapCountriesQ = useQuery({
+  ...statsTopCountriesOptions({ query: { top_n: 250 } }),
+  refetchInterval: POLL_MS,
+})
 
 await Promise.all([
   totalsQ.suspense(),
   trendQ.suspense(),
   topPasswordsQ.suspense(),
   topCountriesQ.suspense(),
+  mapCountriesQ.suspense(),
 ])
 
 const totals = computed(() => totalsQ.data.value!)
 const trend = computed(() => trendQ.data.value!)
 const passwordItems = computed(() => topPasswordsQ.data.value!)
 const countryItems = computed(() => topCountriesQ.data.value!)
+
+// Numeric-ISO id -> count for the choropleth. Join via the committed alpha-2
+// table as STRINGS; "??"/null and unmappable codes are dropped (not plotted).
+const mapCounts = computed(() => {
+  const counts = new Map<string, number>()
+  for (const row of mapCountriesQ.data.value ?? []) {
+    if (!row.country_code) continue
+    const id = ALPHA2_TO_NUMERIC[row.country_code]
+    if (id) counts.set(id, row.count)
+  }
+  return counts
+})
 
 const trendLabel = computed(() =>
   fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change }),
@@ -104,6 +143,20 @@ const countryRows = computed(() => {
       </Card>
     </section>
 
+    <!-- No Card: the map sits straight on the page so it can be as large as
+         possible (no title row / padding) and the letterbox margins blend into
+         the background. The globe keeps its own sphere outline as a frame; the
+         heading stays for the document outline. -->
+    <section class="map-pane" aria-label="Attack origins">
+      <h2 class="visually-hidden">Attack origins</h2>
+      <Suspense>
+        <WorldMap :counts="mapCounts" />
+        <template #fallback>
+          <div class="map-skeleton" aria-hidden="true" />
+        </template>
+      </Suspense>
+    </section>
+
     <section class="two-col" aria-label="Top lists">
       <Card title="Top passwords">
         <BarList
@@ -121,15 +174,6 @@ const countryRows = computed(() => {
         />
       </Card>
     </section>
-
-    <section class="two-col" aria-label="Activity">
-      <Card title="Activity">
-        <EmptyState title="Chart coming soon" :heading-level="3" />
-      </Card>
-      <Card title="Heatmap">
-        <EmptyState title="Chart coming soon" :heading-level="3" />
-      </Card>
-    </section>
   </div>
 </template>
 
@@ -137,7 +181,11 @@ const countryRows = computed(() => {
 .overview {
   display: flex;
   flex-direction: column;
-  gap: var(--space-4);
+  gap: var(--space-3);
+  /* Fill the shell's main column so the map flexes to the leftover height and
+     the page fits the viewport without scrolling on desktop. */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .stats-grid {
@@ -150,5 +198,19 @@ const countryRows = computed(() => {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
   gap: var(--space-3);
+}
+
+.map-pane {
+  /* The hero: takes all height left between the KPI strip and the lists. */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.map-skeleton {
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  border-radius: var(--radius-md);
+  background: var(--map-ocean);
 }
 </style>
