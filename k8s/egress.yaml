@@ -184,13 +184,15 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
-    # Direct WireGuard to peers (UDP 41641 any address).
+    # Direct WireGuard to peers (UDP 41641 any address) + STUN (UDP 3478).
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
       ports:
         - protocol: UDP
           port: 41641
+        - protocol: UDP
+          port: 3478
 ---
 # kube-router applies a namespace-wide default-deny when any Egress
 # NetworkPolicy exists. This policy explicitly allows egress for every
