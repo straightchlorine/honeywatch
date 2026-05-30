@@ -121,19 +121,19 @@ const countryRows = computed(() => {
 -->
 <template>
   <div class="overview">
-    <PageHeader title="Overview" sub="Aggregated activity across all sensors." />
+    <PageHeader title="Overview" />
 
     <section class="stats-grid" aria-label="Key totals">
-      <Card padding="md">
+      <Card padding="sm">
         <Stat :value="fmtNumber(totals.total_sessions)" label="Sessions" />
       </Card>
-      <Card padding="md">
+      <Card padding="sm">
         <Stat :value="fmtNumber(totals.unique_ips)" label="Unique IPs" />
       </Card>
-      <Card padding="md">
+      <Card padding="sm">
         <Stat :value="fmtNumber(totals.total_auth_attempts)" label="Auth attempts" />
       </Card>
-      <Card padding="md">
+      <Card padding="sm">
         <Stat
           :value="fmtNumber(trend.current)"
           label="Trend (7d)"
@@ -148,7 +148,7 @@ const countryRows = computed(() => {
          the background. The globe keeps its own sphere outline as a frame; the
          heading stays for the document outline. -->
     <section class="map-pane" aria-label="Attack origins">
-      <h2 class="visually-hidden">Attack origins</h2>
+      <h2 class="map-eyebrow">Attack origins</h2>
       <Suspense>
         <WorldMap :counts="mapCounts" />
         <template #fallback>
@@ -202,8 +202,24 @@ const countryRows = computed(() => {
 
 .map-pane {
   /* The hero: takes all height left between the KPI strip and the lists. */
+  position: relative;
   flex: 1 1 auto;
   min-height: 0;
+}
+
+.map-eyebrow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  margin: 0;
+  font-size: var(--type-xs);
+  line-height: var(--type-xs-lh);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  pointer-events: none;
 }
 
 .map-skeleton {

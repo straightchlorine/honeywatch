@@ -120,9 +120,11 @@ function onLeave(): void {
           tip.count ? `${fmtNumber(tip.count)} sessions` : 'no activity'
         }}</span>
       </div>
-    </div>
 
-    <WorldMapLegend :max="choropleth.max" :ramp="choropleth.rampStops" />
+      <div class="legend-overlay">
+        <WorldMapLegend :max="choropleth.max" :ramp="choropleth.rampStops" />
+      </div>
+    </div>
 
     <ul class="visually-hidden">
       <li v-for="r in ranked" :key="r.id">{{ r.name }}: {{ fmtNumber(r.count) }} sessions</li>
@@ -148,6 +150,15 @@ function onLeave(): void {
   display: block;
   width: 100%;
   height: 100%; /* fill the frame; viewBox + preserveAspectRatio keeps it centered */
+}
+
+/* Legend floats in the map's dead bottom-left corner instead of taking a row,
+   so the globe keeps the full height. */
+.legend-overlay {
+  position: absolute;
+  left: var(--space-2);
+  bottom: var(--space-2);
+  z-index: 1;
 }
 
 .country {
