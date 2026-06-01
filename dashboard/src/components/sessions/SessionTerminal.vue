@@ -34,11 +34,17 @@ const canCopy = typeof navigator !== 'undefined' && !!navigator.clipboard
 
 function transcriptText(): string {
   return lines.value
-    .map((l) =>
-      l.kind === 'command'
-        ? `${l.user}@honeypot:~$ ${l.segments.map((s) => s.text).join('')}`
-        : `# ${l.text}`,
-    )
+    .map((l) => {
+      if (l.kind === 'command') {
+        return `${l.user}@honeypot:~$ ${l.segments.map((s) => s.text).join('')}`
+      }
+      // Auth lines carry the credential as pre/password/post, not a flat string;
+      // re-assemble it so the copied transcript matches what is on screen.
+      if (l.kind === 'auth-ok' || l.kind === 'auth-fail') {
+        return `# ${l.pre}${l.password || '‹empty›'}${l.post}`
+      }
+      return `# ${l.text}`
+    })
     .join('\n')
 }
 
@@ -105,7 +111,8 @@ function fmtUtc(iso: string | null): string {
       <summary>About this replay</summary>
       <p class="note-body">
         Honeywatch reconstructs this session from captured events. Lines marked ‹…› are annotations,
-        not attacker output. IP addresses are redacted; no command output was recorded.
+        not attacker output. Highlighted values are the credentials the attacker supplied. IP
+        addresses are redacted; no command output was recorded.
       </p>
     </details>
   </section>

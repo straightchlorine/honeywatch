@@ -41,6 +41,37 @@ describe('TerminalLine', () => {
     expect(blot.find('.visually-hidden').text()).toContain('IP address redacted')
   })
 
+  it('shows the supplied password as a highlighted credential chip', () => {
+    const w = mount(TerminalLine, {
+      props: {
+        line: {
+          id: 'a1',
+          kind: 'auth-fail',
+          pre: "root@honeypot's password: ",
+          password: 'hunter2',
+          post: ' — Permission denied (password).',
+        },
+      },
+    })
+    const cred = w.find('.cred')
+    expect(cred.exists()).toBe(true)
+    expect(cred.text()).toBe('hunter2')
+    const text = w.find('.annotation').text()
+    expect(text).toContain("root@honeypot's password:")
+    expect(text).toContain('Permission denied')
+  })
+
+  it('marks an auth line with no supplied password explicitly', () => {
+    const w = mount(TerminalLine, {
+      props: {
+        line: { id: 'a2', kind: 'auth-ok', pre: 'Accepted password ', password: '', post: ' for root.' },
+      },
+    })
+    const cred = w.find('.cred')
+    expect(cred.classes()).toContain('cred-empty')
+    expect(cred.find('.visually-hidden').text()).toContain('no password')
+  })
+
   it('marks non-command lines as annotations wrapped in guillemets', () => {
     const w = mount(TerminalLine, {
       props: { line: { id: 'b', kind: 'banner', text: 'Connecting…' } },

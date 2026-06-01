@@ -446,5 +446,48 @@ function shortId(id: string): string {
   .session-cards {
     display: flex;
   }
+
+  /* Keep the three filters on one row: the Dropdown's 160px min-width forced a
+     2+1 wrap. Drop it to equal columns; long values (country names) ellipsize on
+     the trigger -- the open list still shows them in full. */
+  .filters {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    align-items: end;
+    gap: var(--space-2);
+    padding: var(--space-3);
+  }
+  .field {
+    min-width: 0;
+  }
+  .field :deep(.dropdown) {
+    display: flex;
+  }
+  .field :deep(.dd-button) {
+    min-width: 0;
+    width: 100%;
+  }
+  /* flex:1 + min-width:0 let the value shrink below its content width -- without
+     it the flex child keeps min-width:auto and text-overflow never fires, so a
+     long country name overflows the trigger instead of ellipsizing. */
+  .field :deep(.dd-value) {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  /* The Country list (rightmost column, wide country names) opened past the right
+     edge; .shell-main's overflow-y:auto then made the x-axis scrollable and the
+     page slid sideways. Open it right-aligned, cap it to the viewport, and let
+     long names wrap so the list can never reach beyond the screen. */
+  .field:last-child :deep(.dd-list) {
+    left: auto;
+    right: 0;
+    max-width: calc(100vw - 2 * var(--space-4));
+  }
+  .field :deep(.dd-option) {
+    white-space: normal;
+  }
 }
 </style>

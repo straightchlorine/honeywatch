@@ -114,6 +114,57 @@ describe('buildTranscript', () => {
     expect(cmd.kind === 'command' && cmd.user).toBe('pi')
   })
 
+  it('surfaces the supplied password on auth lines as pre/password/post', () => {
+    const lines = buildTranscript(
+      makeSession({
+        auth_attempts: [
+          {
+            id: 1,
+            username: 'root',
+            password: 'hunter2',
+            success: false,
+            timestamp: '2026-05-31T13:41:00+00:00',
+          },
+          {
+            id: 2,
+            username: 'admin',
+            password: '',
+            success: true,
+            timestamp: '2026-05-31T13:41:01+00:00',
+          },
+        ],
+      }),
+    )
+    const fail = lines.find((l) => l.kind === 'auth-fail')!
+    expect(fail.kind === 'auth-fail' && fail.password).toBe('hunter2')
+    expect(fail.kind === 'auth-fail' && fail.pre).toContain("root@honeypot's password:")
+    expect(fail.kind === 'auth-fail' && fail.post).toContain('Permission denied')
+    // No password supplied stays empty -- the view renders the empty marker.
+    const ok = lines.find((l) => l.kind === 'auth-ok')!
+    expect(ok.kind === 'auth-ok' && ok.password).toBe('')
+    expect(ok.kind === 'auth-ok' && ok.post).toContain('for admin.')
+  })
+
+  it('escapes control characters in captured passwords', () => {
+    const bell = String.fromCharCode(7)
+    const lines = buildTranscript(
+      makeSession({
+        auth_attempts: [
+          {
+            id: 1,
+            username: 'root',
+            password: `pw${bell}x`,
+            success: false,
+            timestamp: '2026-05-31T13:41:00+00:00',
+          },
+        ],
+      }),
+    )
+    const fail = lines.find((l) => l.kind === 'auth-fail')!
+    expect(fail.kind === 'auth-fail' && fail.password).toContain('\\x07')
+    expect(fail.kind === 'auth-fail' && fail.password).not.toContain(bell)
+  })
+
   it('redacts IPs in command input and download URLs', () => {
     const lines = buildTranscript(
       makeSession({

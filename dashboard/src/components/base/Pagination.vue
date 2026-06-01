@@ -89,4 +89,10 @@ function next() {
   color: var(--text-muted);
   font-size: var(--type-xs);
 }
+
+@media (max-width: 768px) {
+  .pagination {
+    justify-content: center;
+  }
+}
 </style>
