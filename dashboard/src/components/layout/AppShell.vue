@@ -107,6 +107,10 @@ watch(
             href="https://github.com/straightchlorine/honeywatch"
             label="Honeywatch repository on GitHub"
           />
+          <!-- Mobile-only caption: the credits are hidden below md, so label the
+               lone repo link. aria-hidden -- the IconLink's own label already
+               names it for assistive tech (no duplicate announcement). -->
+          <span class="repo-label" aria-hidden="true">View source</span>
         </div>
       </div>
     </footer>
@@ -281,6 +285,15 @@ watch(
 .repo {
   display: inline-flex;
   align-items: center;
+  gap: var(--space-2);
+}
+
+/* Caption shown only on mobile (desktop keeps the bare icon beside the credits). */
+.repo-label {
+  display: none;
+  color: var(--text-muted);
+  font-size: var(--type-sm);
+  line-height: var(--type-sm-lh);
 }
 
 @media (max-width: 768px) {
@@ -291,6 +304,19 @@ watch(
     order: 3;
     flex-basis: 100%;
     margin-left: 0;
+  }
+
+  /* Stacking the two credits still orphaned the repo icon on its own row. On
+     mobile, drop the contributor credits entirely (they stay on desktop) and
+     center a single labelled repo link -- nothing left to misalign. */
+  .credits {
+    display: none;
+  }
+  .shell-footer-inner {
+    justify-content: center;
+  }
+  .repo-label {
+    display: inline;
   }
 }
 </style>

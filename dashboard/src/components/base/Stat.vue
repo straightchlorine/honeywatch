@@ -52,8 +52,13 @@
 
   .stat-line {
     display: flex;
-    align-items: center;
-    gap: var(--space-2);
+    align-items: baseline;
+    flex-wrap: wrap;
+    /* Wrap the delta below the value when the card is too narrow (Activity packs
+       a long "N sessions" delta on every card); without this the no-shrink delta
+       + big value overflow the 2-col mobile grid and scroll the whole page. */
+    column-gap: var(--space-2);
+    row-gap: 2px;
   }
 
   .stat-value {
@@ -96,5 +101,13 @@
 
   .trend-neutral {
     color: var(--text-muted);
+  }
+
+  @media (max-width: 768px) {
+    /* Smaller hero number on mobile so it shares the narrow 2-col card with the
+       delta without forcing a wrap (e.g. "May 30" peak-day value). */
+    .stat-value {
+      font-size: 30px;
+    }
   }
 </style>

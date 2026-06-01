@@ -236,4 +236,19 @@ const countryRows = computed(() => {
   border-radius: var(--radius-md);
   background: var(--map-ocean);
 }
+
+@media (max-width: 768px) {
+  /* Below md the KPI strip + two lists would squeeze the flexing map below its
+     legible floor, so the SVG + legend overflowed downward onto the lists. Same
+     play as ActivityView: stop hard-fitting -- pin the hero to a fixed height and
+     let the page scroll. 300px (vs the heatmap's 240) because the wide world map
+     needs more vertical room than the 7-row heatmap to stay readable. */
+  .overview {
+    overflow-y: auto;
+  }
+  .map-pane {
+    flex: 0 0 auto;
+    min-height: 300px;
+  }
+}
 </style>

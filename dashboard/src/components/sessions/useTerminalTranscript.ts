@@ -17,10 +17,15 @@ const DEFAULT_USER = 'root'
 const HOST = 'honeypot'
 const MAX_FIELD_BYTES = 8192
 
+// Auth lines surface the captured credential: `pre` + the attacker's password
+// (rendered as a highlighted chip by the view) + `post`. Passwords are the
+// honeypot's core public data (cf. the Overview top-passwords board), so unlike
+// IPs they are shown verbatim, only sanitized. `password === ''` => no password
+// supplied; the view shows an explicit empty marker.
 export type TerminalLine =
   | { id: string; kind: 'banner'; text: string }
-  | { id: string; kind: 'auth-ok'; text: string }
-  | { id: string; kind: 'auth-fail'; text: string }
+  | { id: string; kind: 'auth-ok'; pre: string; password: string; post: string }
+  | { id: string; kind: 'auth-fail'; pre: string; password: string; post: string }
   | { id: string; kind: 'command'; user: string; segments: RedactSegment[] }
   | { id: string; kind: 'download'; text: string }
   | { id: string; kind: 'closed'; text: string }
@@ -86,13 +91,25 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
   for (const e of events) {
     if (e.type === 'auth') {
       const user = clean(e.v.username)
+      const password = clean(e.v.password)
       if (e.v.success) {
-        lines.push({ id: `auth-${e.v.id}`, kind: 'auth-ok', text: `Accepted password for ${user}.` })
+        // "Accepted password ‹pw› for root."
+        lines.push({
+          id: `auth-${e.v.id}`,
+          kind: 'auth-ok',
+          pre: 'Accepted password ',
+          password,
+          post: ` for ${user}.`,
+        })
       } else {
+        // "root@honeypot's password: ‹pw› — Permission denied (password)." The
+        // password sits exactly where the attacker typed it before the denial.
         lines.push({
           id: `auth-${e.v.id}`,
           kind: 'auth-fail',
-          text: `${user}@${HOST}'s password: Permission denied (password).`,
+          pre: `${user}@${HOST}'s password: `,
+          password,
+          post: ' — Permission denied (password).',
         })
       }
     } else if (e.type === 'cmd') {

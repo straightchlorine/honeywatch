@@ -126,7 +126,7 @@ function sessionsDelta(count: number): string | undefined {
       <Card padding="sm">
         <Stat
           :value="bHour.value"
-          label="Busiest hour · UTC"
+          label="Busiest hour"
           trend="neutral"
           :delta="sessionsDelta(bHour.count)"
         />
@@ -235,9 +235,11 @@ function sessionsDelta(count: number): string | undefined {
     grid-template-columns: repeat(2, 1fr);
   }
   .heatmap-pane {
-    /* Keep the heatmap tall enough for 7 legible rows once the page scrolls. */
+    /* Shorter on mobile: now the grid fits the width (no horizontal scroll), tall
+       rows made the 24 cells per row read as thin vertical bars -- a lower pane
+       keeps the cells roughly square. */
     flex: 0 0 auto;
-    min-height: 240px;
+    min-height: 180px;
   }
 }
 </style>

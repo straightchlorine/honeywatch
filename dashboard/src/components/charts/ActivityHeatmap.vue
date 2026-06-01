@@ -158,12 +158,12 @@ function cellTitle(w: number, h: number, n: number): string {
 }
 
 @media (max-width: 768px) {
+  /* Fit the 24 columns to the viewport instead of forcing a 560px horizontal
+     scroll (the scrollbar read as a stray grey bar under the grid, and the page
+     scrolled sideways). Cells are colour blocks, so they stay legible when small;
+     the offscreen list + per-cell titles carry the exact values. */
   .grid {
-    /* Below md the 24 columns can't stay legible at 1fr; let the grid scroll. */
-    min-width: 560px;
-  }
-  .grid-scroll {
-    overflow-x: auto;
+    gap: 1px;
   }
 }
 </style>
