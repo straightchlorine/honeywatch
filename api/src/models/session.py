@@ -11,8 +11,11 @@ from src.extensions import Base
 
 if TYPE_CHECKING:
     from src.models.auth_attempt import AuthAttempt
+    from src.models.client_fingerprint import ClientFingerprint
     from src.models.command import Command
+    from src.models.direct_tcpip import DirectTcpipRequest
     from src.models.download import Download
+    from src.models.ssh_client import SshClient
 
 
 class Session(Base):
@@ -41,6 +44,15 @@ class Session(Base):
         back_populates="session", cascade="all, delete-orphan"
     )
     downloads: Mapped[list[Download]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+    ssh_client: Mapped[SshClient | None] = relationship(
+        back_populates="session", cascade="all, delete-orphan", uselist=False
+    )
+    client_fingerprints: Mapped[list[ClientFingerprint]] = relationship(
+        back_populates="session", cascade="all, delete-orphan"
+    )
+    direct_tcpip_requests: Mapped[list[DirectTcpipRequest]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
 

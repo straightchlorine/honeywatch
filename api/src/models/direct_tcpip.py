@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Integer, String, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.extensions import Base
+
+if TYPE_CHECKING:
+    from src.models.session import Session
 
 
 class DirectTcpipRequest(Base):
@@ -30,6 +34,8 @@ class DirectTcpipRequest(Base):
     timestamp: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    session: Mapped[Session] = relationship(back_populates="direct_tcpip_requests")
 
 
 __all__ = ["DirectTcpipRequest"]

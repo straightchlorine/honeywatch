@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, String, Text, func
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from src.extensions import Base
+
+if TYPE_CHECKING:
+    from src.models.session import Session
 
 
 class SshClient(Base):
@@ -16,6 +20,9 @@ class SshClient(Base):
     per session; the two events arrive separately and each upserts its columns.
     The HASSH is the highest-value signal for clustering bot families that
     otherwise rotate IPs and usernames.
+
+    ``first_seen`` (rather than the sibling tables' ``timestamp``) reflects the
+    upsert semantics: it is stamped once when the first of the two events lands.
     """
 
     __tablename__ = "ssh_clients"
@@ -34,6 +41,8 @@ class SshClient(Base):
     first_seen: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    session: Mapped[Session] = relationship(back_populates="ssh_client", uselist=False)
 
 
 __all__ = ["SshClient"]
