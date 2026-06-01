@@ -26,18 +26,72 @@ def test_list_sessions_no_src_ip_leak(client: Any, seed_data: Any) -> None:
 def test_list_sessions_summary_classification_fields(
     client: Any, seed_data: Any
 ) -> None:
-    """Summaries expose command_count + login_success for client classification."""
+    """Summaries expose command_count + has_successful_login for classification."""
     del seed_data
     response = client.get("/api/v1/sessions/")
     assert response.status_code == 200
     by_id = {s["id"]: s for s in response.get_json()["items"]}
     # sess-001: 2 failed auths, 1 command -> "active", login never succeeded.
     assert by_id["sess-001"]["command_count"] == 1
-    assert by_id["sess-001"]["login_success"] is False
+    assert by_id["sess-001"]["has_successful_login"] is False
     assert by_id["sess-001"]["auth_attempt_count"] == 2
     # sess-002: 1 successful auth, no commands -> "login".
     assert by_id["sess-002"]["command_count"] == 0
-    assert by_id["sess-002"]["login_success"] is True
+    assert by_id["sess-002"]["has_successful_login"] is True
+    # The server-assigned category (single source of truth) is exposed too.
+    assert by_id["sess-001"]["category"] == "active"
+    assert by_id["sess-002"]["category"] == "login"
+
+
+def test_category_field_agrees_with_filter(
+    client: Any, seed_data: Any, db_session: Any
+) -> None:
+    """The serialized `category` must match the SQL `?category=` filter for every
+    class -- guards the two from drifting (they encode the same partition)."""
+    del seed_data
+    from datetime import datetime, timezone
+
+    from src.models.auth_attempt import AuthAttempt
+    from src.models.session import Session as HoneypotSession
+
+    now = datetime.now(timezone.utc)
+    # Seed adds active + login; add a failed and a probe so all four are present.
+    db_session.add(
+        HoneypotSession(
+            id="failsess001",
+            src_ip="203.0.113.9",
+            src_port=1,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.add(
+        HoneypotSession(
+            id="probesess01",
+            src_ip="203.0.113.10",
+            src_port=2,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        AuthAttempt(
+            session_id="failsess001",
+            username="root",
+            password="x",
+            success=False,
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+
+    for cat in ("active", "login", "failed", "probe"):
+        items = client.get(f"/api/v1/sessions/?category={cat}").get_json()["items"]
+        assert items, f"expected at least one {cat} session"
+        assert all(s["category"] == cat for s in items), cat
 
 
 def test_list_sessions_category_active(client: Any, seed_data: Any) -> None:
@@ -129,6 +183,41 @@ def test_list_sessions_sort_country_puts_nulls_last(
     ids = [s["id"] for s in response.get_json()["items"]]
     # US (sess-001) ahead of the geo-less sess-002 (NULL country sorts last).
     assert ids == ["sess-001", "sess-002"]
+
+
+def test_list_sessions_sort_country_alphabetical_two_countries(
+    client: Any, seed_data: Any, db_session: Any
+) -> None:
+    """Two geo-enriched countries exercise the A-Z primary ordering (the seed
+    only has US-vs-NULL, so a reversed sort would still pass without this)."""
+    del seed_data
+    from datetime import datetime, timezone
+
+    from src.models.geo_location import GeoLocation
+    from src.models.session import Session as HoneypotSession
+
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        HoneypotSession(
+            id="ausess00001",
+            src_ip="198.51.100.5",
+            src_port=3,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.add(
+        GeoLocation(ip="198.51.100.5", country_code="AU", country="Australia")
+    )
+    db_session.flush()
+
+    ids = [
+        s["id"]
+        for s in client.get("/api/v1/sessions/?sort=country").get_json()["items"]
+    ]
+    # Australia precedes United States; the geo-less sess-002 (NULL) sorts last.
+    assert ids.index("ausess00001") < ids.index("sess-001") < ids.index("sess-002")
 
 
 def test_list_sessions_sort_active_orders_by_command_count(

@@ -38,7 +38,8 @@ class SessionSummaryDict(TypedDict):
     ended_at: datetime | None
     auth_attempt_count: int
     command_count: int
-    login_success: bool
+    has_successful_login: bool
+    category: str
 
 
 class SessionDetailDict(TypedDict):

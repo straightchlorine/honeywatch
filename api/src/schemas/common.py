@@ -1,6 +1,24 @@
 from __future__ import annotations
 
-from marshmallow import Schema, fields
+from marshmallow import Schema, fields, validate
+
+
+def country_filter_field() -> fields.Str:
+    """Fresh optional alpha-2 country filter field (one instance per schema).
+
+    Marshmallow fields are bound to their owning schema, so each query schema
+    needs its own instance; this factory keeps the regex and metadata defined
+    in exactly one place.
+    """
+    return fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Regexp(r"^[A-Za-z]{2}$"),
+        metadata={
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "example": "CN",
+        },
+    )
 
 
 class BaseSchema(Schema):

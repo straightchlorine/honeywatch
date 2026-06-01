@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from marshmallow import fields, validate
 
-from src.schemas.common import BaseSchema
+from src.schemas.common import BaseSchema, country_filter_field
 from src.services.stats import VALID_BUCKETS
 
 
@@ -144,26 +144,13 @@ class TopNQuery(BaseSchema):
     )
 
 
-def _country_field() -> fields.Str:
-    """Fresh optional alpha-2 country filter field (one instance per schema)."""
-    return fields.Str(
-        load_default=None,
-        allow_none=True,
-        validate=validate.Regexp(r"^[A-Za-z]{2}$"),
-        metadata={
-            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
-            "example": "CN",
-        },
-    )
-
-
 class ActivityQuery(BaseSchema):
     bucket = fields.Str(
         load_default="day",
         validate=validate.OneOf(sorted(VALID_BUCKETS)),
         metadata={"description": "Aggregation bucket width.", "example": "day"},
     )
-    country = _country_field()
+    country = country_filter_field()
 
 
 class TrendQuery(BaseSchema):
@@ -175,8 +162,8 @@ class TrendQuery(BaseSchema):
             "example": 7,
         },
     )
-    country = _country_field()
+    country = country_filter_field()
 
 
 class HeatmapQuery(BaseSchema):
-    country = _country_field()
+    country = country_filter_field()

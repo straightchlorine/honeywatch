@@ -468,6 +468,17 @@
             "example": 5,
             "type": "integer"
           },
+          "category": {
+            "description": "Session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.",
+            "enum": [
+              "active",
+              "login",
+              "failed",
+              "probe"
+            ],
+            "example": "active",
+            "type": "string"
+          },
           "command_count": {
             "description": "Number of shell commands recorded in this session.",
             "example": 3,
@@ -503,15 +514,15 @@
               "null"
             ]
           },
+          "has_successful_login": {
+            "description": "Whether any authentication attempt in the session succeeded.",
+            "example": true,
+            "type": "boolean"
+          },
           "id": {
             "description": "Honeypot session identifier.",
             "example": "abc123",
             "type": "string"
-          },
-          "login_success": {
-            "description": "Whether any authentication attempt in the session succeeded.",
-            "example": true,
-            "type": "boolean"
           },
           "protocol": {
             "description": "Application protocol observed.",
@@ -535,13 +546,14 @@
         },
         "required": [
           "auth_attempt_count",
+          "category",
           "command_count",
           "country",
           "country_code",
           "dst_port",
           "ended_at",
+          "has_successful_login",
           "id",
-          "login_success",
           "protocol",
           "src_port",
           "started_at"
@@ -744,7 +756,7 @@
             }
           },
           {
-            "description": "Filter to a single ISO 3166-1 alpha-2 source country.",
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
             "in": "query",
             "name": "country",
             "required": false,

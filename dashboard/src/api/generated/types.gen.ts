@@ -241,6 +241,10 @@ export type SessionSummaryResponse = {
      */
     auth_attempt_count: number;
     /**
+     * Session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.
+     */
+    category: 'active' | 'login' | 'failed' | 'probe';
+    /**
      * Number of shell commands recorded in this session.
      */
     command_count: number;
@@ -377,7 +381,7 @@ export type ListSessionsData = {
          */
         per_page?: number;
         /**
-         * Filter to a single ISO 3166-1 alpha-2 source country.
+         * Scope to a single ISO 3166-1 alpha-2 source country.
          */
         country?: string | null;
         /**

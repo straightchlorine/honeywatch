@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from marshmallow import fields, validate
 
-from src.schemas.common import BaseSchema, PaginationMeta
+from src.schemas.common import BaseSchema, PaginationMeta, country_filter_field
+from src.services.categories import SESSION_CATEGORIES
 
 
 class AuthAttemptResponse(BaseSchema):
@@ -188,13 +189,26 @@ class SessionSummaryResponse(BaseSchema):
             "example": 3,
         },
     )
-    login_success = fields.Bool(
+    has_successful_login = fields.Bool(
         required=True,
         metadata={
             "description": (
                 "Whether any authentication attempt in the session succeeded."
             ),
             "example": True,
+        },
+    )
+    category = fields.Str(
+        required=True,
+        validate=validate.OneOf(list(SESSION_CATEGORIES)),
+        metadata={
+            "description": (
+                "Session classification (mutually exclusive): 'active' = ran at "
+                "least one command; 'login' = login accepted but no commands; "
+                "'failed' = login attempts made, none accepted; 'probe' = "
+                "connection only, no login attempts."
+            ),
+            "example": "active",
         },
     )
 
@@ -317,19 +331,11 @@ class SessionsListQuery(BaseSchema):
         validate=validate.Range(min=1, max=100),
         metadata={"description": "Number of items per page (max 100).", "example": 20},
     )
-    country = fields.Str(
-        load_default=None,
-        allow_none=True,
-        validate=validate.Regexp(r"^[A-Za-z]{2}$"),
-        metadata={
-            "description": "Filter to a single ISO 3166-1 alpha-2 source country.",
-            "example": "CN",
-        },
-    )
+    country = country_filter_field()
     category = fields.Str(
         load_default=None,
         allow_none=True,
-        validate=validate.OneOf(["active", "login", "failed", "probe"]),
+        validate=validate.OneOf(list(SESSION_CATEGORIES)),
         metadata={
             "description": (
                 "Filter by session classification (mutually exclusive): "

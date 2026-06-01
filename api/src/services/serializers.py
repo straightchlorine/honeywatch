@@ -5,6 +5,7 @@ from src.models.command import Command
 from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
+from src.services.categories import classify_category
 from src.services.types import (
     AuthAttemptDict,
     CommandDict,
@@ -25,7 +26,21 @@ class SessionSerializer:
     """
 
     @staticmethod
-    def summary(s: Session, geo: GeoLocation | None) -> SessionSummaryDict:
+    def summary(
+        s: Session,
+        geo: GeoLocation | None,
+        *,
+        command_count: int,
+        auth_attempt_count: int,
+        login_success: bool,
+    ) -> SessionSummaryDict:
+        """Build a list-row summary from a session plus precomputed counters.
+
+        The per-session counters are aggregated in SQL by the list query (see
+        :func:`src.services.sessions.get_sessions_paginated`) rather than by
+        materializing the ``commands``/``auth_attempts`` collections, so they are
+        passed in instead of read off the ORM relationships.
+        """
         return {
             "id": s.id,
             "src_port": s.src_port,
@@ -35,9 +50,12 @@ class SessionSerializer:
             "country": geo.country if geo else None,
             "started_at": s.started_at,
             "ended_at": s.ended_at,
-            "auth_attempt_count": len(s.auth_attempts),
-            "command_count": len(s.commands),
-            "login_success": any(a.success for a in s.auth_attempts),
+            "auth_attempt_count": auth_attempt_count,
+            "command_count": command_count,
+            "has_successful_login": login_success,
+            "category": classify_category(
+                command_count, login_success, auth_attempt_count
+            ),
         }
 
     @staticmethod

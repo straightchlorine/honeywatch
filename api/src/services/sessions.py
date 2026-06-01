@@ -51,10 +51,28 @@ def get_sessions_paginated(
     )
     auth_exists = exists().where(AuthAttempt.session_id == Session.id)
     commands_exists = exists().where(Command.session_id == Session.id)
+    # Per-row counters aggregated in SQL so we never materialize the commands /
+    # auth_attempts collections just to count them (a brute-force session can
+    # hold thousands of auth rows). Selected as columns and passed to the
+    # serializer; the list query carries no `selectinload`.
     command_count = (
         select(func.count())
         .select_from(Command)
         .where(Command.session_id == Session.id)
+        .correlate(Session)
+        .scalar_subquery()
+    )
+    auth_attempt_count = (
+        select(func.count())
+        .select_from(AuthAttempt)
+        .where(AuthAttempt.session_id == Session.id)
+        .correlate(Session)
+        .scalar_subquery()
+    )
+    login_success = (
+        select(func.coalesce(func.bool_or(AuthAttempt.success), False))
+        .select_from(AuthAttempt)
+        .where(AuthAttempt.session_id == Session.id)
         .correlate(Session)
         .scalar_subquery()
     )
@@ -93,21 +111,29 @@ def get_sessions_paginated(
     else:  # recent
         order_by = [Session.started_at.desc(), Session.id.desc()]
 
-    stmt = (
-        select(Session, GeoLocation)
-        .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
-        .options(
-            selectinload(Session.auth_attempts),
-            selectinload(Session.commands),
-        )
-    )
+    stmt = select(
+        Session,
+        GeoLocation,
+        command_count.label("command_count"),
+        auth_attempt_count.label("auth_attempt_count"),
+        login_success.label("login_success"),
+    ).outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
     for cond in conditions:
         stmt = stmt.where(cond)
     stmt = stmt.order_by(*order_by).offset(offset).limit(per_page)
-    rows = list(db.execute(stmt).all())
+    rows = db.execute(stmt).all()
 
     return {
-        "sessions": [SessionSerializer.summary(s, g) for s, g in rows],
+        "sessions": [
+            SessionSerializer.summary(
+                s,
+                g,
+                command_count=cc,
+                auth_attempt_count=ac,
+                login_success=ls,
+            )
+            for s, g, cc, ac, ls in rows
+        ],
         "total": total,
         "page": page,
         "per_page": per_page,
