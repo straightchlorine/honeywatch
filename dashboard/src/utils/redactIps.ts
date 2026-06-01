@@ -64,11 +64,23 @@ const IPV4_STANDALONE = String.raw`(?<!\d\.)\b${IPV4}\b(?!\.\d)`
 // (`http://0x7f.1/`) integer -- all of which resolve to an IP but slip past the
 // dotted-quad matcher.
 const NUMERIC_HOST = String.raw`(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d{1,10})(?:\.(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d{1,10})){0,3}`
-const URL_NUMERIC_HOST = String.raw`(?<scheme>\bhttps?:\/\/(?:[^/?#\s@]+@)?)(?<host>${NUMERIC_HOST})(?=[/:?#\s]|$)`
+// `(?!:[0-9A-Fa-f]*:)` stops the host rule from swallowing the leading group of an
+// (unbracketed) IPv6 literal like `2001:db8::1.2.3.4`, which the IPv6 rule then
+// matches in full instead of leaving a `db8` fragment behind.
+const URL_NUMERIC_HOST = String.raw`(?<scheme>\bhttps?:\/\/(?:[^/?#\s@]+@)?)(?<host>${NUMERIC_HOST})(?!:[0-9A-Fa-f]*:)(?=[/:?#\s]|$)`
 
-// Order matters: the URL-host rule must win over IPV4 so the scheme is kept and
-// only the host is blotted; IPV6 (incl. embedded-v4) before standalone IPV4.
-const IP_SOURCE = `(?:${URL_NUMERIC_HOST})|(?:${IPV6})|(?:${IPV4_STANDALONE})`
+// Recognize an already-inserted blot token. The API redacts IPs server-side
+// (the authoritative gate), so text usually arrives pre-blotted; matching the
+// token keeps it rendered as a styled blot, and this stays defense-in-depth for
+// any IP the backend somehow missed.
+const BLOT_RE = IP_BLOT.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+
+// Order matters. The blot token first; then IPV6 (incl. embedded-v4 forms) so a
+// full literal is consumed as one match -- otherwise the numeric-host rule below
+// would grab the leading group of an unbracketed `host::a.b.c.d` and leave a hex
+// fragment. Dotted-quad IPV4 next. The numeric-host URL rule is last: it only
+// fires for non-dotted hosts (decimal/hex/octal) that the IP rules can't see.
+const IP_SOURCE = `(?:${BLOT_RE})|(?:${IPV6})|(?:${IPV4_STANDALONE})|(?:${URL_NUMERIC_HOST})`
 
 export function redactIps(text: string, token: string = IP_BLOT): RedactResult {
   const segments: RedactSegment[] = []

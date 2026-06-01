@@ -6,6 +6,7 @@ from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
 from src.services.categories import classify_category
+from src.services.redact import redact_ips
 from src.services.types import (
     AuthAttemptDict,
     CommandDict,
@@ -93,7 +94,9 @@ class CommandSerializer:
     def dump(c: Command) -> CommandDict:
         return {
             "id": c.id,
-            "input": c.input,
+            # Blot any C2 / payload IP the attacker typed (e.g. wget <ip>) before
+            # it leaves the process -- the raw IP never reaches the API response.
+            "input": redact_ips(c.input) or "",
             "success": c.success,
             "timestamp": c.timestamp,
         }
@@ -104,7 +107,8 @@ class DownloadSerializer:
     def dump(d: Download) -> DownloadDict:
         return {
             "id": d.id,
-            "url": d.url,
+            # Blot IP-literal hosts in the captured fetch URL (the common C2 form).
+            "url": redact_ips(d.url),
             "outfile": d.outfile,
             "sha256": d.sha256,
             "timestamp": d.timestamp,
