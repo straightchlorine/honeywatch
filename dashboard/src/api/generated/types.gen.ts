@@ -202,10 +202,6 @@ export type SessionDetailResponse = {
      */
     downloads: Array<DownloadResponse>;
     /**
-     * Destination IP address of the honeypot.
-     */
-    dst_ip: string | null;
-    /**
      * Destination TCP port that received the connection.
      */
     dst_port: number;

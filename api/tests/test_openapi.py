@@ -28,16 +28,19 @@ def test_openapi_endpoint_returns_200(client: Any) -> None:
     assert "components" in spec
 
 
-def test_openapi_no_src_ip_anywhere(client: Any) -> None:
-    """Privacy contract: ``src_ip`` must not leak into the OpenAPI spec.
+def test_openapi_no_ip_addresses_anywhere(client: Any) -> None:
+    """Privacy contract: no IP address field crosses the API.
 
-    Substring check on the serialized spec covers schema field names,
-    example values, descriptions, and path parameter names in one pass.
+    Neither the attacker source (``src_ip``) nor the honeypot destination
+    (``dst_ip``) may leak into the OpenAPI spec. Substring check on the
+    serialized spec covers schema field names, example values, descriptions,
+    and path parameter names in one pass.
     """
     response = client.get(OPENAPI_URL)
     assert response.status_code == 200
     serialized = json.dumps(response.get_json())
     assert "src_ip" not in serialized
+    assert "dst_ip" not in serialized
 
 
 def test_openapi_documents_core_paths(client: Any) -> None:
@@ -62,7 +65,7 @@ def test_openapi_documents_core_paths(client: Any) -> None:
     assert not missing, f"undocumented paths: {sorted(missing)}"
 
 
-def test_openapi_sessions_schema_has_no_src_ip_field(client: Any) -> None:
+def test_openapi_sessions_schema_has_no_ip_field(client: Any) -> None:
     """Explicit schema-level assertion (defense in depth vs substring check)."""
     response = client.get(OPENAPI_URL)
     spec = response.get_json()
@@ -70,6 +73,7 @@ def test_openapi_sessions_schema_has_no_src_ip_field(client: Any) -> None:
     for name, schema in schemas.items():
         props = schema.get("properties", {}) if isinstance(schema, dict) else {}
         assert "src_ip" not in props, f"schema {name!r} declares src_ip"
+        assert "dst_ip" not in props, f"schema {name!r} declares dst_ip"
 
 
 def test_openapi_every_operation_has_operationId(client: Any) -> None:

@@ -214,7 +214,8 @@ class SessionSummaryResponse(BaseSchema):
 
 
 class SessionDetailResponse(BaseSchema):
-    """Detail-endpoint shape. src_ip deliberately omitted (privacy gate)."""
+    """Detail-endpoint shape. src_ip and dst_ip deliberately omitted: no IP
+    address (attacker source nor honeypot destination) crosses the API."""
 
     id = fields.Str(
         required=True,
@@ -225,14 +226,6 @@ class SessionDetailResponse(BaseSchema):
         metadata={
             "description": "Source TCP port of the attacker connection.",
             "example": 51234,
-        },
-    )
-    dst_ip = fields.Str(
-        required=True,
-        allow_none=True,
-        metadata={
-            "description": "Destination IP address of the honeypot.",
-            "example": "10.0.0.5",
         },
     )
     dst_port = fields.Int(

@@ -63,7 +63,6 @@ class SessionSerializer:
         return {
             "id": s.id,
             "src_port": s.src_port,
-            "dst_ip": s.dst_ip,
             "dst_port": s.dst_port,
             "protocol": s.protocol,
             "country_code": geo.country_code if geo else None,

@@ -64,7 +64,6 @@ async function mockApi(page: Page): Promise<void> {
       return json({
         id: sessionMatch[1],
         src_port: 45214,
-        dst_ip: '172.23.0.2',
         dst_port: 2222,
         protocol: 'ssh',
         sensor: 'edge-01',

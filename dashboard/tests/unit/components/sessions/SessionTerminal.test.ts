@@ -8,7 +8,6 @@ function session(over: Partial<SessionDetailResponse> = {}): SessionDetailRespon
   return {
     id: 's1',
     src_port: 1,
-    dst_ip: '172.23.0.2',
     dst_port: 2222,
     protocol: 'ssh',
     sensor: 'edge-01',

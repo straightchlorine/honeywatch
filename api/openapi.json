@@ -388,14 +388,6 @@
             },
             "type": "array"
           },
-          "dst_ip": {
-            "description": "Destination IP address of the honeypot.",
-            "example": "10.0.0.5",
-            "type": [
-              "string",
-              "null"
-            ]
-          },
           "dst_port": {
             "description": "Destination TCP port that received the connection.",
             "example": 22,
@@ -449,7 +441,6 @@
           "country",
           "country_code",
           "downloads",
-          "dst_ip",
           "dst_port",
           "ended_at",
           "id",

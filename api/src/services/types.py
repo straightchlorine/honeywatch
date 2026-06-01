@@ -45,7 +45,6 @@ class SessionSummaryDict(TypedDict):
 class SessionDetailDict(TypedDict):
     id: str
     src_port: int
-    dst_ip: str | None
     dst_port: int
     protocol: str
     country_code: str | None

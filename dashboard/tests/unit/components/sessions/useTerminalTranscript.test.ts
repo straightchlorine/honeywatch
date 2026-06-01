@@ -7,7 +7,6 @@ function makeSession(over: Partial<SessionDetailResponse> = {}): SessionDetailRe
   return {
     id: 'sess-1',
     src_port: 45214,
-    dst_ip: '172.23.0.2',
     dst_port: 2222,
     protocol: 'ssh',
     sensor: 'edge-01',
