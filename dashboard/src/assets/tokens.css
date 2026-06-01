@@ -84,6 +84,10 @@
     --bp-md: 768px;
     --bp-lg: 1024px;
     --bp-xl: 1280px;
+
+    /* Min height for interactive controls (buttons, dropdown, options). Bumped
+       to a 44px touch target on coarse pointers below (WCAG 2.5.5). */
+    --control-h: 32px;
   }
 }
 
@@ -135,5 +139,12 @@
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* Touch devices get 44px-tall controls regardless of viewport width. */
+@media (pointer: coarse) {
+  :root {
+    --control-h: 44px;
   }
 }

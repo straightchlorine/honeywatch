@@ -29,23 +29,43 @@ const title = computed(() => {
 })
 
 const copied = ref(false)
+const termBody = ref<HTMLElement | null>(null)
 const canCopy = typeof navigator !== 'undefined' && !!navigator.clipboard
 
-async function copyTranscript(): Promise<void> {
-  const text = lines.value
+function transcriptText(): string {
+  return lines.value
     .map((l) =>
       l.kind === 'command'
         ? `${l.user}@honeypot:~$ ${l.segments.map((s) => s.text).join('')}`
         : `# ${l.text}`,
     )
     .join('\n')
+}
+
+async function copyTranscript(): Promise<void> {
+  // Without the async clipboard API (insecure context / older browser), degrade
+  // to selecting the transcript so the user can still copy with Ctrl/Cmd+C.
+  if (!canCopy) {
+    selectTranscript()
+    return
+  }
   try {
-    await navigator.clipboard.writeText(text)
+    await navigator.clipboard.writeText(transcriptText())
     copied.value = true
     window.setTimeout(() => (copied.value = false), 2000)
   } catch {
-    /* clipboard unavailable / denied -- leave the button idle */
+    selectTranscript()
   }
+}
+
+function selectTranscript(): void {
+  const el = termBody.value
+  const sel = typeof window !== 'undefined' ? window.getSelection() : null
+  if (!el || !sel) return
+  const range = document.createRange()
+  range.selectNodeContents(el)
+  sel.removeAllRanges()
+  sel.addRange(range)
 }
 
 function fmtUtc(iso: string | null): string {
@@ -63,22 +83,31 @@ function fmtUtc(iso: string | null): string {
     <header class="term-bar">
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
-      <button v-if="canCopy" type="button" class="copy-btn" @click="copyTranscript">
-        {{ copied ? 'Copied' : 'Copy transcript' }}
+      <button type="button" class="copy-btn" @click="copyTranscript">
+        {{ copied ? 'Copied' : canCopy ? 'Copy transcript' : 'Select transcript' }}
       </button>
       <span class="visually-hidden" role="status" aria-live="polite">{{
         copied ? 'Transcript copied to clipboard' : ''
       }}</span>
     </header>
 
-    <div class="term-body" tabindex="0">
+    <div
+      ref="termBody"
+      class="term-body"
+      tabindex="0"
+      role="group"
+      :aria-label="`Session transcript, ${lines.length} lines`"
+    >
       <TerminalLine v-for="line in lines" :key="line.id" :line="line" />
     </div>
 
-    <p class="term-note">
-      Honeywatch reconstructs this session from captured events. Lines marked ‹…› are annotations,
-      not attacker output. IP addresses are redacted; no command output was recorded.
-    </p>
+    <details class="term-note">
+      <summary>About this replay</summary>
+      <p class="note-body">
+        Honeywatch reconstructs this session from captured events. Lines marked ‹…› are annotations,
+        not attacker output. IP addresses are redacted; no command output was recorded.
+      </p>
+    </details>
   </section>
 </template>
 
@@ -142,6 +171,7 @@ function fmtUtc(iso: string | null): string {
 
 .copy-btn {
   flex: 0 0 auto;
+  min-height: var(--control-h);
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -180,12 +210,39 @@ function fmtUtc(iso: string | null): string {
 
 .term-note {
   flex: 0 0 auto;
-  margin: 0;
-  padding: var(--space-2) var(--space-3);
   font-size: var(--type-xs);
   line-height: var(--type-xs-lh);
   color: var(--text-muted);
   background: var(--bg-1);
   border-top: 1px solid var(--border);
+}
+
+.term-note > summary {
+  padding: var(--space-2) var(--space-3);
+  cursor: pointer;
+  list-style: none;
+  color: var(--text-dim);
+}
+
+.term-note > summary::-webkit-details-marker {
+  display: none;
+}
+
+.term-note .note-body {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+}
+
+/* Desktop: the disclaimer is short enough to always show -- hide the toggle and
+   force the body open regardless of the details state. On mobile it stays a
+   real <details> (collapsed by default) so it does not eat the terminal hero. */
+@media (min-width: 769px) {
+  .term-note > summary {
+    display: none;
+  }
+  .term-note .note-body {
+    display: block;
+    padding-top: var(--space-2);
+  }
 }
 </style>

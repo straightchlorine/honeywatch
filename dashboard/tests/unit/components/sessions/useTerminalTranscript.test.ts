@@ -74,8 +74,20 @@ describe('buildTranscript', () => {
     const lines = buildTranscript(
       makeSession({
         auth_attempts: [
-          { id: 1, username: 'root', password: 'x', success: false, timestamp: '2026-05-31T13:41:00+00:00' },
-          { id: 2, username: 'admin', password: 'admin', success: true, timestamp: '2026-05-31T13:41:01+00:00' },
+          {
+            id: 1,
+            username: 'root',
+            password: 'x',
+            success: false,
+            timestamp: '2026-05-31T13:41:00+00:00',
+          },
+          {
+            id: 2,
+            username: 'admin',
+            password: 'admin',
+            success: true,
+            timestamp: '2026-05-31T13:41:01+00:00',
+          },
         ],
         commands: [{ id: 5, input: 'id', success: true, timestamp: '2026-05-31T13:41:02+00:00' }],
       }),
@@ -88,7 +100,13 @@ describe('buildTranscript', () => {
     const lines = buildTranscript(
       makeSession({
         auth_attempts: [
-          { id: 1, username: 'pi', password: 'x', success: false, timestamp: '2026-05-31T13:41:00+00:00' },
+          {
+            id: 1,
+            username: 'pi',
+            password: 'x',
+            success: false,
+            timestamp: '2026-05-31T13:41:00+00:00',
+          },
         ],
         commands: [{ id: 5, input: 'id', success: true, timestamp: '2026-05-31T13:41:02+00:00' }],
       }),
@@ -139,6 +157,20 @@ describe('buildTranscript', () => {
     const cmd = lines.find((l) => l.kind === 'command')!
     expect(cmdText(cmd)).toContain('\\x07')
     expect(cmdText(cmd)).not.toContain(bell)
+  })
+
+  it('sorts null-timestamp events last in capture order', () => {
+    const lines = buildTranscript(
+      makeSession({
+        commands: [
+          { id: 1, input: 'first', success: true, timestamp: '2026-05-31T13:41:00+00:00' },
+          { id: 2, input: 'no-ts-a', success: true, timestamp: null },
+          { id: 3, input: 'no-ts-b', success: true, timestamp: null },
+        ],
+      }),
+    )
+    const cmds = lines.filter((l) => l.kind === 'command')
+    expect(cmds.map((c) => cmdText(c))).toEqual(['first', 'no-ts-a', 'no-ts-b'])
   })
 
   it('renders a placeholder for downloads with no URL', () => {

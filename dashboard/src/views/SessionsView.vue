@@ -9,7 +9,7 @@ import EmptyState from '@/components/base/EmptyState.vue'
 import Dropdown from '@/components/base/Dropdown.vue'
 import { fmtRelativeTime } from '@/utils/format'
 import { humanizeDuration } from '@/utils/duration'
-import { classifySession } from '@/utils/sessionClass'
+import { sessionClass } from '@/utils/sessionClass'
 
 type Opt = { value: string; label: string }
 
@@ -75,13 +75,19 @@ const countryOptions = computed<Opt[]>(() => [
   { value: '', label: 'All countries' },
   ...(countriesQ.data.value ?? [])
     .filter((c) => c.country_code && /^[A-Za-z]{2}$/.test(c.country_code))
-    .map((c) => ({ value: c.country_code as string, label: (c.country ?? c.country_code) as string })),
+    .map((c) => ({
+      value: c.country_code as string,
+      label: (c.country ?? c.country_code) as string,
+    })),
 ])
 
 const rows = computed(() =>
-  (sessionsQ.data.value?.items ?? []).map((s) => ({ ...s, cls: classifySession(s) })),
+  (sessionsQ.data.value?.items ?? []).map((s) => ({ ...s, cls: sessionClass(s) })),
 )
 const meta = computed(() => sessionsQ.data.value!.meta)
+// keepPreviousData holds the prior page if a filter/page change fails to load;
+// surface that rather than showing stale rows as if they were current.
+const isStale = computed(() => sessionsQ.isError.value)
 
 // Merge one filter into the URL and reset to page 1 (the result set changed).
 function setParam(key: string, value: string | boolean): void {
@@ -111,6 +117,8 @@ function shortId(id: string): string {
 <template>
   <div class="sessions">
     <PageHeader title="Sessions" sub="Recent honeypot sessions. Open one to replay the terminal." />
+
+    <p v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</p>
 
     <div class="filters" role="group" aria-label="Session filters">
       <div class="field">
@@ -166,13 +174,14 @@ function shortId(id: string): string {
         <tbody>
           <tr v-for="row in rows" :key="row.id" v-memo="[row.id, row.cls.kind, row.ended_at]">
             <td class="id">
-              <RouterLink :to="{ name: 'session-detail', params: { id: row.id } }">
+              <RouterLink :to="{ name: 'session-detail', params: { id: row.id } }" :title="row.id">
                 {{ shortId(row.id) }}
               </RouterLink>
             </td>
             <td>
               <span class="badge" :class="`badge-${row.cls.kind}`" :title="row.cls.title">
-                {{ row.cls.label }}
+                <span class="badge-glyph" aria-hidden="true">{{ row.cls.glyph }}</span>
+                <span class="badge-label">{{ row.cls.label }}</span>
               </span>
             </td>
             <td>{{ row.country ?? row.country_code ?? '—' }}</td>
@@ -188,6 +197,53 @@ function shortId(id: string): string {
           </tr>
         </tbody>
       </table>
+
+      <!-- Mobile layout: the 7-column table side-scrolls unusably on phones, so
+           below --bp-md it is hidden and each session renders as a card. -->
+      <ul class="session-cards" aria-label="Honeypot sessions">
+        <li v-for="row in rows" :key="row.id" class="session-card">
+          <div class="card-head">
+            <RouterLink
+              class="card-id"
+              :to="{ name: 'session-detail', params: { id: row.id } }"
+              :title="row.id"
+            >
+              {{ shortId(row.id) }}
+            </RouterLink>
+            <span class="badge" :class="`badge-${row.cls.kind}`" :title="row.cls.title">
+              <span class="badge-glyph" aria-hidden="true">{{ row.cls.glyph }}</span>
+              <span class="badge-label">{{ row.cls.label }}</span>
+            </span>
+          </div>
+          <dl class="card-facts">
+            <div class="fact">
+              <dt>Country</dt>
+              <dd>{{ row.country ?? row.country_code ?? '—' }}</dd>
+            </div>
+            <div class="fact">
+              <dt>Protocol</dt>
+              <dd>{{ row.protocol }}</dd>
+            </div>
+            <div class="fact">
+              <dt>Started</dt>
+              <dd>
+                <time v-if="row.started_at" :datetime="row.started_at" :title="row.started_at">
+                  {{ fmtRelativeTime(row.started_at) }}
+                </time>
+                <template v-else>—</template>
+              </dd>
+            </div>
+            <div class="fact">
+              <dt>Duration</dt>
+              <dd>{{ humanizeDuration(row.started_at, row.ended_at) }}</dd>
+            </div>
+            <div class="fact">
+              <dt>Auth attempts</dt>
+              <dd>{{ row.auth_attempt_count }}</dd>
+            </div>
+          </dl>
+        </li>
+      </ul>
 
       <EmptyState
         v-if="!rows.length"
@@ -215,9 +271,21 @@ function shortId(id: string): string {
   display: flex;
   flex-direction: column;
   gap: var(--space-4);
+  /* The table is the flexing hero with its own scroll, so the page fits the
+     viewport with no outer scroll (header + filters + pagination stay fixed). */
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.stale {
+  flex: 0 0 auto;
+  margin: 0;
+  font-size: var(--type-xs);
+  color: var(--warning);
 }
 
 .filters {
+  flex: 0 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: end;
@@ -244,7 +312,9 @@ function shortId(id: string): string {
 }
 
 .table-wrap {
-  overflow-x: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
 }
 
 .sessions-table {
@@ -261,10 +331,69 @@ function shortId(id: string): string {
 }
 
 .sessions-table th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--bg-1);
   color: var(--text-muted);
   font-weight: 600;
   font-size: var(--type-xs);
   letter-spacing: 0.02em;
+}
+
+/* Card layout is desktop-hidden; the table is the default presentation. */
+.session-cards {
+  display: none;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.session-card {
+  padding: var(--space-3);
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-2);
+}
+
+.card-id {
+  font-family: var(--font-mono);
+  font-size: var(--type-sm);
+}
+
+.card-facts {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: var(--space-1) var(--space-3);
+  margin: 0;
+}
+
+.card-facts .fact {
+  display: flex;
+  flex-direction: column;
+}
+
+.card-facts dt {
+  font-size: var(--type-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.card-facts dd {
+  margin: 0;
+  font-size: var(--type-sm);
+  color: var(--text);
 }
 
 .sessions-table td.num,
@@ -278,7 +407,9 @@ function shortId(id: string): string {
 }
 
 .badge {
-  display: inline-block;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
   padding: 1px var(--space-2);
   border-radius: var(--radius-sm);
   border: 1px solid currentcolor;
@@ -287,6 +418,12 @@ function shortId(id: string): string {
   font-weight: 600;
   letter-spacing: 0.02em;
   white-space: nowrap;
+}
+
+/* Non-color cue so the class is distinguishable in grayscale (WCAG 1.4.1). */
+.badge-glyph {
+  font-family: var(--font-mono);
+  font-weight: 700;
 }
 
 .badge-active {
@@ -300,5 +437,14 @@ function shortId(id: string): string {
 }
 .badge-probe {
   color: var(--text-dim);
+}
+
+@media (max-width: 768px) {
+  .sessions-table {
+    display: none;
+  }
+  .session-cards {
+    display: flex;
+  }
 }
 </style>

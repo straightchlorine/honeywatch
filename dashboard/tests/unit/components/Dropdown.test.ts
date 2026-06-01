@@ -60,4 +60,15 @@ describe('Dropdown', () => {
     await w.find('[role=listbox]').trigger('keydown', { key: 'Escape' })
     expect(w.find('[role=listbox]').exists()).toBe(false)
   })
+
+  it('type-ahead jumps the active option to the first label match', async () => {
+    const w = mountDd()
+    await w.find('.dd-button').trigger('click')
+    const list = w.find('[role=listbox]')
+    // "p" -> "Probe" (index 2) becomes the active descendant.
+    await list.trigger('keydown', { key: 'p' })
+    expect(list.attributes('aria-activedescendant')).toBe('f-opt-2')
+    await list.trigger('keydown', { key: 'Enter' })
+    expect(w.emitted('update:modelValue')?.[0]).toEqual(['b'])
+  })
 })

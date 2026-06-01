@@ -26,13 +26,19 @@ export interface RedactResult {
 
 export const IP_BLOT = '‹ip›'
 
-// IPv4: four dot-separated octets 0-255, on word boundaries.
+// IPv4: four dot-separated octets 0-255.
 const IPV4 = String.raw`(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)`
 
-// IPv6: the canonical 9-branch matcher. Every branch is either 8 full groups or
-// contains a `::` run, so decimal clock strings like "13:41:49" (3 groups, no
-// `::`) can never match -- avoiding the classic false positive.
+// IPv6: the canonical matcher. Every branch is either 8 full groups or contains
+// a `::` run, so decimal clock strings like "13:41:49" (3 groups, no `::`) can
+// never match -- avoiding the classic false positive. The first three branches
+// cover the legacy IPv4-in-IPv6 forms (e.g. `2001:db8::1.2.3.4`, `::ffff:1.2.3.4`)
+// so the trailing dotted-quad is consumed as part of the literal, not left in
+// cleartext after the v6 prefix is blotted.
 const IPV6_CORE = [
+  String.raw`(?:[0-9A-Fa-f]{1,4}:){6}${IPV4}`,
+  String.raw`(?:[0-9A-Fa-f]{1,4}:){1,4}:${IPV4}`,
+  String.raw`::(?:[0-9A-Fa-f]{1,4}:){0,5}${IPV4}`,
   String.raw`(?:[0-9A-Fa-f]{1,4}:){7}[0-9A-Fa-f]{1,4}`,
   String.raw`(?:[0-9A-Fa-f]{1,4}:){1,7}:`,
   String.raw`(?:[0-9A-Fa-f]{1,4}:){1,6}:[0-9A-Fa-f]{1,4}`,
@@ -47,7 +53,22 @@ const IPV6_CORE = [
 // IPv6 must be bounded by a non hex/colon char so we never grab a partial token.
 const IPV6 = String.raw`(?<![0-9A-Fa-f:])(?:${IPV6_CORE})(?:%[0-9A-Za-z]+)?(?![0-9A-Fa-f:])`
 
-const IP_SOURCE = `(?:${IPV6})|(?:\\b${IPV4}\\b)`
+// Standalone dotted-quad IPv4. The lookbehind/lookahead reject a 5th adjacent
+// octet so version strings like `lib.so.1.2.3.4.5` are not partially blotted,
+// while a real IP at a sentence end (`from 1.2.3.4.`) still matches.
+const IPV4_STANDALONE = String.raw`(?<!\d\.)\b${IPV4}\b(?!\.\d)`
+
+// Alternate-encoding hosts only carry meaning right after a URL scheme, so we
+// anchor on `scheme://[userinfo@]` and blot the host when it is a bare decimal
+// (`http://2130706433/`), hex (`http://0x7f000001/`), octal, or dotted-hex/octal
+// (`http://0x7f.1/`) integer -- all of which resolve to an IP but slip past the
+// dotted-quad matcher.
+const NUMERIC_HOST = String.raw`(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d{1,10})(?:\.(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d{1,10})){0,3}`
+const URL_NUMERIC_HOST = String.raw`(?<scheme>\bhttps?:\/\/(?:[^/?#\s@]+@)?)(?<host>${NUMERIC_HOST})(?=[/:?#\s]|$)`
+
+// Order matters: the URL-host rule must win over IPV4 so the scheme is kept and
+// only the host is blotted; IPV6 (incl. embedded-v4) before standalone IPV4.
+const IP_SOURCE = `(?:${URL_NUMERIC_HOST})|(?:${IPV6})|(?:${IPV4_STANDALONE})`
 
 export function redactIps(text: string, token: string = IP_BLOT): RedactResult {
   const segments: RedactSegment[] = []
@@ -62,10 +83,21 @@ export function redactIps(text: string, token: string = IP_BLOT): RedactResult {
       re.lastIndex++
       continue
     }
-    if (m.index > last) segments.push({ text: text.slice(last, m.index), redacted: false })
-    segments.push({ text: token, redacted: true })
-    count++
-    last = m.index + m[0].length
+    const scheme = m.groups?.scheme
+    const host = m.groups?.host
+    if (scheme !== undefined && host !== undefined) {
+      // URL with a numeric host: keep `scheme://[user@]`, blot only the host.
+      const blotStart = m.index + scheme.length
+      if (blotStart > last) segments.push({ text: text.slice(last, blotStart), redacted: false })
+      segments.push({ text: token, redacted: true })
+      count++
+      last = blotStart + host.length
+    } else {
+      if (m.index > last) segments.push({ text: text.slice(last, m.index), redacted: false })
+      segments.push({ text: token, redacted: true })
+      count++
+      last = m.index + m[0].length
+    }
   }
   if (last < text.length) segments.push({ text: text.slice(last), redacted: false })
 

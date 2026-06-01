@@ -32,9 +32,8 @@ function next() {
       Prev
     </button>
     <span class="page-info" role="status">
-      Page {{ page }} of {{ pages }}<template v-if="total !== undefined">
-        ({{ total }} total)</template
-      >
+      Page {{ page }} of {{ pages
+      }}<template v-if="total !== undefined"> ({{ total }} total)</template>
     </span>
     <button
       type="button"
@@ -57,6 +56,7 @@ function next() {
 }
 
 .page-btn {
+  min-height: var(--control-h);
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);

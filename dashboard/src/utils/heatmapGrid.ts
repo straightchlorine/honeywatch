@@ -14,9 +14,9 @@ export interface HeatmapGrid {
  * Densify the sparse `/stats/heatmap` response into a full 7x24 matrix.
  *
  * `weekday` follows Postgres `date_part('dow', ...)` = 0=Sunday .. 6=Saturday
- * (see api/src/services/stats.py). NOTE: the generated type's "0=Monday" doc
- * comment is stale/wrong -- trust 0=Sunday. Missing (weekday, hour) cells
- * default to 0; out-of-range points are ignored rather than throwing.
+ * (see api/src/services/stats.py and the generated type's matching doc). Missing
+ * (weekday, hour) cells default to 0; out-of-range points are ignored rather
+ * than throwing.
  */
 export function buildHeatmapGrid(points: HeatmapPointResponse[]): HeatmapGrid {
   const grid: number[][] = Array.from({ length: 7 }, () => new Array<number>(24).fill(0))

@@ -4,7 +4,7 @@
  * module owns the map-specific numeric-id Map lookup and the no-data land color
  * so country fills never read as "zero".
  */
-import { HEAT_FLOOR, rampColor } from '@/components/charts/useHeatScale'
+import { useHeatScale } from '@/components/charts/useHeatScale'
 
 export interface Choropleth {
   /** Fill for a country by numeric ISO id; no/zero data -> the land color. */
@@ -18,19 +18,12 @@ export interface Choropleth {
 const LAND = 'var(--map-land)'
 
 export function useChoropleth(counts: Map<string, number>): Choropleth {
-  let max = 0
-  for (const value of counts.values()) if (value > max) max = value
-  const denom = max > 0 ? Math.sqrt(max) : 1
-
-  function fill(numericId: string): string {
-    const count = counts.get(numericId) ?? 0
-    if (count <= 0) return LAND
-    const t = HEAT_FLOOR + (1 - HEAT_FLOOR) * (Math.sqrt(count) / denom)
-    return rampColor(t)
+  // The sqrt ramp + floor + legend stops are owned by useHeatScale; this module
+  // only adds the map-specific numeric-id lookup and the `--map-land` zero color.
+  const scale = useHeatScale(counts.values(), { zeroColor: LAND })
+  return {
+    fill: (numericId) => scale.fill(counts.get(numericId) ?? 0),
+    max: scale.max,
+    rampStops: scale.rampStops,
   }
-
-  const rampStops =
-    max > 0 ? Array.from({ length: 9 }, (_, i) => rampColor(HEAT_FLOOR + (1 - HEAT_FLOOR) * (i / 8))) : []
-
-  return { fill, max, rampStops }
 }

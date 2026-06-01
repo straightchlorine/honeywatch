@@ -265,13 +265,13 @@ export type SessionSummaryResponse = {
      */
     ended_at: string | null;
     /**
+     * Whether any authentication attempt in the session succeeded.
+     */
+    has_successful_login: boolean;
+    /**
      * Honeypot session identifier.
      */
     id: string;
-    /**
-     * Whether any authentication attempt in the session succeeded.
-     */
-    login_success: boolean;
     /**
      * Application protocol observed.
      */

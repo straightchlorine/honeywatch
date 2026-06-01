@@ -29,11 +29,26 @@ const selectedLabel = computed(() => props.options[selectedIndex.value]?.label ?
 const listId = computed(() => `${props.buttonId}-list`)
 const optionId = (i: number) => `${props.buttonId}-opt-${i}`
 
+// Type-ahead buffer: printable keys jump to the first matching option, so a long
+// list (e.g. ~100 countries) is reachable without dozens of arrow presses.
+let typeBuffer = ''
+let typeTimer: ReturnType<typeof setTimeout> | undefined
+
+// The active option is tracked via aria-activedescendant, not DOM focus, so the
+// scroll container won't follow it automatically -- keep it in view manually.
+function scrollActiveIntoView(): void {
+  void nextTick(() => {
+    // Optional call: jsdom (unit tests) does not implement scrollIntoView.
+    document.getElementById(optionId(activeIndex.value))?.scrollIntoView?.({ block: 'nearest' })
+  })
+}
+
 async function openList(): Promise<void> {
   open.value = true
   activeIndex.value = selectedIndex.value
   await nextTick()
   listRef.value?.focus()
+  scrollActiveIntoView()
 }
 
 function close(focusButton = true): void {
@@ -62,18 +77,22 @@ function onListKeydown(e: KeyboardEvent): void {
     case 'ArrowDown':
       e.preventDefault()
       activeIndex.value = Math.min(activeIndex.value + 1, last)
+      scrollActiveIntoView()
       break
     case 'ArrowUp':
       e.preventDefault()
       activeIndex.value = Math.max(activeIndex.value - 1, 0)
+      scrollActiveIntoView()
       break
     case 'Home':
       e.preventDefault()
       activeIndex.value = 0
+      scrollActiveIntoView()
       break
     case 'End':
       e.preventDefault()
       activeIndex.value = last
+      scrollActiveIntoView()
       break
     case 'Enter':
     case ' ':
@@ -87,6 +106,18 @@ function onListKeydown(e: KeyboardEvent): void {
     case 'Tab':
       close(false)
       break
+    default:
+      // Printable single character -> type-ahead jump.
+      if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
+        typeBuffer += e.key.toLowerCase()
+        if (typeTimer) clearTimeout(typeTimer)
+        typeTimer = setTimeout(() => (typeBuffer = ''), 500)
+        const match = props.options.findIndex((o) => o.label.toLowerCase().startsWith(typeBuffer))
+        if (match >= 0) {
+          activeIndex.value = match
+          scrollActiveIntoView()
+        }
+      }
   }
 }
 
@@ -179,6 +210,7 @@ function onFocusout(e: FocusEvent): void {
      short values aligned, no ellipsis truncation on the trigger. */
   min-width: 160px;
   width: auto;
+  min-height: var(--control-h);
   background: var(--surface);
   color: var(--text);
   border: 1px solid var(--border);
@@ -245,6 +277,7 @@ function onFocusout(e: FocusEvent): void {
   display: flex;
   align-items: center;
   gap: var(--space-2);
+  min-height: var(--control-h);
   padding: var(--space-2) var(--space-3);
   border-radius: var(--radius-sm);
   font-size: var(--type-sm);

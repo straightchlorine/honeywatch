@@ -6,6 +6,7 @@ import { buildHeatmapGrid, WEEKDAY_LABELS } from '@/utils/heatmapGrid'
 import { busiestHour, busiestWeekday } from '@/utils/activityKpis'
 import { useHeatScale } from './useHeatScale'
 import WorldMapLegend from '@/components/map/WorldMapLegend.vue'
+import EmptyState from '@/components/base/EmptyState.vue'
 
 const props = defineProps<{ points: HeatmapPointResponse[] }>()
 
@@ -13,7 +14,13 @@ const HOURS = Array.from({ length: 24 }, (_, h) => h)
 const HOUR_LABEL_AT = new Set([0, 6, 12, 18])
 
 const built = computed(() => buildHeatmapGrid(props.points))
-const scale = computed(() => useHeatScale(props.points.map((p) => p.count), { zeroColor: 'var(--bg-2)' }))
+const scale = computed(() =>
+  useHeatScale(
+    props.points.map((p) => p.count),
+    { zeroColor: 'var(--bg-2)' },
+  ),
+)
+const isEmpty = computed(() => scale.value.max === 0)
 
 const ariaLabel = computed(() => {
   const bh = busiestHour(props.points)
@@ -50,30 +57,42 @@ function cellTitle(w: number, h: number, n: number): string {
 
 <template>
   <figure class="heatmap" role="img" :aria-label="ariaLabel">
-    <div class="grid" aria-hidden="true">
-      <span class="corner" />
-      <span v-for="h in HOURS" :key="`h-${h}`" class="hour-label">
-        {{ HOUR_LABEL_AT.has(h) ? String(h).padStart(2, '0') : '' }}
-      </span>
-
-      <template v-for="(row, w) in built.grid" :key="`w-${w}`">
-        <span class="day-label">{{ WEEKDAY_LABELS[w] }}</span>
-        <span
-          v-for="(n, h) in row"
-          :key="`c-${w}-${h}`"
-          class="cell"
-          :style="{ background: scale.fill(n) }"
-          :title="cellTitle(w, h, n)"
-        />
-      </template>
-    </div>
-
-    <WorldMapLegend
-      :max="scale.max"
-      :ramp="scale.rampStops"
-      zero-color="var(--bg-2)"
-      zero-label="no sessions"
+    <EmptyState
+      v-if="isEmpty"
+      class="heat-empty"
+      title="No sessions yet"
+      hint="The heatmap fills in as the honeypot records activity."
     />
+    <template v-else>
+      <!-- Only the grid scrolls horizontally on mobile; the legend below must
+           stay put, so it lives outside this scroll container. -->
+      <div class="grid-scroll">
+        <div class="grid" aria-hidden="true">
+          <span class="corner" />
+          <span v-for="h in HOURS" :key="`h-${h}`" class="hour-label">
+            {{ HOUR_LABEL_AT.has(h) ? String(h).padStart(2, '0') : '' }}
+          </span>
+
+          <template v-for="(row, w) in built.grid" :key="`w-${w}`">
+            <span class="day-label">{{ WEEKDAY_LABELS[w] }}</span>
+            <span
+              v-for="(n, h) in row"
+              :key="`c-${w}-${h}`"
+              class="cell"
+              :style="{ background: scale.fill(n) }"
+              :title="cellTitle(w, h, n)"
+            />
+          </template>
+        </div>
+      </div>
+
+      <WorldMapLegend
+        :max="scale.max"
+        :ramp="scale.rampStops"
+        zero-color="var(--bg-2)"
+        zero-label="no sessions"
+      />
+    </template>
 
     <ul class="visually-hidden">
       <li v-for="c in populated" :key="c.key">{{ c.text }}</li>
@@ -88,6 +107,18 @@ function cellTitle(w: number, h: number, n: number): string {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
+}
+
+.grid-scroll {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.heat-empty {
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .grid {
@@ -131,7 +162,7 @@ function cellTitle(w: number, h: number, n: number): string {
     /* Below md the 24 columns can't stay legible at 1fr; let the grid scroll. */
     min-width: 560px;
   }
-  .heatmap {
+  .grid-scroll {
     overflow-x: auto;
   }
 }

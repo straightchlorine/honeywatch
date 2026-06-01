@@ -18,7 +18,11 @@ import { busiestHour, busiestWeekday, peakDay } from '@/utils/activityKpis'
 
 type Opt = { value: string; label: string }
 
+// The daily activity + 7-day trend visibly move minute to minute; the all-time
+// weekday x hour heatmap barely changes, so it polls far less often (and skips
+// re-running the heaviest all-time aggregate on the fast loop).
 const POLL_MS = 10_000
+const POLL_SLOW_MS = 60_000
 
 const route = useRoute()
 const router = useRouter()
@@ -36,7 +40,8 @@ const countryQuery = computed(() => (country.value ? { country: country.value } 
 const heatmapQ = useQuery(
   computed(() => ({
     ...statsHeatmapOptions({ query: countryQuery.value }),
-    refetchInterval: POLL_MS,
+    refetchInterval: POLL_SLOW_MS,
+    staleTime: POLL_SLOW_MS,
     placeholderData: keepPreviousData,
   })),
 )
@@ -81,8 +86,16 @@ const countryOptions = computed<Opt[]>(() => [
   { value: '', label: 'the world' },
   ...(countriesQ.data.value ?? [])
     .filter((c) => c.country_code && /^[A-Za-z]{2}$/.test(c.country_code))
-    .map((c) => ({ value: c.country_code as string, label: (c.country ?? c.country_code) as string })),
+    .map((c) => ({
+      value: c.country_code as string,
+      label: (c.country ?? c.country_code) as string,
+    })),
 ])
+
+// After the first successful load, keepPreviousData holds the last good data on
+// screen even if a background poll fails; surface that so the numbers are not
+// silently stale (the queries keep retrying on their interval).
+const isStale = computed(() => heatmapQ.isError.value || dayQ.isError.value || trendQ.isError.value)
 
 function setCountry(value: string): void {
   void router.push({ query: value ? { country: value } : {} })
@@ -106,20 +119,41 @@ function sessionsDelta(count: number): string | undefined {
         :options="countryOptions"
         @update:model-value="setCountry"
       />
+      <span v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</span>
     </div>
 
     <section class="stats-grid" aria-label="Temporal metrics">
       <Card padding="sm">
-        <Stat :value="bHour.value" label="Busiest hour · UTC" trend="neutral" :delta="sessionsDelta(bHour.count)" />
+        <Stat
+          :value="bHour.value"
+          label="Busiest hour · UTC"
+          trend="neutral"
+          :delta="sessionsDelta(bHour.count)"
+        />
       </Card>
       <Card padding="sm">
-        <Stat :value="bDay.value" label="Busiest day" trend="neutral" :delta="sessionsDelta(bDay.count)" />
+        <Stat
+          :value="bDay.value"
+          label="Busiest day"
+          trend="neutral"
+          :delta="sessionsDelta(bDay.count)"
+        />
       </Card>
       <Card padding="sm">
-        <Stat :value="pDay.value" label="Peak day" trend="neutral" :delta="sessionsDelta(pDay.count)" />
+        <Stat
+          :value="pDay.value"
+          label="Peak day"
+          trend="neutral"
+          :delta="sessionsDelta(pDay.count)"
+        />
       </Card>
       <Card padding="sm">
-        <Stat :value="fmtNumber(trend.current)" label="Trend (7d)" :trend="trendTone" :delta="trendLabel" />
+        <Stat
+          :value="fmtNumber(trend.current)"
+          label="Trend (7d)"
+          :trend="trendTone"
+          :delta="trendLabel"
+        />
       </Card>
     </section>
 
@@ -159,11 +193,19 @@ function sessionsDelta(count: number): string | undefined {
   color: var(--text);
 }
 
-/* Bump the inline scope picker so it reads as part of the heading phrase. */
+/* Bump the inline scope picker so it reads as part of the heading phrase.
+   min-width:0 lets it shrink instead of wrapping the sentence on narrow widths. */
 .scope-dd :deep(.dd-button) {
   font-size: var(--type-base);
   font-weight: 600;
   color: var(--accent);
+  min-width: 0;
+}
+
+.stale {
+  font-size: var(--type-xs);
+  color: var(--warning);
+  white-space: nowrap;
 }
 
 .stats-grid {
@@ -180,5 +222,22 @@ function sessionsDelta(count: number): string | undefined {
 
 .timeline-pane {
   flex: 0 0 auto;
+}
+
+@media (max-width: 768px) {
+  /* The KPI grid + fixed timeline would squeeze the heatmap below its legible
+     row floor, so below md the page scrolls instead of hard-fitting. */
+  .activity {
+    overflow-y: auto;
+    min-height: 0;
+  }
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .heatmap-pane {
+    /* Keep the heatmap tall enough for 7 legible rows once the page scrolls. */
+    flex: 0 0 auto;
+    min-height: 240px;
+  }
 }
 </style>

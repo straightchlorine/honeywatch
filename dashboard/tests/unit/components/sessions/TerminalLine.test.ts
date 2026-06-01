@@ -35,8 +35,10 @@ describe('TerminalLine', () => {
     })
     const blot = w.find('.ip-blot')
     expect(blot.exists()).toBe(true)
-    expect(blot.text()).toBe('‹ip›')
+    expect(blot.text()).toContain('‹ip›')
     expect(blot.attributes('title')).toContain('IP')
+    // Visually-hidden text makes the blot meaningful to screen readers (not via title).
+    expect(blot.find('.visually-hidden').text()).toContain('IP address redacted')
   })
 
   it('marks non-command lines as annotations wrapped in guillemets', () => {

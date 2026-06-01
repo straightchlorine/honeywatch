@@ -53,7 +53,8 @@ async function mockApi(page: Page): Promise<void> {
             ended_at: '2026-05-31T13:41:50+00:00',
             auth_attempt_count: 1,
             command_count: 2,
-            login_success: true,
+            has_successful_login: true,
+            category: 'active',
           },
         ],
         meta: { page: 1, pages: 1, per_page: 25, total: 1 },
@@ -130,9 +131,7 @@ test.describe('dashboard accessibility smoke', () => {
 
   test('not-found renders and is axe-clean', async ({ page }) => {
     await page.goto('/this-route-does-not-exist')
-    await expect(
-      page.getByRole('heading', { level: 1, name: 'Route not found' }),
-    ).toBeVisible()
+    await expect(page.getByRole('heading', { level: 1, name: 'Route not found' })).toBeVisible()
     await expectAxeClean(page)
   })
 
@@ -175,8 +174,10 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/sessions')
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
 
-    // Classification badge (the mocked session ran commands -> "CLI").
-    await expect(page.getByText('CLI', { exact: true })).toBeVisible()
+    // Classification badge (the mocked session ran commands -> "CLI"). The badge
+    // renders in both the table and the (desktop-hidden) mobile card list, so
+    // target the first/visible one.
+    await expect(page.getByText('CLI', { exact: true }).first()).toBeVisible()
 
     // Filters are custom dropdowns, URL-driven.
     await page.getByRole('button', { name: /^Show/ }).click()
@@ -188,5 +189,34 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(page).toHaveURL(/sort=country/)
 
     await expectAxeClean(page)
+  })
+
+  test('a failed sessions load shows the error boundary and recovers', async ({ page }) => {
+    // Override the list endpoint with a 500 (LIFO: this handler wins over the
+    // beforeEach mock). The view awaits suspense, so the rejection bubbles to the
+    // App-level ErrorBoundary outside <Suspense>.
+    let fail = true
+    // Regex (not glob) so the query-string list URL (/sessions/?page=...) matches
+    // but the detail route (/sessions/<id>) does not.
+    await page.route(/\/api\/v1\/sessions\/(\?|$)/, async (route) => {
+      if (fail)
+        return route.fulfill({
+          status: 500,
+          contentType: 'application/json',
+          body: '{"code":500,"status":"Internal Server Error","message":"boom"}',
+        })
+      return route.fallback()
+    })
+
+    await page.goto('/sessions')
+    // The list query retries 5xx twice with backoff before the boundary catches.
+    const alert = page.getByRole('alert')
+    await expect(alert).toBeVisible({ timeout: 15_000 })
+    await expect(alert).toContainText('Something went wrong')
+
+    // "Try again" resets the query and refetches; lift the failure first.
+    fail = false
+    await alert.getByRole('button', { name: 'Try again' }).click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
   })
 })
