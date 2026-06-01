@@ -9,6 +9,7 @@ from src.schemas.stats import (
     ActivityBucketResponse,
     ActivityQuery,
     HeatmapPointResponse,
+    HeatmapQuery,
     TopCountryResponse,
     TopNQuery,
     TopPasswordResponse,
@@ -72,7 +73,12 @@ def stats_top_countries(query_args: dict[str, Any]) -> list[dict[str, Any]]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_activity(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return session counts grouped by bucket (hour|day|month)."""
-    return [dict(row) for row in get_activity(get_db(), query_args["bucket"])]
+    return [
+        dict(row)
+        for row in get_activity(
+            get_db(), query_args["bucket"], query_args.get("country")
+        )
+    ]
 
 
 @stats_bp.route("/trend")
@@ -83,13 +89,17 @@ def stats_activity(query_args: dict[str, Any]) -> list[dict[str, Any]]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_trend(query_args: dict[str, Any]) -> dict[str, Any]:
     """Return the session-count trend over period_days vs the prior window."""
-    return dict(get_trend(get_db(), query_args["period_days"]))
+    return dict(
+        get_trend(get_db(), query_args["period_days"], query_args.get("country"))
+    )
 
 
 @stats_bp.route("/heatmap")
 @stats_bp.doc(operationId="statsHeatmap")
+@stats_bp.arguments(HeatmapQuery, location="query")
 @stats_bp.response(200, HeatmapPointResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
 @stats_bp.alt_response(500, "InternalServerError")
-def stats_heatmap() -> list[dict[str, Any]]:
+def stats_heatmap(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return session counts per (weekday, hour) cell."""
-    return [dict(row) for row in get_heatmap(get_db())]
+    return [dict(row) for row in get_heatmap(get_db(), query_args.get("country"))]

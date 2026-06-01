@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Any
 
-from sqlalchemy import func, select
+from sqlalchemy import Select, func, select
 from sqlalchemy.orm import Session as DbSession
 
 from src.models.auth_attempt import AuthAttempt
@@ -32,6 +33,15 @@ class StatsService:
     def __init__(self, db: DbSession, top_n: int = DEFAULT_TOP_N) -> None:
         self.db = db
         self.top_n = top_n
+
+    @staticmethod
+    def _scope_country(stmt: Select[Any], country: str | None) -> Select[Any]:
+        """Inner-join geo and filter to one source country when ``country`` is set."""
+        if country:
+            return stmt.join(GeoLocation, GeoLocation.ip == Session.src_ip).where(
+                GeoLocation.country_code == country
+            )
+        return stmt
 
     def total_sessions(self) -> int:
         """Return the total number of recorded sessions."""
@@ -83,11 +93,15 @@ class StatsService:
         ).all()
         return [{"country_code": r[0], "country": r[1], "count": r[2]} for r in rows]
 
-    def activity(self, bucket: str) -> list[ActivityBucketDict]:
+    def activity(
+        self, bucket: str, country: str | None = None
+    ) -> list[ActivityBucketDict]:
         """Return session counts grouped by time bucket.
 
         Args:
             bucket: One of ``"hour"``, ``"day"``, ``"month"``.
+            country: ISO 3166-1 alpha-2 code to scope to one source country,
+                or None for all countries.
 
         Raises:
             ValueError: When ``bucket`` is not a recognized value.
@@ -96,31 +110,31 @@ class StatsService:
             raise ValueError(f"bucket must be one of {sorted(VALID_BUCKETS)}")
         since = datetime.now(timezone.utc) - _BUCKET_WINDOWS[bucket]
         trunc = func.date_trunc(bucket, Session.started_at)
-        rows = self.db.execute(
-            select(trunc.label("bucket"), func.count().label("count"))
-            .where(Session.started_at >= since)
-            .group_by(trunc)
-            .order_by(trunc)
-        ).all()
+        stmt = select(trunc.label("bucket"), func.count().label("count")).select_from(
+            Session
+        )
+        stmt = self._scope_country(stmt, country)
+        stmt = stmt.where(Session.started_at >= since).group_by(trunc).order_by(trunc)
+        rows = self.db.execute(stmt).all()
         return [{"bucket": row[0].isoformat(), "count": row[1]} for row in rows]
 
-    def trend(self, period_days: int = 7) -> TrendDict:
+    def trend(self, period_days: int = 7, country: str | None = None) -> TrendDict:
         """Compare session count in the last ``period_days`` vs the prior window.
 
         ``pct_change`` is ``None`` when the previous window has zero sessions
         (avoids divide-by-zero); the frontend renders the absolute delta only.
+        ``country`` scopes both windows to a single source country when set.
         """
         now = datetime.now(timezone.utc)
         cur_start = now - timedelta(days=period_days)
         prev_start = cur_start - timedelta(days=period_days)
         current = self.db.execute(
-            select(func.count())
-            .select_from(Session)
-            .where(Session.started_at >= cur_start)
+            self._scope_country(
+                select(func.count()).select_from(Session), country
+            ).where(Session.started_at >= cur_start)
         ).scalar_one()
         previous = self.db.execute(
-            select(func.count())
-            .select_from(Session)
+            self._scope_country(select(func.count()).select_from(Session), country)
             .where(Session.started_at >= prev_start)
             .where(Session.started_at < cur_start)
         ).scalar_one()
@@ -160,22 +174,22 @@ class StatsService:
             "unique_ips": row.unique_ips,
         }
 
-    def heatmap(self) -> list[HeatmapPointDict]:
+    def heatmap(self, country: str | None = None) -> list[HeatmapPointDict]:
         """Return session counts for every hour x weekday combination.
 
         Weekday follows Postgres ``date_part('dow', ...)``: 0=Sunday ... 6=Saturday.
+        ``country`` scopes to a single source country when set.
         """
         hour_col = func.extract("hour", Session.started_at)
         dow_col = func.extract("dow", Session.started_at)
-        rows = self.db.execute(
-            select(
-                hour_col.label("hour"),
-                dow_col.label("weekday"),
-                func.count().label("count"),
-            )
-            .group_by(hour_col, dow_col)
-            .order_by(dow_col, hour_col)
-        ).all()
+        stmt = select(
+            hour_col.label("hour"),
+            dow_col.label("weekday"),
+            func.count().label("count"),
+        ).select_from(Session)
+        stmt = self._scope_country(stmt, country)
+        stmt = stmt.group_by(hour_col, dow_col).order_by(dow_col, hour_col)
+        rows = self.db.execute(stmt).all()
         return [{"hour": int(r[0]), "weekday": int(r[1]), "count": r[2]} for r in rows]
 
 
@@ -202,20 +216,24 @@ def get_top_countries(
     return StatsService(db, top_n=top_n).top_countries()
 
 
-def get_activity(db: DbSession, bucket: str) -> list[ActivityBucketDict]:
+def get_activity(
+    db: DbSession, bucket: str, country: str | None = None
+) -> list[ActivityBucketDict]:
     """Return session counts grouped by the given time bucket.
 
     Raises:
         ValueError: For unsupported ``bucket`` values.
     """
-    return StatsService(db).activity(bucket)
+    return StatsService(db).activity(bucket, country)
 
 
-def get_trend(db: DbSession, period_days: int = 7) -> TrendDict:
+def get_trend(
+    db: DbSession, period_days: int = 7, country: str | None = None
+) -> TrendDict:
     """Return the session-count trend over the last ``period_days``."""
-    return StatsService(db).trend(period_days)
+    return StatsService(db).trend(period_days, country)
 
 
-def get_heatmap(db: DbSession) -> list[HeatmapPointDict]:
+def get_heatmap(db: DbSession, country: str | None = None) -> list[HeatmapPointDict]:
     """Return session counts per (weekday, hour) cell."""
-    return StatsService(db).heatmap()
+    return StatsService(db).heatmap(country)

@@ -23,6 +23,152 @@ def test_list_sessions_no_src_ip_leak(client: Any, seed_data: Any) -> None:
         assert "country" in s
 
 
+def test_list_sessions_summary_classification_fields(
+    client: Any, seed_data: Any
+) -> None:
+    """Summaries expose command_count + login_success for client classification."""
+    del seed_data
+    response = client.get("/api/v1/sessions/")
+    assert response.status_code == 200
+    by_id = {s["id"]: s for s in response.get_json()["items"]}
+    # sess-001: 2 failed auths, 1 command -> "active", login never succeeded.
+    assert by_id["sess-001"]["command_count"] == 1
+    assert by_id["sess-001"]["login_success"] is False
+    assert by_id["sess-001"]["auth_attempt_count"] == 2
+    # sess-002: 1 successful auth, no commands -> "login".
+    assert by_id["sess-002"]["command_count"] == 0
+    assert by_id["sess-002"]["login_success"] is True
+
+
+def test_list_sessions_category_active(client: Any, seed_data: Any) -> None:
+    """sess-001 ran a command, so it classifies as 'active' (commands win)."""
+    del seed_data
+    response = client.get("/api/v1/sessions/?category=active")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert [s["id"] for s in data["items"]] == ["sess-001"]
+
+
+def test_list_sessions_category_login(client: Any, seed_data: Any) -> None:
+    """sess-002 had a successful login but no commands -> 'login'."""
+    del seed_data
+    response = client.get("/api/v1/sessions/?category=login")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert [s["id"] for s in data["items"]] == ["sess-002"]
+
+
+def test_list_sessions_category_failed_and_probe(
+    client: Any, seed_data: Any, db_session: Any
+) -> None:
+    """The seed has no failed/probe session; insert one of each inline.
+
+    'failed' = login attempts made, none accepted, no commands.
+    'probe'  = a bare connection with no auth attempts at all.
+    """
+    del seed_data
+    from datetime import datetime, timezone
+
+    from src.models.auth_attempt import AuthAttempt
+    from src.models.session import Session as HoneypotSession
+
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        HoneypotSession(
+            id="failsess001",
+            src_ip="203.0.113.9",
+            src_port=1,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.add(
+        HoneypotSession(
+            id="probesess01",
+            src_ip="203.0.113.10",
+            src_port=2,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        AuthAttempt(
+            session_id="failsess001",
+            username="root",
+            password="x",
+            success=False,
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+
+    failed = client.get("/api/v1/sessions/?category=failed").get_json()
+    assert [s["id"] for s in failed["items"]] == ["failsess001"]
+    probe = client.get("/api/v1/sessions/?category=probe").get_json()
+    assert [s["id"] for s in probe["items"]] == ["probesess01"]
+
+
+def test_list_sessions_filter_country(client: Any, seed_data: Any) -> None:
+    """Only sess-001 is geo-enriched (US); sess-002 has no geo row."""
+    del seed_data
+    response = client.get("/api/v1/sessions/?country=US")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert [s["id"] for s in data["items"]] == ["sess-001"]
+
+
+def test_list_sessions_sort_country_puts_nulls_last(
+    client: Any, seed_data: Any
+) -> None:
+    del seed_data
+    response = client.get("/api/v1/sessions/?sort=country")
+    assert response.status_code == 200
+    ids = [s["id"] for s in response.get_json()["items"]]
+    # US (sess-001) ahead of the geo-less sess-002 (NULL country sorts last).
+    assert ids == ["sess-001", "sess-002"]
+
+
+def test_list_sessions_sort_active_orders_by_command_count(
+    client: Any, seed_data: Any
+) -> None:
+    del seed_data
+    response = client.get("/api/v1/sessions/?sort=active")
+    assert response.status_code == 200
+    ids = [s["id"] for s in response.get_json()["items"]]
+    # sess-001 (1 command) ahead of sess-002 (0 commands).
+    assert ids == ["sess-001", "sess-002"]
+
+
+def test_list_sessions_category_and_country_compose(
+    client: Any, seed_data: Any
+) -> None:
+    """category + country AND together: sess-001 is active and US -> matches."""
+    del seed_data
+    response = client.get("/api/v1/sessions/?category=active&country=US")
+    assert response.status_code == 200
+    assert [s["id"] for s in response.get_json()["items"]] == ["sess-001"]
+    # sess-002 is 'login' (not active) so an active+US filter excludes it.
+    response = client.get("/api/v1/sessions/?category=login&country=US")
+    assert response.get_json()["meta"]["total"] == 0
+
+
+def test_list_sessions_rejects_invalid_filters(client: Any) -> None:
+    assert client.get("/api/v1/sessions/?sort=bogus").status_code == 422
+    assert client.get("/api/v1/sessions/?category=maybe").status_code == 422
+    assert client.get("/api/v1/sessions/?country=USA").status_code == 422
+
+
+def test_list_sessions_filters_no_src_ip_leak(client: Any, seed_data: Any) -> None:
+    """Privacy contract holds across the filtered/sorted code paths too."""
+    del seed_data
+    response = client.get("/api/v1/sessions/?category=login&sort=country")
+    assert response.status_code == 200
+    assert b"src_ip" not in response.data
+
+
 def test_get_session_not_found(client: Any) -> None:
     response = client.get("/api/v1/sessions/nonexistent")
     assert response.status_code == 404

@@ -181,6 +181,22 @@ class SessionSummaryResponse(BaseSchema):
             "example": 5,
         },
     )
+    command_count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Number of shell commands recorded in this session.",
+            "example": 3,
+        },
+    )
+    login_success = fields.Bool(
+        required=True,
+        metadata={
+            "description": (
+                "Whether any authentication attempt in the session succeeded."
+            ),
+            "example": True,
+        },
+    )
 
 
 class SessionDetailResponse(BaseSchema):
@@ -300,6 +316,40 @@ class SessionsListQuery(BaseSchema):
         load_default=20,
         validate=validate.Range(min=1, max=100),
         metadata={"description": "Number of items per page (max 100).", "example": 20},
+    )
+    country = fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Regexp(r"^[A-Za-z]{2}$"),
+        metadata={
+            "description": "Filter to a single ISO 3166-1 alpha-2 source country.",
+            "example": "CN",
+        },
+    )
+    category = fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.OneOf(["active", "login", "failed", "probe"]),
+        metadata={
+            "description": (
+                "Filter by session classification (mutually exclusive): "
+                "'active' = ran at least one command; 'login' = login accepted "
+                "but no commands; 'failed' = login attempts made, none accepted; "
+                "'probe' = connection only, no login attempts."
+            ),
+            "example": "active",
+        },
+    )
+    sort = fields.Str(
+        load_default="recent",
+        validate=validate.OneOf(["recent", "country", "active"]),
+        metadata={
+            "description": (
+                "Result ordering: 'recent' (newest first, default), 'country' "
+                "(source country A-Z), 'active' (most commands first)."
+            ),
+            "example": "country",
+        },
     )
 
 

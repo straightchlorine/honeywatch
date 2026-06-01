@@ -30,9 +30,14 @@ sessions_bp = Blueprint(
 @sessions_bp.alt_response(500, "InternalServerError")
 def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
     """Return a paginated list of session summaries."""
-    page = query_args["page"]
-    per_page = query_args["per_page"]
-    result = get_sessions_paginated(get_db(), page, per_page)
+    result = get_sessions_paginated(
+        get_db(),
+        query_args["page"],
+        query_args["per_page"],
+        country=query_args.get("country"),
+        category=query_args.get("category"),
+        sort=query_args.get("sort", "recent"),
+    )
     return {
         "items": result["sessions"],
         "meta": {

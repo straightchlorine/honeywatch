@@ -256,7 +256,7 @@
             "type": "integer"
           },
           "weekday": {
-            "description": "Day of week (0=Monday, 6=Sunday).",
+            "description": "Day of week, Postgres dow (0=Sunday, 6=Saturday).",
             "example": 2,
             "type": "integer"
           }
@@ -468,6 +468,11 @@
             "example": 5,
             "type": "integer"
           },
+          "command_count": {
+            "description": "Number of shell commands recorded in this session.",
+            "example": 3,
+            "type": "integer"
+          },
           "country": {
             "description": "Human-readable country name of the source IP.",
             "example": "United States",
@@ -503,6 +508,11 @@
             "example": "abc123",
             "type": "string"
           },
+          "login_success": {
+            "description": "Whether any authentication attempt in the session succeeded.",
+            "example": true,
+            "type": "boolean"
+          },
           "protocol": {
             "description": "Application protocol observed.",
             "example": "ssh",
@@ -525,11 +535,13 @@
         },
         "required": [
           "auth_attempt_count",
+          "command_count",
           "country",
           "country_code",
           "dst_port",
           "ended_at",
           "id",
+          "login_success",
           "protocol",
           "src_port",
           "started_at"
@@ -730,6 +742,58 @@
               "minimum": 1,
               "type": "integer"
             }
+          },
+          {
+            "description": "Filter to a single ISO 3166-1 alpha-2 source country.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Filter by session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": null,
+              "enum": [
+                "active",
+                "login",
+                "failed",
+                "probe",
+                null
+              ],
+              "example": "active",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "recent",
+              "enum": [
+                "recent",
+                "country",
+                "active"
+              ],
+              "example": "country",
+              "type": "string"
+            }
           }
         ],
         "responses": {
@@ -835,6 +899,21 @@
               "example": "day",
               "type": "string"
             }
+          },
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
           }
         ],
         "responses": {
@@ -870,6 +949,23 @@
     "/api/v1/stats/heatmap": {
       "get": {
         "operationId": "statsHeatmap",
+        "parameters": [
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
         "responses": {
           "200": {
             "content": {
@@ -883,6 +979,9 @@
               }
             },
             "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
           },
           "500": {
             "$ref": "#/components/responses/InternalServerError"
@@ -1035,6 +1134,21 @@
               "maximum": 365,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],

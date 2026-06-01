@@ -36,6 +36,8 @@ class SessionSerializer:
             "started_at": s.started_at,
             "ended_at": s.ended_at,
             "auth_attempt_count": len(s.auth_attempts),
+            "command_count": len(s.commands),
+            "login_success": any(a.success for a in s.auth_attempts),
         }
 
     @staticmethod

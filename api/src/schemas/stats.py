@@ -117,7 +117,10 @@ class HeatmapPointResponse(BaseSchema):
     )
     weekday = fields.Int(
         required=True,
-        metadata={"description": "Day of week (0=Monday, 6=Sunday).", "example": 2},
+        metadata={
+            "description": "Day of week, Postgres dow (0=Sunday, 6=Saturday).",
+            "example": 2,
+        },
     )
     count = fields.Int(
         required=True,
@@ -141,12 +144,26 @@ class TopNQuery(BaseSchema):
     )
 
 
+def _country_field() -> fields.Str:
+    """Fresh optional alpha-2 country filter field (one instance per schema)."""
+    return fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Regexp(r"^[A-Za-z]{2}$"),
+        metadata={
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "example": "CN",
+        },
+    )
+
+
 class ActivityQuery(BaseSchema):
     bucket = fields.Str(
         load_default="day",
         validate=validate.OneOf(sorted(VALID_BUCKETS)),
         metadata={"description": "Aggregation bucket width.", "example": "day"},
     )
+    country = _country_field()
 
 
 class TrendQuery(BaseSchema):
@@ -158,3 +175,8 @@ class TrendQuery(BaseSchema):
             "example": 7,
         },
     )
+    country = _country_field()
+
+
+class HeatmapQuery(BaseSchema):
+    country = _country_field()

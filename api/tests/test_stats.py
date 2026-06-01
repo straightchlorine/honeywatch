@@ -133,3 +133,41 @@ def test_top_countries_includes_geo_enriched(client: Any, seed_data: Any) -> Non
         row["country"] == "United States" and row["country_code"] == "US"
         for row in data
     ), data
+
+
+def test_activity_country_filter(client: Any, seed_data: Any) -> None:
+    """Only sess-001 is geo-enriched (US); the timeline scopes to it."""
+    del seed_data
+    response = client.get("/api/v1/stats/activity?bucket=day&country=US")
+    assert response.status_code == 200
+    assert sum(row["count"] for row in response.get_json()) == 1
+
+
+def test_heatmap_country_filter(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/heatmap?country=US")
+    assert response.status_code == 200
+    assert sum(row["count"] for row in response.get_json()) == 1
+
+
+def test_trend_country_filter(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/trend?country=US")
+    assert response.status_code == 200
+    assert response.get_json()["current"] == 1
+
+
+def test_stats_country_filter_unknown_country_is_empty(
+    client: Any, seed_data: Any
+) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/activity?bucket=day&country=ZZ")
+    assert response.status_code == 200
+    assert sum(row["count"] for row in response.get_json()) == 0
+
+
+def test_stats_country_filter_rejects_invalid(client: Any) -> None:
+    assert (
+        client.get("/api/v1/stats/activity?bucket=day&country=USA").status_code == 422
+    )
+    assert client.get("/api/v1/stats/heatmap?country=1").status_code == 422
