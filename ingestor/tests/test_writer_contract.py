@@ -22,7 +22,14 @@ from typing import cast
 import pytest
 
 from src import writer as writer_module
-from src.events import ClientKex, ClientSize, ClientVersion, SessionClosed
+from src.events import (
+    ClientFingerprint,
+    ClientKex,
+    ClientSize,
+    ClientVersion,
+    DirectTcpipRequest,
+    SessionClosed,
+)
 from src.parser import parse_event
 from src.writer import EventWriter
 from tests.conftest import DbConn
@@ -107,6 +114,35 @@ def test_ssh_client_written(populated_db: DbConn) -> None:
     client_version, hassh = row
     assert isinstance(client_version, str) and client_version.startswith("SSH-2.0")
     assert hassh == "eeca2460550b9ded084ecf2f70a75356"
+
+
+def test_client_fingerprint_written(populated_db: DbConn) -> None:
+    """cowrie.client.fingerprint lands one row per offered key."""
+    rows = populated_db.execute(
+        "SELECT username, fingerprint, fingerprint_type FROM client_fingerprints "
+        "WHERE session_id = %s ORDER BY timestamp",
+        (_CONTRACT_SESSION_ID,),
+    ).fetchall()
+    assert len(rows) == 1
+    username, fingerprint, fingerprint_type = rows[0]
+    assert username == "root"
+    assert isinstance(fingerprint, str) and fingerprint.startswith("SHA256:")
+    assert fingerprint_type == "ssh-ed25519"
+
+
+def test_direct_tcpip_written(populated_db: DbConn) -> None:
+    """cowrie.direct-tcpip.request lands the attempted relay destination."""
+    rows = populated_db.execute(
+        "SELECT dst_ip, dst_port, src_ip, src_port FROM direct_tcpip_requests "
+        "WHERE session_id = %s ORDER BY timestamp",
+        (_CONTRACT_SESSION_ID,),
+    ).fetchall()
+    assert len(rows) == 1
+    dst_ip, dst_port, src_ip, src_port = rows[0]
+    assert dst_ip == "smtp.example.net"
+    assert dst_port == 25
+    assert str(src_ip) == "203.0.113.45"
+    assert src_port == 43726
 
 
 def test_session_closed_duration_coerces_to_float() -> None:
@@ -255,19 +291,26 @@ def test_writer_length_caps_match_schema(
     )
 
 
-def test_non_dispatched_client_events_parse() -> None:
-    """All client.* events must keep parsing as cowrie's schema evolves.
+def test_consumed_event_schemas_parse() -> None:
+    """All consumed client.*/direct-tcpip events must keep parsing as cowrie evolves.
 
-    `client.version`/`kex` are now persisted (see `test_ssh_client_written`);
-    `client.size` is intentionally not. A field rename upstream would silently
-    break HASSH capture, so the contract test catches it at PR time instead of
-    in production.
+    `client.version`/`kex`/`fingerprint` and `direct-tcpip.request` are persisted
+    (see the `*_written` tests); `client.size` is intentionally not. A field
+    rename upstream would silently break capture, so the contract test catches it
+    at PR time instead of in production.
     """
     parsed = [parse_event(line) for line in _lines()]
     kinds = {type(event) for event in parsed if event is not None}
     assert ClientVersion in kinds
     assert ClientKex in kinds
     assert ClientSize in kinds
+    assert ClientFingerprint in kinds
+    assert DirectTcpipRequest in kinds
     # Sanity-check the specific fields downstream Grafana panels read.
     kex = next(e for e in parsed if isinstance(e, ClientKex))
     assert cast(str, kex.hassh) == "eeca2460550b9ded084ecf2f70a75356"
+    fp = next(e for e in parsed if isinstance(e, ClientFingerprint))
+    assert fp.fingerprint.startswith("SHA256:")
+    tcpip = next(e for e in parsed if isinstance(e, DirectTcpipRequest))
+    assert tcpip.dst_ip == "smtp.example.net"
+    assert tcpip.dst_port == 25

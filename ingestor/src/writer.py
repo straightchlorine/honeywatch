@@ -45,6 +45,10 @@ _LEN_HASSH_ALGORITHMS = 1024
 _LEN_FINGERPRINT = 512
 _LEN_FINGERPRINT_TYPE = 64
 _LEN_HOST = 256
+# kex/key/enc/mac/compression lists land in unbounded Text columns, but the
+# attacker controls the pre-auth KEXINIT name-lists, so cap them defensively
+# (hassh_algorithms is separately VARCHAR(1024)-capped via _LEN_HASSH_ALGORITHMS).
+_LEN_ALGORITHMS = 4096
 
 logger = logging.getLogger(__name__)
 
@@ -244,8 +248,8 @@ class EventWriter:
                             "sensor": truncate(event.sensor, _LEN_SENSOR),
                         },
                     )
-            except psycopg.errors.DataError:
-                self._drop_bad_event("session_connect", event.session_id)
+            except psycopg.errors.DataError as exc:
+                self._drop_bad_event("session_connect", event.session_id, exc)
                 return
 
             try:
@@ -301,8 +305,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("auth", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("auth", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("auth", event.session_id, exc)
 
     def _write_command(self, event: CommandInput) -> None:
         try:
@@ -318,8 +322,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("cmd", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("cmd", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("cmd", event.session_id, exc)
 
     def _write_download(self, event: FileDownload) -> None:
         try:
@@ -336,8 +340,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("download", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("download", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("download", event.session_id, exc)
 
     def _write_session_closed(self, event: SessionClosed) -> None:
         with self.pool.connection() as conn:
@@ -349,8 +353,8 @@ class EventWriter:
                         "ended_at": event.timestamp,
                     },
                 )
-            except psycopg.errors.DataError:
-                self._drop_bad_event("session_closed", event.session_id)
+            except psycopg.errors.DataError as exc:
+                self._drop_bad_event("session_closed", event.session_id, exc)
                 return
             if cur.rowcount == 0:
                 self._log_orphan("session_closed", event.session_id)
@@ -367,12 +371,12 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("client_version", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("client_version", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("client_version", event.session_id, exc)
 
     def _write_client_kex(self, event: ClientKex) -> None:
         def _join(values: list[str]) -> str | None:
-            return ",".join(values) if values else None
+            return truncate(",".join(values), _LEN_ALGORITHMS) if values else None
 
         try:
             with self.pool.connection() as conn:
@@ -393,8 +397,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("client_kex", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("client_kex", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("client_kex", event.session_id, exc)
 
     def _write_client_fingerprint(self, event: ClientFingerprint) -> None:
         try:
@@ -411,8 +415,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("client_fingerprint", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("client_fingerprint", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("client_fingerprint", event.session_id, exc)
 
     def _write_direct_tcpip(self, event: DirectTcpipRequest) -> None:
         try:
@@ -430,8 +434,8 @@ class EventWriter:
                 )
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan("direct_tcpip", event.session_id)
-        except psycopg.errors.DataError:
-            self._drop_bad_event("direct_tcpip", event.session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event("direct_tcpip", event.session_id, exc)
 
     @staticmethod
     def _log_orphan(kind: str, session_id: str) -> None:
@@ -445,16 +449,20 @@ class EventWriter:
         logger.info("orphan %s event for session_id=%s", kind, session_id)
 
     @staticmethod
-    def _drop_bad_event(kind: str, session_id: str) -> None:
+    def _drop_bad_event(kind: str, session_id: str, exc: psycopg.Error) -> None:
         """Skip a row Postgres rejected as malformed (NUL byte, encoding, etc).
 
         Without this, the writer's retry/fuse keeps replaying the same
         poison event forever, blocking the queue.
+
+        Logs the SQLSTATE only -- never ``exc_info``: the DataError message
+        echoes the rejected attacker value verbatim, which would smuggle
+        unsanitized bytes (ANSI/CRLF log forgery) into the operator's log sink.
         """
         metrics.events_dropped_total.labels(reason="db_data_error").inc()
         logger.warning(
-            "dropping malformed %s event for session_id=%s",
+            "dropping malformed %s event for session_id=%s sqlstate=%s",
             kind,
             session_id,
-            exc_info=True,
+            getattr(exc, "sqlstate", "-"),
         )

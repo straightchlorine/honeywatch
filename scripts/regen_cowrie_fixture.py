@@ -23,8 +23,8 @@ from pathlib import Path
 CANONICAL_SESSION_ID = "contract-sess-01"
 
 # Order matters: contract test assertions assume connect comes first so
-# the auth/cmd/download FKs land cleanly, and session.closed comes last so
-# `ended_at` is populated.
+# the child-row FKs (auth/cmd/download/fingerprint/direct-tcpip) land cleanly,
+# and session.closed comes last so `ended_at` is populated.
 WANTED_EVENTIDS = (
     "cowrie.session.connect",
     "cowrie.client.version",
@@ -32,8 +32,10 @@ WANTED_EVENTIDS = (
     "cowrie.client.size",
     "cowrie.login.failed",
     "cowrie.login.success",
+    "cowrie.client.fingerprint",
     "cowrie.command.input",
     "cowrie.session.file_download",
+    "cowrie.direct-tcpip.request",
     "cowrie.session.closed",
 )
 

@@ -1,15 +1,18 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import LiteralString
 from unittest.mock import patch
 
 import pytest
 
+from src import writer as writer_module
 from src.events import (
     ClientFingerprint,
     ClientKex,
     ClientVersion,
     CommandInput,
+    CowrieEvent,
     DirectTcpipRequest,
     FileDownload,
     LoginFailed,
@@ -19,6 +22,9 @@ from src.events import (
 )
 from src.writer import EventWriter
 from tests.conftest import DbConn
+
+# Shared event timestamp for the client/kex/fingerprint/direct-tcpip tests below.
+_TS = datetime(2024, 1, 15, 10, 30, 1, tzinfo=timezone.utc)
 
 
 def _connect_event() -> SessionConnect:
@@ -502,3 +508,250 @@ def test_pool_check_not_called_per_event(
     with patch.object(writer.pool, "check") as mock_check:
         writer.write_event(_connect_event())
     mock_check.assert_not_called()
+
+
+# --- New-event orphan paths (FK violation -> log + skip, never crash) ---
+
+
+def test_client_version_orphan_caught(
+    writer: EventWriter, db_connection: DbConn, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("INFO", logger="src.writer"):
+        writer.write_event(
+            ClientVersion(
+                session_id="sess-orphan-cv", version="SSH-2.0-X", timestamp=_TS
+            )
+        )
+    count = db_connection.execute(
+        "SELECT count(*) FROM ssh_clients WHERE session_id = %s",
+        ("sess-orphan-cv",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any("orphan client_version event" in r.message for r in caplog.records)
+
+
+def test_client_kex_orphan_caught(
+    writer: EventWriter, db_connection: DbConn, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("INFO", logger="src.writer"):
+        writer.write_event(
+            ClientKex(session_id="sess-orphan-kex", hassh="x", timestamp=_TS)
+        )
+    count = db_connection.execute(
+        "SELECT count(*) FROM ssh_clients WHERE session_id = %s",
+        ("sess-orphan-kex",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any("orphan client_kex event" in r.message for r in caplog.records)
+
+
+def test_client_fingerprint_orphan_caught(
+    writer: EventWriter, db_connection: DbConn, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("INFO", logger="src.writer"):
+        writer.write_event(
+            ClientFingerprint(
+                session_id="sess-orphan-fp",
+                fingerprint="SHA256:x",
+                type="ssh-rsa",
+                timestamp=_TS,
+            )
+        )
+    count = db_connection.execute(
+        "SELECT count(*) FROM client_fingerprints WHERE session_id = %s",
+        ("sess-orphan-fp",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any("orphan client_fingerprint event" in r.message for r in caplog.records)
+
+
+def test_direct_tcpip_orphan_caught(
+    writer: EventWriter, db_connection: DbConn, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("INFO", logger="src.writer"):
+        writer.write_event(
+            DirectTcpipRequest(
+                session_id="sess-orphan-dt",
+                dst_ip="10.0.0.1",
+                dst_port=25,
+                timestamp=_TS,
+            )
+        )
+    count = db_connection.execute(
+        "SELECT count(*) FROM direct_tcpip_requests WHERE session_id = %s",
+        ("sess-orphan-dt",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any("orphan direct_tcpip event" in r.message for r in caplog.records)
+
+
+# --- DataError poison-pill path (drop + meter, never retry-loop) ---
+
+
+def test_direct_tcpip_dst_port_overflow_dropped(
+    writer: EventWriter, db_connection: DbConn, caplog: pytest.LogCaptureFixture
+) -> None:
+    """A dst_port beyond INT4 range hits Postgres DataError and is dropped.
+
+    Pydantic accepts the unbounded int; the INTEGER column rejects it. The
+    handler must drop (log SQLSTATE) rather than crash or retry-loop. Parent
+    session exists, so this is a DataError, not an FK orphan.
+    """
+    writer.write_event(_connect_event())
+    with caplog.at_level("WARNING", logger="src.writer"):
+        writer.write_event(
+            DirectTcpipRequest(
+                session_id="sess-001",
+                dst_ip="10.0.0.9",
+                dst_port=2**31,  # > INT4 max (2147483647)
+                timestamp=_TS,
+            )
+        )
+    count = db_connection.execute(
+        "SELECT count(*) FROM direct_tcpip_requests WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert count is not None and count[0] == 0
+    assert any(
+        "dropping malformed direct_tcpip event" in r.message
+        and "sqlstate=" in r.message
+        for r in caplog.records
+    )
+
+
+# --- Attacker-string length clamps (truncate before INSERT) ---
+
+
+_CAP_CASES = [
+    pytest.param(
+        ClientVersion(session_id="sess-001", version="A" * 600, timestamp=_TS),
+        "SELECT client_version FROM ssh_clients WHERE session_id = %s",
+        writer_module._LEN_CLIENT_VERSION,
+        id="client_version",
+    ),
+    pytest.param(
+        ClientKex(session_id="sess-001", hassh="A" * 600, timestamp=_TS),
+        "SELECT hassh FROM ssh_clients WHERE session_id = %s",
+        writer_module._LEN_HASSH,
+        id="hassh",
+    ),
+    pytest.param(
+        ClientFingerprint(
+            session_id="sess-001", fingerprint="A" * 600, type="ssh-rsa", timestamp=_TS
+        ),
+        "SELECT fingerprint FROM client_fingerprints WHERE session_id = %s",
+        writer_module._LEN_FINGERPRINT,
+        id="fingerprint",
+    ),
+    pytest.param(
+        DirectTcpipRequest(
+            session_id="sess-001", dst_ip="A" * 600, dst_port=25, timestamp=_TS
+        ),
+        "SELECT dst_ip FROM direct_tcpip_requests WHERE session_id = %s",
+        writer_module._LEN_HOST,
+        id="dst_ip",
+    ),
+]
+
+
+@pytest.mark.parametrize(("event", "query", "cap"), _CAP_CASES)
+def test_attacker_strings_clamped_to_cap(
+    writer: EventWriter,
+    db_connection: DbConn,
+    event: CowrieEvent,
+    query: LiteralString,
+    cap: int,
+) -> None:
+    """Over-cap attacker strings are truncated to the column width, not dropped."""
+    writer.write_event(_connect_event())
+    writer.write_event(event)
+    row = db_connection.execute(query, ("sess-001",)).fetchone()
+    assert row is not None
+    value = row[0]
+    assert isinstance(value, str)
+    assert len(value) == cap
+
+
+def test_kex_algorithm_lists_clamped(
+    writer: EventWriter, db_connection: DbConn
+) -> None:
+    """Attacker-controlled KEXINIT name-lists are capped before the Text column."""
+    writer.write_event(_connect_event())
+    writer.write_event(
+        ClientKex(
+            session_id="sess-001", hassh="abc", kexAlgs=["x" * 5000], timestamp=_TS
+        )
+    )
+    row = db_connection.execute(
+        "SELECT kex_algorithms FROM ssh_clients WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    value = row[0]
+    assert isinstance(value, str)
+    assert len(value) == writer_module._LEN_ALGORITHMS
+
+
+# --- ssh_clients dual-event upsert: order-independent, no clobber ---
+
+
+def test_kex_then_version_upserts_one_row(
+    writer: EventWriter, db_connection: DbConn
+) -> None:
+    """Reverse arrival (kex first) still merges into one row without clobbering."""
+    writer.write_event(_connect_event())
+    writer.write_event(
+        ClientKex(
+            session_id="sess-001",
+            hassh="deadbeef",
+            kexAlgs=["curve25519-sha256"],
+            timestamp=_TS,
+        )
+    )
+    writer.write_event(
+        ClientVersion(
+            session_id="sess-001", version="SSH-2.0-OpenSSH_9.9", timestamp=_TS
+        )
+    )
+    row = db_connection.execute(
+        "SELECT client_version, hassh, kex_algorithms FROM ssh_clients "
+        "WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "SSH-2.0-OpenSSH_9.9"  # version not clobbered by the kex upsert
+    assert row[1] == "deadbeef"  # hassh preserved from the kex event
+    assert row[2] == "curve25519-sha256"
+    count = db_connection.execute(
+        "SELECT count(*) FROM ssh_clients WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert count is not None and count[0] == 1
+
+
+def test_client_version_only_row(writer: EventWriter, db_connection: DbConn) -> None:
+    """version arriving alone leaves the kex columns NULL."""
+    writer.write_event(_connect_event())
+    writer.write_event(
+        ClientVersion(session_id="sess-001", version="SSH-2.0-X", timestamp=_TS)
+    )
+    row = db_connection.execute(
+        "SELECT client_version, hassh FROM ssh_clients WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "SSH-2.0-X"
+    assert row[1] is None
+
+
+def test_client_kex_only_row(writer: EventWriter, db_connection: DbConn) -> None:
+    """kex arriving alone leaves client_version NULL."""
+    writer.write_event(_connect_event())
+    writer.write_event(ClientKex(session_id="sess-001", hassh="cafe", timestamp=_TS))
+    row = db_connection.execute(
+        "SELECT client_version, hassh FROM ssh_clients WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] is None
+    assert row[1] == "cafe"
