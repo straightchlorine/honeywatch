@@ -6,7 +6,11 @@ from unittest.mock import patch
 import pytest
 
 from src.events import (
+    ClientFingerprint,
+    ClientKex,
+    ClientVersion,
     CommandInput,
+    DirectTcpipRequest,
     FileDownload,
     LoginFailed,
     LoginSuccess,
@@ -150,6 +154,106 @@ def test_write_session_closed(
 
     assert row is not None
     assert row[0] == datetime(2024, 1, 15, 10, 31, 0, tzinfo=timezone.utc)
+
+
+def test_write_client_version_then_kex_upserts_one_row(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """version + kex are separate events; each upserts ssh_clients in place."""
+    writer.write_event(_connect_event())
+    writer.write_event(
+        ClientVersion(
+            session_id="sess-001",
+            version="SSH-2.0-libssh2_1.9.0",
+            timestamp=datetime(2024, 1, 15, 10, 30, 1, tzinfo=timezone.utc),
+        )
+    )
+    writer.write_event(
+        ClientKex(
+            session_id="sess-001",
+            hassh="eeca2460550b9ded084ecf2f70a75356",
+            hasshAlgorithms="curve25519-sha256;aes128-ctr;hmac-sha2-256;none",
+            kexAlgs=["curve25519-sha256", "ecdh-sha2-nistp256"],
+            keyAlgs=["ssh-ed25519"],
+            encCS=["aes128-ctr", "aes256-ctr"],
+            macCS=["hmac-sha2-256"],
+            compCS=["none"],
+            timestamp=datetime(2024, 1, 15, 10, 30, 1, tzinfo=timezone.utc),
+        )
+    )
+
+    row = db_connection.execute(
+        "SELECT client_version, hassh, kex_algorithms, encryption_algorithms"
+        " FROM ssh_clients WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "SSH-2.0-libssh2_1.9.0"  # preserved from the version event
+    assert row[1] == "eeca2460550b9ded084ecf2f70a75356"  # set by the kex event
+    assert row[2] == "curve25519-sha256,ecdh-sha2-nistp256"
+    assert row[3] == "aes128-ctr,aes256-ctr"
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM ssh_clients WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert count is not None
+    assert count[0] == 1  # upsert merged, did not create a second row
+
+
+def test_write_client_fingerprint(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    writer.write_event(
+        ClientFingerprint(
+            session_id="sess-001",
+            username="root",
+            fingerprint="SHA256:n0tArealKeyFingerprintAAAAAAAAAAAAAAAAAAAAAA",
+            type="ssh-ed25519",
+            timestamp=datetime(2024, 1, 15, 10, 30, 3, tzinfo=timezone.utc),
+        )
+    )
+
+    row = db_connection.execute(
+        "SELECT username, fingerprint, fingerprint_type"
+        " FROM client_fingerprints WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "root"
+    assert row[1] == "SHA256:n0tArealKeyFingerprintAAAAAAAAAAAAAAAAAAAAAA"
+    assert row[2] == "ssh-ed25519"
+
+
+def test_write_direct_tcpip_request(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    writer.write_event(
+        DirectTcpipRequest(
+            session_id="sess-001",
+            dst_ip="smtp.example.com",
+            dst_port=25,
+            src_ip="127.0.0.1",
+            src_port=40000,
+            timestamp=datetime(2024, 1, 15, 10, 30, 4, tzinfo=timezone.utc),
+        )
+    )
+
+    row = db_connection.execute(
+        "SELECT dst_ip, dst_port, src_ip, src_port"
+        " FROM direct_tcpip_requests WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "smtp.example.com"
+    assert row[1] == 25
+    assert row[2] == "127.0.0.1"
+    assert row[3] == 40000
 
 
 @pytest.mark.parametrize(

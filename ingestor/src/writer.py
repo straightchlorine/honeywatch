@@ -10,8 +10,12 @@ from psycopg_pool import ConnectionPool
 
 from src import metrics
 from src.events import (
+    ClientFingerprint,
+    ClientKex,
+    ClientVersion,
     CommandInput,
     CowrieEvent,
+    DirectTcpipRequest,
     FileDownload,
     LoginFailed,
     LoginSuccess,
@@ -35,6 +39,12 @@ _LEN_COUNTRY_CODE = 2
 _LEN_COUNTRY = 128
 _LEN_CITY = 128
 _LEN_AS_ORG = 256
+_LEN_CLIENT_VERSION = 256
+_LEN_HASSH = 64
+_LEN_HASSH_ALGORITHMS = 1024
+_LEN_FINGERPRINT = 512
+_LEN_FINGERPRINT_TYPE = 64
+_LEN_HOST = 256
 
 logger = logging.getLogger(__name__)
 
@@ -107,11 +117,55 @@ _UPSERT_GEO = """
         last_updated = now()
 """
 
+# Two events populate ssh_clients; each upserts only its own columns so it
+# never clobbers the other's (version and kex arrive as separate events).
+_UPSERT_SSH_CLIENT_VERSION = """
+    INSERT INTO ssh_clients (session_id, client_version)
+    VALUES (%(session_id)s, %(client_version)s)
+    ON CONFLICT (session_id) DO UPDATE SET
+        client_version = EXCLUDED.client_version
+"""
+
+_UPSERT_SSH_CLIENT_KEX = """
+    INSERT INTO ssh_clients
+        (session_id, hassh, hassh_algorithms, kex_algorithms,
+         key_algorithms, encryption_algorithms, mac_algorithms,
+         compression_algorithms)
+    VALUES
+        (%(session_id)s, %(hassh)s, %(hassh_algorithms)s, %(kex_algorithms)s,
+         %(key_algorithms)s, %(encryption_algorithms)s, %(mac_algorithms)s,
+         %(compression_algorithms)s)
+    ON CONFLICT (session_id) DO UPDATE SET
+        hassh                  = EXCLUDED.hassh,
+        hassh_algorithms       = EXCLUDED.hassh_algorithms,
+        kex_algorithms         = EXCLUDED.kex_algorithms,
+        key_algorithms         = EXCLUDED.key_algorithms,
+        encryption_algorithms  = EXCLUDED.encryption_algorithms,
+        mac_algorithms         = EXCLUDED.mac_algorithms,
+        compression_algorithms = EXCLUDED.compression_algorithms
+"""
+
+_INSERT_CLIENT_FINGERPRINT = """
+    INSERT INTO client_fingerprints
+        (session_id, username, fingerprint, fingerprint_type, timestamp)
+    VALUES
+        (%(session_id)s, %(username)s, %(fingerprint)s,
+         %(fingerprint_type)s, %(timestamp)s)
+"""
+
+_INSERT_DIRECT_TCPIP = """
+    INSERT INTO direct_tcpip_requests
+        (session_id, dst_ip, dst_port, src_ip, src_port, timestamp)
+    VALUES
+        (%(session_id)s, %(dst_ip)s, %(dst_port)s,
+         %(src_ip)s, %(src_port)s, %(timestamp)s)
+"""
+
 
 class EventWriter:
     """Persists the subset of cowrie events we care about to PostgreSQL.
 
-    Events not matched below (e.g. `cowrie.client.kex`, `cowrie.log.open`)
+    Events not matched below (e.g. `cowrie.client.size`, `cowrie.log.open`)
     are silently dropped -- the raw line was already logged upstream so
     nothing is lost from an observability standpoint.
     """
@@ -156,6 +210,14 @@ class EventWriter:
                 self._write_download(event)
             case SessionClosed():
                 self._write_session_closed(event)
+            case ClientVersion():
+                self._write_client_version(event)
+            case ClientKex():
+                self._write_client_kex(event)
+            case ClientFingerprint():
+                self._write_client_fingerprint(event)
+            case DirectTcpipRequest():
+                self._write_direct_tcpip(event)
 
     def _write_session_connect(self, event: SessionConnect) -> None:
         # Suppress cowrie's docker-compose healthcheck dials.
@@ -292,6 +354,84 @@ class EventWriter:
                 return
             if cur.rowcount == 0:
                 self._log_orphan("session_closed", event.session_id)
+
+    def _write_client_version(self, event: ClientVersion) -> None:
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    _UPSERT_SSH_CLIENT_VERSION,
+                    {
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "client_version": truncate(event.version, _LEN_CLIENT_VERSION),
+                    },
+                )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("client_version", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("client_version", event.session_id)
+
+    def _write_client_kex(self, event: ClientKex) -> None:
+        def _join(values: list[str]) -> str | None:
+            return ",".join(values) if values else None
+
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    _UPSERT_SSH_CLIENT_KEX,
+                    {
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "hassh": truncate(event.hassh, _LEN_HASSH),
+                        "hassh_algorithms": truncate(
+                            event.hasshAlgorithms, _LEN_HASSH_ALGORITHMS
+                        ),
+                        "kex_algorithms": _join(event.kexAlgs),
+                        "key_algorithms": _join(event.keyAlgs),
+                        "encryption_algorithms": _join(event.encCS),
+                        "mac_algorithms": _join(event.macCS),
+                        "compression_algorithms": _join(event.compCS),
+                    },
+                )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("client_kex", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("client_kex", event.session_id)
+
+    def _write_client_fingerprint(self, event: ClientFingerprint) -> None:
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    _INSERT_CLIENT_FINGERPRINT,
+                    {
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "username": truncate(event.username, _LEN_USERNAME),
+                        "fingerprint": truncate(event.fingerprint, _LEN_FINGERPRINT),
+                        "fingerprint_type": truncate(event.type, _LEN_FINGERPRINT_TYPE),
+                        "timestamp": event.timestamp,
+                    },
+                )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("client_fingerprint", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("client_fingerprint", event.session_id)
+
+    def _write_direct_tcpip(self, event: DirectTcpipRequest) -> None:
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(
+                    _INSERT_DIRECT_TCPIP,
+                    {
+                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                        "dst_ip": truncate(event.dst_ip, _LEN_HOST),
+                        "dst_port": event.dst_port,
+                        "src_ip": truncate(event.src_ip, _LEN_HOST),
+                        "src_port": event.src_port,
+                        "timestamp": event.timestamp,
+                    },
+                )
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan("direct_tcpip", event.session_id)
+        except psycopg.errors.DataError:
+            self._drop_bad_event("direct_tcpip", event.session_id)
 
     @staticmethod
     def _log_orphan(kind: str, session_id: str) -> None:
