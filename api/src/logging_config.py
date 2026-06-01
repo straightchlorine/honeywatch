@@ -44,19 +44,13 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-_configured = False
-
-
 def configure_logging(level: str | None = None) -> None:
     """Configure root + ``app`` + key library loggers via ``dictConfig``.
 
-    Idempotent: callable from create_app, tests, CLI without doubling handlers.
+    Idempotent: ``dictConfig`` replaces (not appends) the root handler list, so
+    calling this from create_app, tests, and CLI never doubles handlers.
     ``LOG_LEVEL`` env var overrides the default (INFO).
     """
-    global _configured
-    if _configured:
-        return
-
     resolved = (level or os.environ.get("LOG_LEVEL", "INFO")).upper()
     env = os.environ.get("ENVIRONMENT", "production").strip().lower()
     log_format = (
@@ -96,4 +90,3 @@ def configure_logging(level: str | None = None) -> None:
         },
     }
     logging.config.dictConfig(config)
-    _configured = True
