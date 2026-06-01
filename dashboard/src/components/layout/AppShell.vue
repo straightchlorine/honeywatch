@@ -1,11 +1,16 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { useIsFetching } from '@tanstack/vue-query'
 import IconLink from '../IconLink.vue'
 
 const route = useRoute()
 const routeAnnounce = ref('')
+
+// /sessions and /sessions/:id are sibling route records, so RouterLink's
+// record-based active matching won't keep the Sessions tab lit on the detail
+// page. Drive it from a path prefix instead.
+const sessionsActive = computed(() => route.path.startsWith('/sessions'))
 // Reflect in-flight fetches (incl. keepPreviousData paging) so AT can perceive
 // busy/idle transitions on the main region.
 const isFetching = useIsFetching()
@@ -37,6 +42,13 @@ watch(
         <nav class="shell-nav" aria-label="Primary">
           <RouterLink to="/" class="nav-link" exact-active-class="nav-link-active">
             Overview
+          </RouterLink>
+          <RouterLink to="/activity" class="nav-link" active-class="nav-link-active">
+            Activity
+          </RouterLink>
+          <!-- Manual prefix-active so Sessions stays lit on /sessions/:id too. -->
+          <RouterLink to="/sessions" class="nav-link" :class="{ 'nav-link-active': sessionsActive }">
+            Sessions
           </RouterLink>
         </nav>
       </div>

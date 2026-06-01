@@ -118,7 +118,7 @@ export type HeatmapPointResponse = {
      */
     hour: number;
     /**
-     * Day of week (0=Monday, 6=Sunday).
+     * Day of week, Postgres dow (0=Sunday, 6=Saturday).
      */
     weekday: number;
 };
@@ -241,6 +241,10 @@ export type SessionSummaryResponse = {
      */
     auth_attempt_count: number;
     /**
+     * Number of shell commands recorded in this session.
+     */
+    command_count: number;
+    /**
      * Human-readable country name of the source IP.
      */
     country: string | null;
@@ -260,6 +264,10 @@ export type SessionSummaryResponse = {
      * Honeypot session identifier.
      */
     id: string;
+    /**
+     * Whether any authentication attempt in the session succeeded.
+     */
+    login_success: boolean;
     /**
      * Application protocol observed.
      */
@@ -368,6 +376,18 @@ export type ListSessionsData = {
          * Number of items per page (max 100).
          */
         per_page?: number;
+        /**
+         * Filter to a single ISO 3166-1 alpha-2 source country.
+         */
+        country?: string | null;
+        /**
+         * Filter by session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.
+         */
+        category?: 'active' | 'login' | 'failed' | 'probe' | null;
+        /**
+         * Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first).
+         */
+        sort?: 'recent' | 'country' | 'active';
     };
     url: '/api/v1/sessions/';
 };
@@ -448,6 +468,10 @@ export type StatsActivityData = {
          * Aggregation bucket width.
          */
         bucket?: 'day' | 'hour' | 'month';
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country.
+         */
+        country?: string | null;
     };
     url: '/api/v1/stats/activity';
 };
@@ -481,11 +505,20 @@ export type StatsActivityResponse = StatsActivityResponses[keyof StatsActivityRe
 export type StatsHeatmapData = {
     body?: never;
     path?: never;
-    query?: never;
+    query?: {
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country.
+         */
+        country?: string | null;
+    };
     url: '/api/v1/stats/heatmap';
 };
 
 export type StatsHeatmapErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
     /**
      * An unexpected server error occurred.
      */
@@ -620,6 +653,10 @@ export type StatsTrendData = {
          * Length of the comparison window in days.
          */
         period_days?: number;
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country.
+         */
+        country?: string | null;
     };
     url: '/api/v1/stats/trend';
 };

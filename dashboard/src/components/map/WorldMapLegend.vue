@@ -2,10 +2,17 @@
 import { computed } from 'vue'
 import { fmtNumber } from '@/utils/format'
 
-const props = defineProps<{
-  max: number
-  ramp: string[]
-}>()
+const props = withDefaults(
+  defineProps<{
+    max: number
+    ramp: string[]
+    /** Swatch color + caption for the no-data state. Defaults suit the map; the
+     *  activity heatmap overrides them to match its --bg-2 empty cells. */
+    zeroColor?: string
+    zeroLabel?: string
+  }>(),
+  { zeroColor: 'var(--map-land)', zeroLabel: 'no events' },
+)
 
 const gradient = computed(() => `linear-gradient(to right, ${props.ramp.join(', ')})`)
 </script>
@@ -20,8 +27,8 @@ const gradient = computed(() => `linear-gradient(to right, ${props.ramp.join(', 
       </div>
     </div>
     <div class="no-data">
-      <span class="swatch" aria-hidden="true" />
-      <span>no events</span>
+      <span class="swatch" :style="{ background: zeroColor }" aria-hidden="true" />
+      <span>{{ zeroLabel }}</span>
     </div>
   </div>
 </template>
@@ -71,7 +78,6 @@ const gradient = computed(() => `linear-gradient(to right, ${props.ramp.join(', 
   width: 12px;
   height: 12px;
   border-radius: var(--radius-sm);
-  background: var(--map-land);
   border: 1px solid var(--border);
 }
 </style>

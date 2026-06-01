@@ -7,10 +7,28 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/OverviewView.vue'),
     meta: { title: 'Overview' },
   },
-  // Sessions (list + detail), Credentials, and IP views are deferred until
-  // their data/UX is ready (see docs/frontend-foundation-plan.md). The
-  // /api/v1/sessions endpoints remain; the reusable base/Pagination control is
-  // kept ready for the list view's return. Unknown paths fall through below.
+  {
+    path: '/activity',
+    name: 'activity',
+    component: () => import('../views/ActivityView.vue'),
+    meta: { title: 'Activity' },
+  },
+  {
+    path: '/sessions',
+    name: 'sessions',
+    component: () => import('../views/SessionsView.vue'),
+    meta: { title: 'Sessions' },
+  },
+  {
+    // Title stays generic (no session id) so an opaque identifier never leaks
+    // into the document title / history.
+    path: '/sessions/:id',
+    name: 'session-detail',
+    component: () => import('../views/SessionDetailView.vue'),
+    meta: { title: 'Session' },
+  },
+  // Credentials and IP views are still deferred until their data/UX is ready
+  // (see docs/frontend-foundation-plan.md). Unknown paths fall through below.
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
