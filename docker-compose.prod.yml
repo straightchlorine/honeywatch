@@ -10,31 +10,20 @@ services:
     ports:
       - "22:2222"
     environment:
-      http_proxy: http://egress-proxy:8888
-      https_proxy: http://egress-proxy:8888
-      HTTP_PROXY: http://egress-proxy:8888
-      HTTPS_PROXY: http://egress-proxy:8888
+      - http_proxy=http://egress-proxy:8888
+      - https_proxy=http://egress-proxy:8888
+      - HTTP_PROXY=http://egress-proxy:8888
+      - HTTPS_PROXY=http://egress-proxy:8888
+      - COWRIE_HONEYPOT_INTERNET_FACING_IP
     volumes:
       - cowrie-logs:/cowrie/cowrie-git/var/log/cowrie
       - cowrie-state:/cowrie/cowrie-git/var/lib/cowrie
       - ./cowrie/cowrie.cfg:/cowrie/cowrie-git/etc/cowrie.cfg:ro,Z
       - ./cowrie/userdb.txt:/cowrie/cowrie-git/etc/userdb.txt:ro,Z
-      - ./cowrie/honeyfs/etc/passwd:/cowrie/cowrie-git/honeyfs/etc/passwd:ro,Z
-      - ./cowrie/honeyfs/etc/shadow:/cowrie/cowrie-git/honeyfs/etc/shadow:ro,Z
-      - ./cowrie/honeyfs/etc/group:/cowrie/cowrie-git/honeyfs/etc/group:ro,Z
-      - ./cowrie/honeyfs/etc/issue:/cowrie/cowrie-git/honeyfs/etc/issue:ro,Z
-      - ./cowrie/honeyfs/etc/issue.net:/cowrie/cowrie-git/honeyfs/etc/issue.net:ro,Z
-      - ./cowrie/honeyfs/etc/motd:/cowrie/cowrie-git/honeyfs/etc/motd:ro,Z
-      - ./cowrie/honeyfs/etc/os-release:/cowrie/cowrie-git/honeyfs/etc/os-release:ro,Z
-      - ./cowrie/honeyfs/etc/hostname:/cowrie/cowrie-git/honeyfs/etc/hostname:ro,Z
-      - ./cowrie/honeyfs/etc/hosts:/cowrie/cowrie-git/honeyfs/etc/hosts:ro,Z
-      - ./cowrie/honeyfs/etc/resolv.conf:/cowrie/cowrie-git/honeyfs/etc/resolv.conf:ro,Z
-      - ./cowrie/honeyfs/etc/redhat-release:/cowrie/cowrie-git/honeyfs/etc/redhat-release:ro,Z
-      - ./cowrie/honeyfs/proc/version:/cowrie/cowrie-git/honeyfs/proc/version:ro,Z
-      - ./cowrie/honeyfs/proc/cpuinfo:/cowrie/cowrie-git/honeyfs/proc/cpuinfo:ro,Z
-      - ./cowrie/honeyfs/proc/meminfo:/cowrie/cowrie-git/honeyfs/proc/meminfo:ro,Z
-      - ./cowrie/honeyfs/proc/mounts:/cowrie/cowrie-git/honeyfs/proc/mounts:ro,Z
-      - ./cowrie/honeyfs/proc/modules:/cowrie/cowrie-git/honeyfs/proc/modules:ro,Z
+      - ./cowrie/fs/centos-stream10.pickle:/cowrie/cowrie-git/src/cowrie/data/fs.pickle:ro,Z
+      - ./cowrie/cmdoutput.json:/cowrie/cowrie-git/src/cowrie/data/cmdoutput.json:ro,Z
+      - ./cowrie/honeyfs:/cowrie/cowrie-git/honeyfs:ro,Z
+      - ./cowrie/txtcmds:/cowrie/cowrie-git/src/cowrie/data/txtcmds:ro,Z
     networks:
       - honeypot
       - cowrie-ingress
