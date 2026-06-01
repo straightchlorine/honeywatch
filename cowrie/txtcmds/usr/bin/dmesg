@@ -1,0 +1,53 @@
+[    0.000000] Linux version 6.12.0-116.el10.x86_64 (mockbuild@afe14246ecf44fcbb9d8fa1b206ae7b6) (gcc (GCC) 14.3.1 20250617 (Red Hat 14.3.1-2), GNU ld version 2.41-56.el10) #1 SMP PREEMPT_DYNAMIC Fri Aug  1 21:49:19 UTC 2025
+[    0.000000] Command line: BOOT_IMAGE=(hd0,gpt2)/vmlinuz-6.12.0-116.el10.x86_64 root=UUID=4d3b6f1a-2c8e-4a57-9b0d-7e6f5a4c3b21 ro crashkernel=1G-4G:192M,4G-64G:256M,64G-:512M console=tty1 console=ttyS0,115200n8 net.ifnames=0
+[    0.000000] BIOS-provided physical RAM map:
+[    0.000000] BIOS-e820: [mem 0x0000000000000000-0x000000000009fbff] usable
+[    0.000000] BIOS-e820: [mem 0x000000000009fc00-0x000000000009ffff] reserved
+[    0.000000] BIOS-e820: [mem 0x00000000000f0000-0x00000000000fffff] reserved
+[    0.000000] BIOS-e820: [mem 0x0000000000100000-0x00000000dffeffff] usable
+[    0.000000] NX (Execute Disable) protection: active
+[    0.000000] SMBIOS 2.8 present.
+[    0.000000] DMI: QEMU Standard PC (Q35 + ICH9, 2009), BIOS 1.16.3-2.el10 04/01/2014
+[    0.000000] Hypervisor detected: KVM
+[    0.000000] kvm-clock: Using msrs 4b564d01 and 4b564d00
+[    0.000000] kvm-clock: using sched offset of 6048220153 cycles
+[    0.000000] tsc: Detected 2099.998 MHz processor
+[    0.000004] CPU0: Intel Xeon Processor (Skylake, IBRS, no TSX) (family: 0x6, model: 0x55, stepping: 0x4)
+[    0.008000] smpboot: Allowing 2 CPUs, 0 hotplug CPUs
+[    0.012000] Memory: 3551234K/3735548K available (16384K kernel code, 3210K rwdata, 9216K rodata, 2308K init, 5500K bss)
+[    0.020000] SMP: Total of 2 processors activated (8399.99 BogoMIPS)
+[    0.110000] x86/cpu: User Mode Instruction Prevention (UMIP) activated
+[    0.140000] Spectre V2 : Mitigation: Retpolines
+[    0.140100] RETBleed: Mitigation: untrained return thunk
+[    0.140200] Speculative Store Bypass: Mitigation: Speculative Store Bypass disabled via prctl
+[    0.300000] ACPI: Added _OSI(Module Device)
+[    0.520000] pci 0000:00:00.0: [8086:29c0] type 00 class 0x060000
+[    0.540000] ACPI: PCI: Interrupt link LNKA configured for IRQ 10
+[    0.900000] virtio-pci 0000:00:02.0: enabling device (0000 -> 0003)
+[    0.940000] virtio-pci 0000:00:03.0: enabling device (0000 -> 0003)
+[    0.980000] virtio-pci 0000:00:04.0: enabling device (0000 -> 0003)
+[    1.020000] virtio-pci 0000:00:05.0: enabling device (0000 -> 0003)
+[    1.220000] scsi host0: Virtio SCSI HBA
+[    1.240000] scsi 0:0:0:0: Direct-Access     QEMU     QEMU HARDDISK    2.5+ PQ: 0 ANSI: 5
+[    1.260000] sd 0:0:0:0: [sda] 167772160 512-byte logical blocks: (85.9 GB/80.0 GiB)
+[    1.260400] sd 0:0:0:0: [sda] Write Protect is off
+[    1.260800] sd 0:0:0:0: [sda] Write cache: enabled, read cache: enabled, doesn't support DPO or FUA
+[    1.280000]  sda: sda1 sda2 sda3
+[    1.300000] sd 0:0:0:0: [sda] Attached SCSI disk
+[    1.520000] virtio_net virtio2 eth0: renamed from enp0s3
+[    1.700000] Run /init as init process
+[    2.100000] systemd[1]: systemd 257-9.el10 running in system mode (+PAM +AUDIT +SELINUX ...)
+[    2.140000] systemd[1]: Detected virtualization kvm.
+[    2.140400] systemd[1]: Detected architecture x86-64.
+[    2.300000] SELinux:  Permission watch_mount in class filesystem not defined in policy.
+[    2.320000] audit: type=1403 audit(1754079600.123:2): auditd: enabled SELinux policy loaded
+[    3.100000] SGI XFS with ACLs, security attributes, scrub, quota, no debug enabled
+[    3.120000] XFS (sda2): Mounting V5 Filesystem
+[    3.130000] XFS (sda2): Ending clean mount
+[    3.140000] XFS (sda3): Mounting V5 Filesystem 4d3b6f1a-2c8e-4a57-9b0d-7e6f5a4c3b21
+[    3.260000] XFS (sda3): Ending clean mount
+[    3.520000] systemd[1]: Hostname set to <centos>.
+[    4.100000] cloud-init[612]: Cloud-init v. 24.4 running 'init-local'
+[    5.300000] virtio_net virtio2 eth0: NIC Link is Up
+[    6.100000] RPC: Registered tcp NFSv4.1 backchannel transport module.
+[    7.200000] systemd[1]: Started OpenSSH server daemon.
