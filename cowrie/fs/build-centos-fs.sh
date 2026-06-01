@@ -1,13 +1,6 @@
 #!/usr/bin/env bash
 # Build a Cowrie fs.pickle that mirrors a CentOS Stream 10 KVM cloud guest.
 #
-# Why: the bundled Cowrie fs.pickle is an ancient Debian 7 (2013) tree. Our
-# honeypot advertises CentOS Stream 10, so `ls -la /`, `/etc/apt`, missing
-# dnf/rpm, and 2013 mtimes instantly unmask it. This rebuilds the simulated
-# filesystem from a real CentOS Stream 10 package set installed into a clean
-# --installroot (no docker/.dockerenv/sysfs artifacts), seeds the /proc and
-# /sys nodes our honeyfs overrides need, then runs Cowrie's own createfs.
-#
 # Output: cowrie/fs/centos-stream10.pickle  (mounted over the package
 # fs.pickle by docker-compose; see the cowrie service volumes).
 #
@@ -34,9 +27,9 @@ echo ">> building CentOS Stream 10 rootfs + pickle inside ${CENTOS_IMAGE}"
 # installroot, add the cloud user, seed /proc + /sys/class/dmi nodes that our
 # honeyfs overrides attach to, then pickle the tree with createfs.
 docker run --rm \
-  -v "${SCRIPT_DIR}:/work" \
-  -e MACHINE_ID="${MACHINE_ID}" \
-  "${CENTOS_IMAGE}" bash -euo pipefail -c '
+    -v "${SCRIPT_DIR}:/work" \
+    -e MACHINE_ID="${MACHINE_ID}" \
+"${CENTOS_IMAGE}" bash -euo pipefail -c '
     ROOT=/centosfs
     dnf -y --installroot="$ROOT" --releasever=10 --setopt=install_weak_deps=False \
         --setopt=tsflags=nodocs install \
