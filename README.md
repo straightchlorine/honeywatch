@@ -43,6 +43,8 @@ live in `k8s/`.
 ## What It Does
 
 - Runs a Cowrie SSH honeypot that captures brute-force attempts
+- Captures SSH client intel: client HASSH, offered public-key fingerprints, and
+  direct-tcpip (port-forward / relay) attempts for clustering and threat analysis
 - Ingests Cowrie's JSON event log into PostgreSQL
 - Serves a Vue 3 dashboard
 - Exposes a public read-only REST API (Flask + flask-smorest, OpenAPI 3.1)

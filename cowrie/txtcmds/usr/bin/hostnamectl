@@ -1,0 +1,13 @@
+ Static hostname: centos
+       Icon name: computer-vm
+         Chassis: vm 🖴
+      Machine ID: 4f8b2d6c9a7e41d3b0c5e6f7a8b9c0d1
+         Boot ID: 7c1e9a40b2f84d6e8a3c5d7e9f0a1b2c
+  Virtualization: kvm
+Operating System: CentOS Stream 10
+     CPE OS Name: cpe:/o:centos:centos:10
+          Kernel: Linux 6.12.0-116.el10.x86_64
+    Architecture: x86-64
+ Hardware Vendor: QEMU
+  Hardware Model: Standard PC (Q35 + ICH9, 2009)
+Firmware Version: 1.16.3-2.el10

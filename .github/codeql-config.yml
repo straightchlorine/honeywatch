@@ -20,3 +20,4 @@ paths-ignore:
   - "grafana/"
   - "cowrie/"
   - "db/"
+  - "**/alembic/"

@@ -7,6 +7,10 @@
 # (fetched by scripts/fetch-mmdb.sh, baked into image at build)
 ingestor/data/*.mmdb
 
+# --- Cowrie fs.pickle build temp ---
+# build-centos-fs.sh extracts createfs here then removes it
+cowrie/fs/.createfs.py
+
 # --- OS / editor ---
 .DS_Store
 Thumbs.db

@@ -22,7 +22,14 @@ from typing import cast
 import pytest
 
 from src import writer as writer_module
-from src.events import ClientKex, ClientSize, ClientVersion, SessionClosed
+from src.events import (
+    ClientFingerprint,
+    ClientKex,
+    ClientSize,
+    ClientVersion,
+    DirectTcpipRequest,
+    SessionClosed,
+)
 from src.parser import parse_event
 from src.writer import EventWriter
 from tests.conftest import DbConn
@@ -97,6 +104,47 @@ def test_download_written(populated_db: DbConn) -> None:
     )
 
 
+def test_ssh_client_written(populated_db: DbConn) -> None:
+    """client.version + client.kex are merged into one ssh_clients row."""
+    row = populated_db.execute(
+        "SELECT client_version, hassh FROM ssh_clients WHERE session_id = %s",
+        (_CONTRACT_SESSION_ID,),
+    ).fetchone()
+    assert row is not None
+    client_version, hassh = row
+    assert isinstance(client_version, str) and client_version.startswith("SSH-2.0")
+    assert hassh == "eeca2460550b9ded084ecf2f70a75356"
+
+
+def test_client_fingerprint_written(populated_db: DbConn) -> None:
+    """cowrie.client.fingerprint lands one row per offered key."""
+    rows = populated_db.execute(
+        "SELECT username, fingerprint, fingerprint_type FROM client_fingerprints "
+        "WHERE session_id = %s ORDER BY timestamp",
+        (_CONTRACT_SESSION_ID,),
+    ).fetchall()
+    assert len(rows) == 1
+    username, fingerprint, fingerprint_type = rows[0]
+    assert username == "root"
+    assert isinstance(fingerprint, str) and fingerprint.startswith("SHA256:")
+    assert fingerprint_type == "ssh-ed25519"
+
+
+def test_direct_tcpip_written(populated_db: DbConn) -> None:
+    """cowrie.direct-tcpip.request lands the attempted relay destination."""
+    rows = populated_db.execute(
+        "SELECT dst_ip, dst_port, src_ip, src_port FROM direct_tcpip_requests "
+        "WHERE session_id = %s ORDER BY timestamp",
+        (_CONTRACT_SESSION_ID,),
+    ).fetchall()
+    assert len(rows) == 1
+    dst_ip, dst_port, src_ip, src_port = rows[0]
+    assert dst_ip == "smtp.example.net"
+    assert dst_port == 25
+    assert str(src_ip) == "203.0.113.45"
+    assert src_port == 43726
+
+
 def test_session_closed_duration_coerces_to_float() -> None:
     """Cowrie emits `duration` as a JSON string ("81.1"), pydantic lax-coerces."""
     for raw in _lines():
@@ -118,6 +166,15 @@ _WRITER_TABLE_BINDINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("commands", (writer_module._INSERT_COMMAND,)),
     ("downloads", (writer_module._INSERT_DOWNLOAD,)),
     ("geo_locations", (writer_module._UPSERT_GEO,)),
+    (
+        "ssh_clients",
+        (
+            writer_module._UPSERT_SSH_CLIENT_VERSION,
+            writer_module._UPSERT_SSH_CLIENT_KEX,
+        ),
+    ),
+    ("client_fingerprints", (writer_module._INSERT_CLIENT_FINGERPRINT,)),
+    ("direct_tcpip_requests", (writer_module._INSERT_DIRECT_TCPIP,)),
 )
 
 _INSERT_COLS_RE = re.compile(
@@ -201,6 +258,17 @@ _WRITER_LENGTH_CAPS: tuple[tuple[str, str, int], ...] = (
     ("geo_locations", "country", writer_module._LEN_COUNTRY),
     ("geo_locations", "city", writer_module._LEN_CITY),
     ("geo_locations", "as_org", writer_module._LEN_AS_ORG),
+    ("ssh_clients", "session_id", writer_module._LEN_SESSION_ID),
+    ("ssh_clients", "client_version", writer_module._LEN_CLIENT_VERSION),
+    ("ssh_clients", "hassh", writer_module._LEN_HASSH),
+    ("ssh_clients", "hassh_algorithms", writer_module._LEN_HASSH_ALGORITHMS),
+    ("client_fingerprints", "session_id", writer_module._LEN_SESSION_ID),
+    ("client_fingerprints", "username", writer_module._LEN_USERNAME),
+    ("client_fingerprints", "fingerprint", writer_module._LEN_FINGERPRINT),
+    ("client_fingerprints", "fingerprint_type", writer_module._LEN_FINGERPRINT_TYPE),
+    ("direct_tcpip_requests", "session_id", writer_module._LEN_SESSION_ID),
+    ("direct_tcpip_requests", "dst_ip", writer_module._LEN_HOST),
+    ("direct_tcpip_requests", "src_ip", writer_module._LEN_HOST),
 )
 
 
@@ -223,18 +291,26 @@ def test_writer_length_caps_match_schema(
     )
 
 
-def test_non_dispatched_client_events_parse() -> None:
-    """`client.version`/`kex`/`size` aren't written but must still parse.
+def test_consumed_event_schemas_parse() -> None:
+    """All consumed client.*/direct-tcpip events must keep parsing as cowrie evolves.
 
-    A field rename upstream would silently break enrichment (we use
-    `hassh` for fingerprinting in downstream Grafana panels); the
-    contract test catches it here at PR time instead of in production.
+    `client.version`/`kex`/`fingerprint` and `direct-tcpip.request` are persisted
+    (see the `*_written` tests); `client.size` is intentionally not. A field
+    rename upstream would silently break capture, so the contract test catches it
+    at PR time instead of in production.
     """
     parsed = [parse_event(line) for line in _lines()]
     kinds = {type(event) for event in parsed if event is not None}
     assert ClientVersion in kinds
     assert ClientKex in kinds
     assert ClientSize in kinds
+    assert ClientFingerprint in kinds
+    assert DirectTcpipRequest in kinds
     # Sanity-check the specific fields downstream Grafana panels read.
     kex = next(e for e in parsed if isinstance(e, ClientKex))
     assert cast(str, kex.hassh) == "eeca2460550b9ded084ecf2f70a75356"
+    fp = next(e for e in parsed if isinstance(e, ClientFingerprint))
+    assert fp.fingerprint.startswith("SHA256:")
+    tcpip = next(e for e in parsed if isinstance(e, DirectTcpipRequest))
+    assert tcpip.dst_ip == "smtp.example.net"
+    assert tcpip.dst_port == 25

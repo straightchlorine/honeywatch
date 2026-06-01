@@ -78,7 +78,8 @@ def apply_migrations(db_url: str) -> None:
 
 
 _TRUNCATE = """
-TRUNCATE downloads, commands, auth_attempts, sessions CASCADE;
+TRUNCATE direct_tcpip_requests, client_fingerprints, ssh_clients,
+         downloads, commands, auth_attempts, sessions CASCADE;
 """
 
 
