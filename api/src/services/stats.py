@@ -40,8 +40,7 @@ VALID_CRED_METRICS = frozenset({"attempts", "ip_fanout"})
 VALID_CRED_OUTCOMES = frozenset({"any", "success", "failed"})
 
 # Attacker passwords are short and weak; cap the length histogram so a single
-# pathological multi-KB password can't stretch the x-axis. The top bucket is
-# rendered as "{cap}+".
+# pathological multi-KB password can't stretch the x-axis.
 PASSWORD_LENGTH_CAP = 16
 
 

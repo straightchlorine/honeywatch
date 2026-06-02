@@ -5,10 +5,7 @@
 * Log 4xx at INFO with method + path so we can see scanning / bad clients.
 
 The client IP (``request.remote_addr``) is intentionally omitted from every log
-line here: in a honeypot the remote address is attacker-controlled PII, and the
-src_ip-suppression policy (see tests/test_no_src_ip_on_all_endpoints.py) keeps
-it out of both responses and the shared log sink. The request id (via
-``src.logging_config.RequestIdFilter``) provides correlation without it.
+line here.
 """
 
 from __future__ import annotations
@@ -54,8 +51,7 @@ def init_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(Exception)
     def _on_unhandled(exc: Exception) -> Any:  # pyright: ignore[reportUnusedFunction]
-        # Re-raise HTTPException so the dedicated handler above runs (Flask's
-        # registry calls the most specific handler, but this guard is cheap).
+        # Re-raise HTTPException so the dedicated handler above runs
         if isinstance(exc, HTTPException):
             raise exc
         current_app.logger.exception(

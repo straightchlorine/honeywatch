@@ -91,11 +91,6 @@ def build_logging_config(level: str | None = None) -> dict[str, Any]:
             "werkzeug": {"level": "INFO"},
             "sqlalchemy.engine": {"level": "WARNING"},
             "flask_smorest": {"level": "INFO"},
-            # Gunicorn installs its own plaintext handlers by default. Pin them
-            # to the shared stderr/json handler (propagate=False so they don't
-            # also bubble to root and double-log). The access line already
-            # carries the request id via the access_log_format string; the
-            # source IP (%(h)s) is deliberately dropped there.
             "gunicorn.access": {
                 "level": "INFO",
                 "handlers": ["stderr"],
