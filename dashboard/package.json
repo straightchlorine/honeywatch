@@ -44,7 +44,7 @@
     "eslint-plugin-vue": "^9.30.0",
     "eslint-plugin-vuejs-accessibility": "^2.4.1",
     "i18n-iso-countries": "^7.14.0",
-    "jsdom": "^25.0.0",
+    "jsdom": "^29.1.1",
     "prettier": "^3.3.0",
     "typescript": "~5.9.3",
     "typescript-eslint": "^8.0.0",
