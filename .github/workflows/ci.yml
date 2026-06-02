@@ -138,7 +138,7 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "::notice::api/openapi.json unchanged - skipping oasdiff."
           fi
-      - uses: oasdiff/oasdiff-action/breaking@143743fa1c823e5242c56ca81e656837faefe5a0 # v0.0.49
+      - uses: oasdiff/oasdiff-action/breaking@f30668f65075c93440bd59ce2de73ce9e78751f4 # v0.0.51
         if: steps.base.outputs.run == 'true'
         with:
           base: origin/${{ github.base_ref }}:api/openapi.json
