@@ -22,18 +22,7 @@ from src.schemas.stats import (
     TrendQuery,
     TrendResponse,
 )
-from src.services.stats import (
-    get_activity,
-    get_auth_outcomes,
-    get_heatmap,
-    get_password_composition,
-    get_passwords_by_length,
-    get_top_countries,
-    get_top_credentials,
-    get_top_passwords,
-    get_totals,
-    get_trend,
-)
+from src.services.stats import StatsService
 
 stats_bp = Blueprint(
     "stats",
@@ -49,7 +38,7 @@ stats_bp = Blueprint(
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_totals() -> dict[str, Any]:
     """Return headline totals (sessions, auth attempts, unique IPs)."""
-    return dict(get_totals(get_db()))
+    return dict(StatsService(get_db()).totals())
 
 
 @stats_bp.route("/top-passwords")
@@ -60,7 +49,8 @@ def stats_totals() -> dict[str, Any]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_passwords(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the top-N attempted passwords ranked by count."""
-    return [dict(row) for row in get_top_passwords(get_db(), query_args["top_n"])]
+    service = StatsService(get_db(), top_n=query_args["top_n"])
+    return [dict(row) for row in service.top_passwords()]
 
 
 @stats_bp.route("/top-countries")
@@ -71,7 +61,8 @@ def stats_top_passwords(query_args: dict[str, Any]) -> list[dict[str, Any]]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_countries(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the top-N attacking countries ranked by session count."""
-    return [dict(row) for row in get_top_countries(get_db(), query_args["top_n"])]
+    service = StatsService(get_db(), top_n=query_args["top_n"])
+    return [dict(row) for row in service.top_countries()]
 
 
 @stats_bp.route("/top-credentials")
@@ -82,14 +73,13 @@ def stats_top_countries(query_args: dict[str, Any]) -> list[dict[str, Any]]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_credentials(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the top-N attempted credentials ranked by the chosen metric."""
+    service = StatsService(get_db(), top_n=query_args["top_n"])
     return [
         dict(row)
-        for row in get_top_credentials(
-            get_db(),
+        for row in service.top_credentials(
             by=query_args["by"],
             metric=query_args["metric"],
             outcome=query_args["outcome"],
-            top_n=query_args["top_n"],
         )
     ]
 
@@ -100,7 +90,7 @@ def stats_top_credentials(query_args: dict[str, Any]) -> list[dict[str, Any]]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_auth_outcomes() -> dict[str, Any]:
     """Return the accept/reject split across all auth attempts."""
-    return dict(get_auth_outcomes(get_db()))
+    return dict(StatsService(get_db()).auth_outcomes())
 
 
 @stats_bp.route("/password-composition")
@@ -109,7 +99,7 @@ def stats_auth_outcomes() -> dict[str, Any]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_password_composition() -> dict[str, Any]:
     """Return the password length histogram + charset-class breakdown."""
-    return dict(get_password_composition(get_db()))
+    return dict(StatsService(get_db()).password_composition())
 
 
 @stats_bp.route("/passwords-by-length")
@@ -120,12 +110,8 @@ def stats_password_composition() -> dict[str, Any]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_passwords_by_length(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the top-N passwords of a given length (histogram drill-down)."""
-    return [
-        dict(row)
-        for row in get_passwords_by_length(
-            get_db(), query_args["length"], query_args["top_n"]
-        )
-    ]
+    service = StatsService(get_db(), top_n=query_args["top_n"])
+    return [dict(row) for row in service.passwords_by_length(query_args["length"])]
 
 
 @stats_bp.route("/activity")
@@ -136,11 +122,10 @@ def stats_passwords_by_length(query_args: dict[str, Any]) -> list[dict[str, Any]
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_activity(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return session counts grouped by bucket (hour|day|month)."""
+    service = StatsService(get_db())
     return [
         dict(row)
-        for row in get_activity(
-            get_db(), query_args["bucket"], query_args.get("country")
-        )
+        for row in service.activity(query_args["bucket"], query_args.get("country"))
     ]
 
 
@@ -152,9 +137,8 @@ def stats_activity(query_args: dict[str, Any]) -> list[dict[str, Any]]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_trend(query_args: dict[str, Any]) -> dict[str, Any]:
     """Return the session-count trend over period_days vs the prior window."""
-    return dict(
-        get_trend(get_db(), query_args["period_days"], query_args.get("country"))
-    )
+    service = StatsService(get_db())
+    return dict(service.trend(query_args["period_days"], query_args.get("country")))
 
 
 @stats_bp.route("/heatmap")
@@ -165,4 +149,5 @@ def stats_trend(query_args: dict[str, Any]) -> dict[str, Any]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_heatmap(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return session counts per (weekday, hour) cell."""
-    return [dict(row) for row in get_heatmap(get_db(), query_args.get("country"))]
+    service = StatsService(get_db())
+    return [dict(row) for row in service.heatmap(query_args.get("country"))]

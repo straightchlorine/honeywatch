@@ -72,10 +72,14 @@ def test_ready_returns_503_when_db_down(
 
 
 def test_attack_data_indexes_present(db_session: Any) -> None:
-    """The migration's three indexes survive an `alembic upgrade head` run.
+    """The migrations' indexes survive an `alembic upgrade head` run.
 
-    `CREATE INDEX CONCURRENTLY IF NOT EXISTS` silently skips a duplicate name,
+    `CREATE INDEX [CONCURRENTLY] IF NOT EXISTS` silently skips a duplicate name,
     so a typo in the migration would not raise. Lock the contract here.
+
+    Includes `ix_auth_attempts_worked_creds`, the partial
+    `(username, password) WHERE success` index that backs the worked-credentials
+    leaderboard (StatsService.top_credentials(outcome="success")).
     """
     rows = (
         db_session.execute(
@@ -85,6 +89,7 @@ def test_attack_data_indexes_present(db_session: Any) -> None:
                 WHERE schemaname = 'public'
                   AND indexname IN (
                       'ix_auth_attempts_session_id',
+                      'ix_auth_attempts_worked_creds',
                       'ix_commands_session_id',
                       'ix_downloads_session_id'
                   )
@@ -97,6 +102,7 @@ def test_attack_data_indexes_present(db_session: Any) -> None:
     )
     assert rows == [
         "ix_auth_attempts_session_id",
+        "ix_auth_attempts_worked_creds",
         "ix_commands_session_id",
         "ix_downloads_session_id",
     ]

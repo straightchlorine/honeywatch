@@ -1,8 +1,14 @@
 """JSON error handlers matching the flask-smorest ``Error`` envelope.
 
 * Return the same JSON shape on every layer (``{code, status, message, errors}``).
-* Log 5xx with ``exc_info`` plus request context.
-* Log 4xx at INFO with path + remote_addr so we can see scanning / bad clients.
+* Log 5xx with ``exc_info`` plus request method + path.
+* Log 4xx at INFO with method + path so we can see scanning / bad clients.
+
+The client IP (``request.remote_addr``) is intentionally omitted from every log
+line here: in a honeypot the remote address is attacker-controlled PII, and the
+src_ip-suppression policy (see tests/test_no_src_ip_on_all_endpoints.py) keeps
+it out of both responses and the shared log sink. The request id (via
+``src.logging_config.RequestIdFilter``) provides correlation without it.
 """
 
 from __future__ import annotations

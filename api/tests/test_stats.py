@@ -2,6 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.models.session import Session as HoneypotSession
+from tests.conftest import LONG_PASSWORD
 
 
 def test_totals(client: Any, seed_data: Any) -> None:
@@ -240,6 +241,27 @@ def test_top_credentials_ip_fanout_metric(client: Any, seed_data: Any) -> None:
     assert all(r["distinct_ips"] == 1 for r in data)
 
 
+def test_top_credentials_ip_fanout_ranks_distributed_pair_first(
+    client: Any, ip_fanout_seed: Any
+) -> None:
+    """A pair tried from two IPs reports distinct_ips==2 and outranks a 1-IP pair.
+
+    ip_fanout is the discriminator between a distributed botnet sharing a
+    hardcoded credential table and a lone brute-forcer; the multi-IP pair must
+    sort above the single-IP one.
+    """
+    del ip_fanout_seed
+    response = client.get("/api/v1/stats/top-credentials?metric=ip_fanout")
+    assert response.status_code == 200
+    data = response.get_json()
+    fanout = {(r["username"], r["password"]): r["distinct_ips"] for r in data}
+    assert fanout[("botnet", "sharedpw")] == 2
+    assert fanout[("loner", "lonelypw")] == 1
+    # the distributed pair ranks strictly above the single-IP one.
+    order = [(r["username"], r["password"]) for r in data]
+    assert order.index(("botnet", "sharedpw")) < order.index(("loner", "lonelypw"))
+
+
 def test_top_credentials_top_n_clamp(client: Any, seed_data: Any) -> None:
     del seed_data
     response = client.get("/api/v1/stats/top-credentials?top_n=1")
@@ -301,6 +323,30 @@ def test_password_composition(client: Any, seed_data: Any) -> None:
     assert data["classes"][0]["name"] == "lower"
 
 
+def test_password_composition_charset_classes_cover_every_branch(
+    client: Any, charset_seed: Any
+) -> None:
+    """Every branch of the server-side charset CASE is exercised and prioritized.
+
+    The classifier (stats.py: empty -> symbol -> digits -> lower -> upper ->
+    alnum) is order-sensitive: 'p@ss!' contains digits/letters but must land in
+    'symbol' because that branch comes first, etc. Lock the whole priority chain.
+    """
+    del charset_seed
+    response = client.get("/api/v1/stats/password-composition")
+    assert response.status_code == 200
+    classes = {row["name"]: row["count"] for row in response.get_json()["classes"]}
+    # 'secret' + the 18-char all-lowercase LONG_PASSWORD both classify as lower.
+    assert classes == {
+        "empty": 1,
+        "symbol": 1,
+        "digits": 1,
+        "lower": 2,
+        "upper": 1,
+        "alnum": 1,
+    }
+
+
 def test_passwords_by_length_exact(client: Any, seed_data: Any) -> None:
     """An exact-length query returns only the passwords of that length."""
     del seed_data
@@ -323,11 +369,23 @@ def test_passwords_by_length_no_match_is_empty(client: Any, seed_data: Any) -> N
     assert response.get_json() == []
 
 
-def test_passwords_by_length_cap_is_inclusive_tail(client: Any, seed_data: Any) -> None:
-    """At the cap the query lists every password of that length or longer."""
-    del seed_data
-    # cap is 16; nothing in the seed is >= 16, but length=11 (< cap) is exact-only.
-    assert client.get("/api/v1/stats/passwords-by-length?length=16").get_json() == []
+def test_passwords_by_length_cap_is_inclusive_tail(
+    client: Any, charset_seed: Any
+) -> None:
+    """At the cap (>= branch) the query lists every password that length or longer.
+
+    ``charset_seed`` includes an 18-char password (> the cap of 16). Querying
+    ``length=16`` must return it via the ``length_col >= cap`` tail branch, while
+    a sub-cap exact query (``length=11``) must NOT -- the 18-char row only
+    matches the inclusive tail, not an exact-length lookup.
+    """
+    del charset_seed
+    assert len(LONG_PASSWORD) >= 16
+    tail = client.get("/api/v1/stats/passwords-by-length?length=16").get_json()
+    assert {row["password"] for row in tail} == {LONG_PASSWORD}
+    # the exact-length branch (< cap) does not pick up the longer password.
+    exact = client.get("/api/v1/stats/passwords-by-length?length=11").get_json()
+    assert all(row["password"] != LONG_PASSWORD for row in exact)
 
 
 def test_passwords_by_length_requires_length(client: Any) -> None:
