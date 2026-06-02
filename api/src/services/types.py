@@ -98,3 +98,39 @@ class TotalsDict(TypedDict):
     total_sessions: int
     total_auth_attempts: int
     unique_ips: int
+
+
+class TopCredentialDict(TypedDict):
+    username: str | None
+    # None when grouping by username alone; the attempted password otherwise.
+    password: str | None
+    count: int
+    # Distinct source IPs that tried this credential; only populated for the
+    # ip_fanout metric (None otherwise so the attempts view skips the join).
+    distinct_ips: int | None
+
+
+class AuthOutcomesDict(TypedDict):
+    total: int
+    successful: int
+    failed: int
+    success_rate: float | None
+    unique_passwords: int
+    unique_usernames: int
+
+
+class CredentialLengthDict(TypedDict):
+    length: int
+    count: int
+
+
+class CharsetClassDict(TypedDict):
+    name: str
+    count: int
+
+
+class PasswordCompositionDict(TypedDict):
+    total: int
+    capped_at: int
+    lengths: list[CredentialLengthDict]
+    classes: list[CharsetClassDict]

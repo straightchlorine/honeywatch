@@ -115,6 +115,73 @@
         ],
         "type": "object"
       },
+      "AuthOutcomesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "failed": {
+            "description": "Attempts cowrie rejected.",
+            "example": 9698,
+            "type": "integer"
+          },
+          "success_rate": {
+            "description": "Accepted percentage (null when there are no attempts).",
+            "example": 1.8,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "successful": {
+            "description": "Attempts cowrie accepted.",
+            "example": 178,
+            "type": "integer"
+          },
+          "total": {
+            "description": "Total auth attempts recorded.",
+            "example": 9876,
+            "type": "integer"
+          },
+          "unique_passwords": {
+            "description": "Distinct passwords attempted (attacker wordlist size).",
+            "example": 412,
+            "type": "integer"
+          },
+          "unique_usernames": {
+            "description": "Distinct usernames attempted.",
+            "example": 57,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "failed",
+          "success_rate",
+          "successful",
+          "total",
+          "unique_passwords",
+          "unique_usernames"
+        ],
+        "type": "object"
+      },
+      "CharsetClassResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Number of attempts in this charset class.",
+            "example": 204,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Charset class: empty | symbol | digits | lower | upper | alnum.",
+            "example": "digits",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "name"
+        ],
+        "type": "object"
+      },
       "CommandResponse": {
         "additionalProperties": false,
         "properties": {
@@ -151,6 +218,26 @@
           "input",
           "success",
           "timestamp"
+        ],
+        "type": "object"
+      },
+      "CredentialLengthResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Number of attempts with this password length.",
+            "example": 311,
+            "type": "integer"
+          },
+          "length": {
+            "description": "Password length (capped; the top bucket is the tail).",
+            "example": 6,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "length"
         ],
         "type": "object"
       },
@@ -332,6 +419,42 @@
             "type": "integer"
           }
         },
+        "type": "object"
+      },
+      "PasswordCompositionResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "capped_at": {
+            "description": "Length cap; the top length bucket is this value or more.",
+            "example": 16,
+            "type": "integer"
+          },
+          "classes": {
+            "description": "Charset-class breakdown, descending by count.",
+            "items": {
+              "$ref": "#/components/schemas/CharsetClassResponse"
+            },
+            "type": "array"
+          },
+          "lengths": {
+            "description": "Password-length histogram, ascending by length.",
+            "items": {
+              "$ref": "#/components/schemas/CredentialLengthResponse"
+            },
+            "type": "array"
+          },
+          "total": {
+            "description": "Total passwords classified.",
+            "example": 9876,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "capped_at",
+          "classes",
+          "lengths",
+          "total"
+        ],
         "type": "object"
       },
       "ReadyResponse": {
@@ -601,6 +724,47 @@
           "count",
           "country",
           "country_code"
+        ],
+        "type": "object"
+      },
+      "TopCredentialResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Number of attempts for this credential.",
+            "example": 128,
+            "type": "integer"
+          },
+          "distinct_ips": {
+            "description": "Distinct source addresses that tried this credential; only populated for the ip_fanout metric (null otherwise). A high value signals a distributed botnet sharing one credential.",
+            "example": 42,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "password": {
+            "description": "Password attempted (null when grouping by username).",
+            "example": "123456",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "username": {
+            "description": "Username attempted.",
+            "example": "root",
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "count",
+          "distinct_ips",
+          "password",
+          "username"
         ],
         "type": "object"
       },
@@ -949,6 +1113,33 @@
         ]
       }
     },
+    "/api/v1/stats/auth-outcomes": {
+      "get": {
+        "operationId": "statsAuthOutcomes",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AuthOutcomesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the accept/reject split across all auth attempts.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
     "/api/v1/stats/heatmap": {
       "get": {
         "operationId": "statsHeatmap",
@@ -999,6 +1190,93 @@
         ]
       }
     },
+    "/api/v1/stats/password-composition": {
+      "get": {
+        "operationId": "statsPasswordComposition",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PasswordCompositionResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the password length histogram + charset-class breakdown.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/passwords-by-length": {
+      "get": {
+        "operationId": "statsPasswordsByLength",
+        "parameters": [
+          {
+            "description": "Password length to list. At the cap this lists every password of that length or longer (the histogram's tail bucket).",
+            "in": "query",
+            "name": "length",
+            "required": true,
+            "schema": {
+              "example": 6,
+              "maximum": 16,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopPasswordResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N passwords of a given length (histogram drill-down).",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
     "/api/v1/stats/top-countries": {
       "get": {
         "operationId": "statsTopCountries",
@@ -1042,6 +1320,101 @@
           }
         },
         "summary": "Return the top-N attacking countries ranked by session count.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/top-credentials": {
+      "get": {
+        "operationId": "statsTopCredentials",
+        "parameters": [
+          {
+            "description": "Group by username+password ('pair'), username only, or password only (the raw most-common-passwords view).",
+            "in": "query",
+            "name": "by",
+            "required": false,
+            "schema": {
+              "default": "pair",
+              "enum": [
+                "pair",
+                "password",
+                "username"
+              ],
+              "example": "pair",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Rank by raw attempt count or distinct-IP fan-out.",
+            "in": "query",
+            "name": "metric",
+            "required": false,
+            "schema": {
+              "default": "attempts",
+              "enum": [
+                "attempts",
+                "ip_fanout"
+              ],
+              "example": "attempts",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Filter to cowrie-accepted, rejected, or all attempts.",
+            "in": "query",
+            "name": "outcome",
+            "required": false,
+            "schema": {
+              "default": "any",
+              "enum": [
+                "any",
+                "failed",
+                "success"
+              ],
+              "example": "any",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TopCredentialResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N attempted credentials ranked by the chosen metric.",
         "tags": [
           "stats"
         ]

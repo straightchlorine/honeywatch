@@ -3,7 +3,13 @@ from __future__ import annotations
 from marshmallow import fields, validate
 
 from src.schemas.common import BaseSchema, country_filter_field
-from src.services.stats import VALID_BUCKETS
+from src.services.stats import (
+    PASSWORD_LENGTH_CAP,
+    VALID_BUCKETS,
+    VALID_CRED_GROUPINGS,
+    VALID_CRED_METRICS,
+    VALID_CRED_OUTCOMES,
+)
 
 
 class TotalsResponse(BaseSchema):
@@ -134,6 +140,202 @@ class HeatmapPointResponse(BaseSchema):
 class TopNQuery(BaseSchema):
     """Shared query args for the top-N leaderboards (passwords, countries)."""
 
+    top_n = fields.Int(
+        load_default=10,
+        validate=validate.Range(min=1, max=100),
+        metadata={
+            "description": "Number of top entries to return (max 100).",
+            "example": 10,
+        },
+    )
+
+
+class PasswordsByLengthQuery(BaseSchema):
+    """Query args for the password-length drill-down (Credentials histogram)."""
+
+    length = fields.Int(
+        required=True,
+        validate=validate.Range(min=0, max=PASSWORD_LENGTH_CAP),
+        metadata={
+            "description": (
+                "Password length to list. At the cap this lists every password "
+                "of that length or longer (the histogram's tail bucket)."
+            ),
+            "example": 6,
+        },
+    )
+    top_n = fields.Int(
+        load_default=10,
+        validate=validate.Range(min=1, max=100),
+        metadata={
+            "description": "Number of top entries to return (max 100).",
+            "example": 10,
+        },
+    )
+
+
+class TopCredentialResponse(BaseSchema):
+    username = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Username attempted.", "example": "root"},
+    )
+    password = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Password attempted (null when grouping by username).",
+            "example": "123456",
+        },
+    )
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Number of attempts for this credential.",
+            "example": 128,
+        },
+    )
+    distinct_ips = fields.Int(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": (
+                "Distinct source addresses that tried this credential; only "
+                "populated for the ip_fanout metric (null otherwise). A high "
+                "value signals a distributed botnet sharing one credential."
+            ),
+            "example": 42,
+        },
+    )
+
+
+class AuthOutcomesResponse(BaseSchema):
+    total = fields.Int(
+        required=True,
+        metadata={"description": "Total auth attempts recorded.", "example": 9876},
+    )
+    successful = fields.Int(
+        required=True,
+        metadata={"description": "Attempts cowrie accepted.", "example": 178},
+    )
+    failed = fields.Int(
+        required=True,
+        metadata={"description": "Attempts cowrie rejected.", "example": 9698},
+    )
+    success_rate = fields.Float(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Accepted percentage (null when there are no attempts).",
+            "example": 1.8,
+        },
+    )
+    unique_passwords = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct passwords attempted (attacker wordlist size).",
+            "example": 412,
+        },
+    )
+    unique_usernames = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct usernames attempted.",
+            "example": 57,
+        },
+    )
+
+
+class CredentialLengthResponse(BaseSchema):
+    length = fields.Int(
+        required=True,
+        metadata={
+            "description": "Password length (capped; the top bucket is the tail).",
+            "example": 6,
+        },
+    )
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Number of attempts with this password length.",
+            "example": 311,
+        },
+    )
+
+
+class CharsetClassResponse(BaseSchema):
+    name = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                "Charset class: empty | symbol | digits | lower | upper | alnum."
+            ),
+            "example": "digits",
+        },
+    )
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Number of attempts in this charset class.",
+            "example": 204,
+        },
+    )
+
+
+class PasswordCompositionResponse(BaseSchema):
+    total = fields.Int(
+        required=True,
+        metadata={"description": "Total passwords classified.", "example": 9876},
+    )
+    capped_at = fields.Int(
+        required=True,
+        metadata={
+            "description": "Length cap; the top length bucket is this value or more.",
+            "example": 16,
+        },
+    )
+    lengths = fields.List(
+        fields.Nested(CredentialLengthResponse),
+        required=True,
+        metadata={"description": "Password-length histogram, ascending by length."},
+    )
+    classes = fields.List(
+        fields.Nested(CharsetClassResponse),
+        required=True,
+        metadata={"description": "Charset-class breakdown, descending by count."},
+    )
+
+
+class TopCredentialsQuery(BaseSchema):
+    """Query args for the credential leaderboard (Credentials page)."""
+
+    by = fields.Str(
+        load_default="pair",
+        validate=validate.OneOf(sorted(VALID_CRED_GROUPINGS)),
+        metadata={
+            "description": (
+                "Group by username+password ('pair'), username only, or "
+                "password only (the raw most-common-passwords view)."
+            ),
+            "example": "pair",
+        },
+    )
+    metric = fields.Str(
+        load_default="attempts",
+        validate=validate.OneOf(sorted(VALID_CRED_METRICS)),
+        metadata={
+            "description": "Rank by raw attempt count or distinct-IP fan-out.",
+            "example": "attempts",
+        },
+    )
+    outcome = fields.Str(
+        load_default="any",
+        validate=validate.OneOf(sorted(VALID_CRED_OUTCOMES)),
+        metadata={
+            "description": "Filter to cowrie-accepted, rejected, or all attempts.",
+            "example": "any",
+        },
+    )
     top_n = fields.Int(
         load_default=10,
         validate=validate.Range(min=1, max=100),

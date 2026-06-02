@@ -171,3 +171,170 @@ def test_stats_country_filter_rejects_invalid(client: Any) -> None:
         client.get("/api/v1/stats/activity?bucket=day&country=USA").status_code == 422
     )
     assert client.get("/api/v1/stats/heatmap?country=1").status_code == 422
+
+
+def test_top_credentials_pairs_default(client: Any, seed_data: Any) -> None:
+    """Default grouping returns username+password pairs ranked by count."""
+    del seed_data
+    response = client.get("/api/v1/stats/top-credentials")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert isinstance(data, list)
+    # seed has 3 distinct pairs, each tried once.
+    assert {(r["username"], r["password"]) for r in data} == {
+        ("root", "password123"),
+        ("admin", "admin"),
+        ("root", "toor"),
+    }
+    counts = [r["count"] for r in data]
+    assert counts == sorted(counts, reverse=True)
+    # distinct_ips is null for the (default) attempts metric -- no sessions join.
+    assert all(r["distinct_ips"] is None for r in data)
+
+
+def test_top_credentials_by_username(client: Any, seed_data: Any) -> None:
+    """Grouping by username collapses the password (None) and sums attempts."""
+    del seed_data
+    response = client.get("/api/v1/stats/top-credentials?by=username")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert all(r["password"] is None for r in data)
+    by_user = {r["username"]: r["count"] for r in data}
+    # root appears in two attempts (password123 + toor); admin once.
+    assert by_user == {"root": 2, "admin": 1}
+    # ranked descending, so the most-tried username is first.
+    assert data[0]["username"] == "root"
+
+
+def test_top_credentials_by_password(client: Any, seed_data: Any) -> None:
+    """Grouping by password alone collapses the username (None)."""
+    del seed_data
+    response = client.get("/api/v1/stats/top-credentials?by=password")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert all(r["username"] is None for r in data)
+    # seed passwords: password123, admin, toor -- each tried once.
+    assert {r["password"] for r in data} == {"password123", "admin", "toor"}
+
+
+def test_top_credentials_success_only(client: Any, seed_data: Any) -> None:
+    """outcome=success returns only the cowrie-accepted credential(s)."""
+    del seed_data
+    response = client.get("/api/v1/stats/top-credentials?outcome=success")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert len(data) == 1
+    assert data[0]["username"] == "root"
+    assert data[0]["password"] == "toor"
+
+
+def test_top_credentials_ip_fanout_metric(client: Any, seed_data: Any) -> None:
+    """ip_fanout populates distinct_ips (the distributed-botnet discriminator)."""
+    del seed_data
+    response = client.get("/api/v1/stats/top-credentials?metric=ip_fanout")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data, data
+    # every seeded pair was tried from exactly one source IP.
+    assert all(isinstance(r["distinct_ips"], int) for r in data)
+    assert all(r["distinct_ips"] == 1 for r in data)
+
+
+def test_top_credentials_top_n_clamp(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/top-credentials?top_n=1")
+    assert response.status_code == 200
+    assert len(response.get_json()) == 1
+
+
+def test_top_credentials_rejects_invalid_params(client: Any) -> None:
+    assert client.get("/api/v1/stats/top-credentials?by=bogus").status_code == 422
+    assert client.get("/api/v1/stats/top-credentials?metric=bogus").status_code == 422
+    assert client.get("/api/v1/stats/top-credentials?outcome=bogus").status_code == 422
+
+
+def test_auth_outcomes(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/auth-outcomes")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["total"] == 3
+    assert data["successful"] == 1
+    assert data["failed"] == 2
+    assert data["success_rate"] == round(1 / 3 * 100, 2)
+    # seed passwords: password123, admin, toor -> 3 distinct.
+    assert data["unique_passwords"] == 3
+    # seed usernames: root, admin, root -> 2 distinct.
+    assert data["unique_usernames"] == 2
+
+
+def test_auth_outcomes_empty_returns_null_rate(client: Any, db_session: Any) -> None:
+    """No attempts -> success_rate is null (no divide-by-zero)."""
+    del db_session
+    response = client.get("/api/v1/stats/auth-outcomes")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data == {
+        "total": 0,
+        "successful": 0,
+        "failed": 0,
+        "success_rate": None,
+        "unique_passwords": 0,
+        "unique_usernames": 0,
+    }
+
+
+def test_password_composition(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/password-composition")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["total"] == 3
+    assert data["capped_at"] == 16
+    # lengths: password123=11, admin=5, toor=4 -> three single-count buckets.
+    lengths = {row["length"]: row["count"] for row in data["lengths"]}
+    assert lengths == {4: 1, 5: 1, 11: 1}
+    # charset classes: admin + toor are lowercase, password123 is alnum.
+    classes = {row["name"]: row["count"] for row in data["classes"]}
+    assert classes == {"lower": 2, "alnum": 1}
+    # descending by count, so the dominant class leads.
+    assert data["classes"][0]["name"] == "lower"
+
+
+def test_passwords_by_length_exact(client: Any, seed_data: Any) -> None:
+    """An exact-length query returns only the passwords of that length."""
+    del seed_data
+    # seed passwords: password123 (11), admin (5), toor (4).
+    assert client.get("/api/v1/stats/passwords-by-length?length=5").get_json() == [
+        {"password": "admin", "count": 1}
+    ]
+    assert client.get("/api/v1/stats/passwords-by-length?length=4").get_json() == [
+        {"password": "toor", "count": 1}
+    ]
+    assert client.get("/api/v1/stats/passwords-by-length?length=11").get_json() == [
+        {"password": "password123", "count": 1}
+    ]
+
+
+def test_passwords_by_length_no_match_is_empty(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/passwords-by-length?length=7")
+    assert response.status_code == 200
+    assert response.get_json() == []
+
+
+def test_passwords_by_length_cap_is_inclusive_tail(client: Any, seed_data: Any) -> None:
+    """At the cap the query lists every password of that length or longer."""
+    del seed_data
+    # cap is 16; nothing in the seed is >= 16, but length=11 (< cap) is exact-only.
+    assert client.get("/api/v1/stats/passwords-by-length?length=16").get_json() == []
+
+
+def test_passwords_by_length_requires_length(client: Any) -> None:
+    # length is required; omitting it is a 422 (no silent default).
+    assert client.get("/api/v1/stats/passwords-by-length").status_code == 422
+
+
+def test_passwords_by_length_rejects_out_of_range(client: Any) -> None:
+    assert client.get("/api/v1/stats/passwords-by-length?length=-1").status_code == 422
+    assert client.get("/api/v1/stats/passwords-by-length?length=99").status_code == 422
