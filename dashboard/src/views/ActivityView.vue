@@ -1,13 +1,8 @@
 <script setup lang="ts">
   import { computed } from 'vue'
-  import { useRoute, useRouter } from 'vue-router'
+  import { useRouter } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
-  import {
-    statsHeatmapOptions,
-    statsActivityOptions,
-    statsTrendOptions,
-    statsTopCountriesOptions,
-  } from '@/api/queries'
+  import { statsHeatmapOptions, statsActivityOptions, statsTrendOptions } from '@/api/queries'
   import Card from '@/components/base/Card.vue'
   import Stat from '@/components/base/Stat.vue'
   import Dropdown from '@/components/base/Dropdown.vue'
@@ -15,8 +10,8 @@
   import ActivityTimeline from '@/components/charts/ActivityTimeline.vue'
   import { fmtNumber, fmtDelta } from '@/utils/format'
   import { busiestHour, busiestWeekday, peakDay } from '@/utils/activityKpis'
-
-  type Opt = { value: string; label: string }
+  import { useCountryFilter } from '@/composables/useCountryFilter'
+  import { useCountryOptions } from '@/composables/useCountryOptions'
 
   // The daily activity + 7-day trend visibly move minute to minute; the all-time
   // weekday x hour heatmap barely changes, so it polls far less often (and skips
@@ -24,15 +19,10 @@
   const POLL_MS = 10_000
   const POLL_SLOW_MS = 60_000
 
-  const route = useRoute()
   const router = useRouter()
 
   // Country scope lives in the URL (?country=XX); empty = all countries.
-  const country = computed(() => {
-    const c = route.query.country
-    return typeof c === 'string' && /^[A-Za-z]{2}$/.test(c) ? c.toUpperCase() : ''
-  })
-  const countryQuery = computed(() => (country.value ? { country: country.value } : {}))
+  const { country, countryQuery } = useCountryFilter()
 
   // keepPreviousData keeps the prior country's data on screen while the new query
   // loads, so changing the scope never leaves data.value momentarily undefined
@@ -80,17 +70,8 @@
   )
 
   // Country dropdown options reuse the top-countries leaderboard (max 100). The
-  // default ("") scopes to every country and reads as "World" in the title.
-  const countriesQ = useQuery({ ...statsTopCountriesOptions({ query: { top_n: 100 } }) })
-  const countryOptions = computed<Opt[]>(() => [
-    { value: '', label: 'the world' },
-    ...(countriesQ.data.value ?? [])
-      .filter((c) => c.country_code && /^[A-Za-z]{2}$/.test(c.country_code))
-      .map((c) => ({
-        value: c.country_code as string,
-        label: (c.country ?? c.country_code) as string,
-      })),
-  ])
+  // default ("") scopes to every country and reads as "the world" in the title.
+  const countryOptions = useCountryOptions('the world')
 
   // After the first successful load, keepPreviousData holds the last good data on
   // screen even if a background poll fails; surface that so the numbers are not

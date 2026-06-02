@@ -24,6 +24,7 @@
       <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
       <span
         class="bar-label"
+        :title="row.title ?? row.label"
         @mouseenter="tt.show(row.title ?? row.label, $event)"
         @mousemove="tt.show(row.title ?? row.label, $event)"
         @mouseleave="tt.hide()"

@@ -2,7 +2,7 @@
   import { computed } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
-  import { listSessionsOptions, statsTopCountriesOptions } from '@/api/queries'
+  import { listSessionsOptions } from '@/api/queries'
   import PageHeader from '@/components/base/PageHeader.vue'
   import Pagination from '@/components/base/Pagination.vue'
   import EmptyState from '@/components/base/EmptyState.vue'
@@ -10,6 +10,8 @@
   import { fmtRelativeTime } from '@/utils/format'
   import { humanizeDuration } from '@/utils/duration'
   import { sessionClass } from '@/utils/sessionClass'
+  import { useCountryFilter } from '@/composables/useCountryFilter'
+  import { useCountryOptions } from '@/composables/useCountryOptions'
 
   type Opt = { value: string; label: string }
 
@@ -46,10 +48,7 @@
     const c = route.query.category
     return typeof c === 'string' && (CATEGORIES as string[]).includes(c) ? (c as Category) : ''
   })
-  const country = computed(() => {
-    const c = route.query.country
-    return typeof c === 'string' && /^[A-Za-z]{2}$/.test(c) ? c.toUpperCase() : ''
-  })
+  const { country } = useCountryFilter()
   const filtersActive = computed(() => Boolean(category.value || country.value))
 
   const sessionsQ = useQuery(
@@ -70,16 +69,7 @@
 
   // Country options reuse the top-countries leaderboard (max 100). Not awaited:
   // the table is the primary content and must render even if this lags or fails.
-  const countriesQ = useQuery({ ...statsTopCountriesOptions({ query: { top_n: 100 } }) })
-  const countryOptions = computed<Opt[]>(() => [
-    { value: '', label: 'All countries' },
-    ...(countriesQ.data.value ?? [])
-      .filter((c) => c.country_code && /^[A-Za-z]{2}$/.test(c.country_code))
-      .map((c) => ({
-        value: c.country_code as string,
-        label: (c.country ?? c.country_code) as string,
-      })),
-  ])
+  const countryOptions = useCountryOptions('All countries')
 
   const rows = computed(() =>
     (sessionsQ.data.value?.items ?? []).map((s) => ({ ...s, cls: sessionClass(s) })),

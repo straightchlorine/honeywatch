@@ -25,9 +25,13 @@
     type CredMetric,
   } from '@/utils/credentials'
 
-  // Same 10s cadence as Overview/Activity: 4 polled queries = 24 req/min, well
-  // under the 60/min per-IP API budget and decoupled from attack volume.
-  const POLL_MS = 10_000
+  // Interactive cadence matches the 30s Cache-Control on these endpoints (a
+  // faster poll just re-serves the cached body), so it never fights the cache.
+  // The all-time composition + outcomes aggregates barely move and are the
+  // heaviest (double full-scan + per-row regex), so they poll on the slow loop
+  // -- mirrors ActivityView's heatmap split.
+  const POLL_MS = 30_000
+  const POLL_SLOW_MS = 60_000
   const HERO_TOP_N = 12
 
   // The hero leaderboard is one endpoint with three "lenses". Pairs is the
@@ -57,8 +61,16 @@
       placeholderData: keepPreviousData,
     })),
   )
-  const outcomesQ = useQuery({ ...statsAuthOutcomesOptions(), refetchInterval: POLL_MS })
-  const compositionQ = useQuery({ ...statsPasswordCompositionOptions(), refetchInterval: POLL_MS })
+  const outcomesQ = useQuery({
+    ...statsAuthOutcomesOptions(),
+    refetchInterval: POLL_SLOW_MS,
+    staleTime: POLL_SLOW_MS,
+  })
+  const compositionQ = useQuery({
+    ...statsPasswordCompositionOptions(),
+    refetchInterval: POLL_SLOW_MS,
+    staleTime: POLL_SLOW_MS,
+  })
   const workedQ = useQuery({
     ...statsTopCredentialsOptions({ query: { by: 'pair', outcome: 'success', top_n: 5 } }),
     refetchInterval: POLL_MS,
@@ -103,15 +115,34 @@
       ? `${composition.value.capped_at}+`
       : String(selectedLength.value)
   })
+  // The <Transition out-in> swap unmounts the control the user just activated
+  // (the histogram bar on drill-in, the back-btn on drill-out), dropping focus
+  // to <body>. Move it to a sensible control in the new view once it mounts so
+  // keyboard users keep their place (WCAG 2.4.3). after-enter (not nextTick)
+  // because out-in mounts the entering view only after the leave transition.
+  const backBtnRef = ref<HTMLButtonElement | null>(null)
+  const histBarsRef = ref<HTMLElement | null>(null)
+  type FocusTarget = 'back' | 'hist' | null
+  const pendingFocus = ref<FocusTarget>(null)
+
+  function onCompEntered(): void {
+    const target = pendingFocus.value
+    pendingFocus.value = null
+    if (target === 'back') backBtnRef.value?.focus()
+    else if (target === 'hist') histBarsRef.value?.focus()
+  }
+
   // Hide the tooltip on any view swap: the hovered trigger (a histogram bar /
   // hero row) unmounts during the transition without firing mouseleave, so the
   // bubble would otherwise stay frozen on screen.
   function selectLength(length: number): void {
     tt.hide()
+    pendingFocus.value = 'back'
     selectedLength.value = length
   }
   function clearLength(): void {
     tt.hide()
+    pendingFocus.value = 'hist'
     selectedLength.value = null
   }
   function setMode(next: Mode): void {
@@ -131,12 +162,26 @@
     return `${fmtNumber(successful)} accepted, ${fmtNumber(failed)} rejected`
   })
 
+  // After the first successful load, keepPreviousData / cached data stays on
+  // screen even if a background poll fails; surface that so the numbers are not
+  // silently stale (the queries keep retrying on their interval). Mirrors
+  // SessionsView / ActivityView.
+  const isStale = computed(
+    () =>
+      heroQ.isError.value ||
+      outcomesQ.isError.value ||
+      compositionQ.isError.value ||
+      workedQ.isError.value,
+  )
+
   const tt = useTooltip()
 </script>
 
 <template>
   <div class="credentials">
     <PageHeader title="Credentials" />
+
+    <p v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</p>
 
     <section class="stats-grid" aria-label="Credential totals">
       <!-- Top row = credential vocabulary; bottom row = volume + outcome. -->
@@ -186,7 +231,7 @@
               @mousemove="tt.show(row.title, $event)"
               @mouseleave="tt.hide()"
             >
-              <span class="cred-cred">
+              <span class="cred-cred" :title="row.title">
                 <span class="cred-user" :class="{ 'cred-user-solo': !row.sub }">{{
                   row.label
                 }}</span>
@@ -223,7 +268,7 @@
         </Card>
 
         <Card title="Password composition" padding="sm" class="comp-card" fill>
-          <Transition name="comp-fade" mode="out-in">
+          <Transition name="comp-fade" mode="out-in" @after-enter="onCompEntered">
             <!-- Default view: length histogram + charset breakdown. -->
             <div v-if="selectedLength === null" key="hist" class="comp-body">
               <div
@@ -231,7 +276,7 @@
                 role="group"
                 aria-label="Password length distribution; activate a bar to list its passwords"
               >
-                <div class="hist-bars">
+                <div ref="histBarsRef" class="hist-bars" tabindex="-1">
                   <button
                     v-for="bar in lengthBars"
                     :key="bar.key"
@@ -269,13 +314,20 @@
                  passwords at the chosen length; size is fixed so nothing reflows. -->
             <div v-else key="drill" class="comp-drill">
               <div class="drill-head">
-                <button type="button" class="back-btn" @click="clearLength">
+                <button ref="backBtnRef" type="button" class="back-btn" @click="clearLength">
                   <span aria-hidden="true">←</span> Composition
                 </button>
                 <span class="drill-title">{{ selectedLabel }} chars</span>
               </div>
               <div class="drill-scroll">
+                <!-- A failed lazy fetch must read differently from a genuinely
+                     empty bucket, otherwise "No passwords of this length" hides
+                     the error and looks like real data. -->
+                <p v-if="passwordsQ.isError.value" class="drill-error" role="status">
+                  Couldn't load passwords for this length — retrying.
+                </p>
                 <BarList
+                  v-else
                   :items="drillRows"
                   label="Passwords of the selected length"
                   empty-text="No passwords of this length"
@@ -298,6 +350,13 @@
     gap: var(--space-3);
     flex: 1 1 auto;
     min-height: 0;
+  }
+
+  .stale {
+    flex: 0 0 auto;
+    margin: 0;
+    font-size: var(--type-xs);
+    color: var(--warning);
   }
 
   .stats-grid {
@@ -355,6 +414,9 @@
     font-size: var(--type-xs);
     line-height: var(--type-xs-lh);
     font-weight: 500;
+    /* Meet the project's 44px coarse-pointer target (--control-h scales up on
+       touch); padding stays for the visual size. */
+    min-height: var(--control-h);
     padding: 4px 10px;
     border-radius: calc(var(--radius-sm) - 1px);
     cursor: pointer;
@@ -554,6 +616,8 @@
     cursor: pointer;
     font-size: var(--type-xs);
     line-height: var(--type-xs-lh);
+    /* Coarse-pointer target floor (--control-h scales up on touch). */
+    min-height: var(--control-h);
     padding: var(--space-1) var(--space-2);
     border-radius: var(--radius-sm);
     transition:
@@ -590,6 +654,13 @@
     min-height: 0;
     overflow-y: auto;
     scrollbar-gutter: stable;
+  }
+
+  .drill-error {
+    margin: 0;
+    font-size: var(--type-xs);
+    line-height: var(--type-xs-lh);
+    color: var(--warning);
   }
 
   /* Cross-fade the two card states (out-in) so the swap reads as one surface
@@ -664,6 +735,17 @@
     display: flex;
     align-items: flex-end;
     gap: 2px;
+  }
+
+  /* Programmatic focus target after the drill-out swap (WCAG 2.4.3). Show a ring
+     only for keyboard-visible focus so the silent .focus() never paints one. */
+  .hist-bars:focus {
+    outline: none;
+  }
+  .hist-bars:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
   }
 
   .hist-col {

@@ -134,4 +134,51 @@ describe('fmtSuccessRate', () => {
     expect(fmtSuccessRate(1.8)).toBe('1.80%')
     expect(fmtSuccessRate(33.33)).toBe('33.3%')
   })
+
+  it('switches to 1 decimal place at exactly rate===10', () => {
+    expect(fmtSuccessRate(10)).toBe('10.0%')
+  })
+})
+
+describe('buildCredentialRows — attacker-text sanitization', () => {
+  it('escapes a bidi override in a username and an embedded IP in a password', () => {
+    // U+202E (RIGHT-TO-LEFT OVERRIDE) must not appear raw in any display field.
+    const rows = buildCredentialRows(
+      [{ username: '‮admin', password: 'http://1.2.3.4/x', count: 1, distinct_ips: null }],
+      'attempts',
+    )
+    expect(rows[0]!.label).not.toContain('‮')
+    expect(rows[0]!.label).toContain('\\x202E')
+    // The IP in the password must be blotted; the scheme is preserved.
+    expect(rows[0]!.sub).not.toContain('1.2.3.4')
+    expect(rows[0]!.sub).toContain('‹ip›')
+    // The title (which composes label + sub) also must be clean.
+    expect(rows[0]!.title).not.toContain('‮')
+    expect(rows[0]!.title).not.toContain('1.2.3.4')
+  })
+
+  it('escapes a C0 control character in a password', () => {
+    // U+0001 (SOH) is a C0 control that must be shown as \\x01, not raw.
+    const rows = buildCredentialRows(
+      [{ username: 'root', password: 'pw\x01x', count: 2, distinct_ips: null }],
+      'attempts',
+    )
+    expect(rows[0]!.sub).not.toContain('\x01')
+    expect(rows[0]!.sub).toBe(':pw\\x01x')
+  })
+})
+
+describe('buildPasswordRows — attacker-text sanitization', () => {
+  it('escapes a bidi override in a raw password string', () => {
+    const rows = buildPasswordRows([{ password: '‮hunter2', count: 1 }])
+    expect(rows[0]!.label).not.toContain('‮')
+    expect(rows[0]!.label).toContain('\\x202E')
+    expect(rows[0]!.title).not.toContain('‮')
+  })
+
+  it('redacts an embedded IP literal in a password', () => {
+    const rows = buildPasswordRows([{ password: 'http://1.2.3.4/x', count: 5 }])
+    expect(rows[0]!.label).not.toContain('1.2.3.4')
+    expect(rows[0]!.label).toContain('‹ip›')
+  })
 })

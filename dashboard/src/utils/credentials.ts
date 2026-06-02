@@ -4,6 +4,8 @@ import type {
   TopCredentialResponse,
   TopPasswordResponse,
 } from '@/api/generated/types.gen'
+import { sanitizeAttackerText } from '@/utils/sanitize'
+import { redactIps } from '@/utils/redactIps'
 import { fmtNumber } from './format'
 
 export type CredMetric = 'attempts' | 'ip_fanout'
@@ -11,11 +13,26 @@ export type CredMetric = 'attempts' | 'ip_fanout'
 const EMPTY = '‹empty›'
 
 /**
+ * Neutralize one attacker-controlled credential string for display. Usernames
+ * and passwords are captured verbatim, so they can hide a C2 host (e.g.
+ * `http://1.2.3.4/x` in a password) or bidi/control code points that visually
+ * spoof the credential. Compose order mirrors useTerminalTranscript: sanitize
+ * first (escape control/bidi as \xHH), then blot IP literals. allowWhitespace
+ * is false -- credentials are single-line tokens. Blank stays blank so callers
+ * can swap in the empty-marker, which is never run through the sanitizer.
+ */
+function cleanCred(raw: string): string {
+  if (raw === '') return ''
+  const escaped = sanitizeAttackerText(raw, { mode: 'escape', allowWhitespace: false })
+  return redactIps(escaped).text
+}
+
+/**
  * At/above this many distinct source IPs, a single credential reads as a
  * distributed botnet sharing one hardcoded entry (the Mirai signature) rather
  * than one host grinding a wordlist.
  */
-export const DISTRIBUTED_IP_MIN = 5
+const DISTRIBUTED_IP_MIN = 5
 
 /** Bar/segment width with a 2% floor so any non-zero value stays visible. */
 export function pctWidth(value: number, max: number): string {
@@ -23,7 +40,7 @@ export function pctWidth(value: number, max: number): string {
   return `${Math.max(2, Math.round((value / max) * 100))}%`
 }
 
-export interface CredRow {
+interface CredRow {
   key: string
   /** Username (or the empty-marker). */
   label: string
@@ -48,11 +65,13 @@ export function buildCredentialRows(items: TopCredentialResponse[], metric: Cred
   return items.map((it, idx) => {
     const hasUser = it.username !== null && it.username !== undefined
     const hasPass = it.password !== null && it.password !== undefined
+    const user = cleanCred(it.username ?? '')
+    const pass = cleanCred(it.password ?? '')
     // Primary label is the username, except in the password-only view (no
     // username) where the password itself is the label. The ":password" sub
     // shows only in the pair view (both present).
-    const label = hasUser ? it.username || EMPTY : it.password || EMPTY
-    const sub = hasUser && hasPass ? `:${it.password || EMPTY}` : null
+    const label = hasUser ? user || EMPTY : pass || EMPTY
+    const sub = hasUser && hasPass ? `:${pass || EMPTY}` : null
     const cred = sub ? `${label}${sub}` : label
     const ips = it.distinct_ips ?? 0
     const value = fanout ? ips : it.count
@@ -87,7 +106,7 @@ export function buildPairBarRows(items: TopCredentialResponse[]): BarRow[] {
   let max = 0
   for (const it of items) if (it.count > max) max = it.count
   return items.map((it, idx) => {
-    const label = `${it.username || EMPTY}:${it.password || EMPTY}`
+    const label = `${cleanCred(it.username ?? '') || EMPTY}:${cleanCred(it.password ?? '') || EMPTY}`
     return {
       key: `${label}|${idx}`,
       label,
@@ -112,7 +131,7 @@ export function buildPasswordRows(items: TopPasswordResponse[]): BarRow[] {
   let max = 0
   for (const it of items) if (it.count > max) max = it.count
   return items.map((it, idx) => {
-    const label = it.password || EMPTY
+    const label = cleanCred(it.password ?? '') || EMPTY
     return {
       key: `${it.password ?? ''}|${idx}`,
       label,

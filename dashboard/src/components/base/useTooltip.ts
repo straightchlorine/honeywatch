@@ -1,6 +1,6 @@
 import { onScopeDispose, reactive } from 'vue'
 
-export interface TooltipState {
+interface TooltipState {
   visible: boolean
   /** Cursor viewport coordinates the bubble anchors to. */
   x: number
@@ -8,7 +8,7 @@ export interface TooltipState {
   text: string
 }
 
-export interface TooltipController {
+interface TooltipController {
   state: TooltipState
   show: (text: string, ev: MouseEvent | FocusEvent) => void
   hide: () => void
