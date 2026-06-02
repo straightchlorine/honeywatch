@@ -19,6 +19,21 @@ describe('TerminalLine', () => {
     expect(w.find('.input').text()).toContain('whoami')
   })
 
+  it('renders the capture time in the left gutter', () => {
+    const w = mount(TerminalLine, {
+      props: {
+        line: {
+          id: 'c1',
+          kind: 'command',
+          user: 'root',
+          segments: [{ text: 'ls', redacted: false }],
+          time: '13:41:49',
+        },
+      },
+    })
+    expect(w.find('.ts').text()).toBe('13:41:49')
+  })
+
   it('wraps redacted segments in an ip-blot span', () => {
     const w = mount(TerminalLine, {
       props: {
@@ -64,7 +79,13 @@ describe('TerminalLine', () => {
   it('marks an auth line with no supplied password explicitly', () => {
     const w = mount(TerminalLine, {
       props: {
-        line: { id: 'a2', kind: 'auth-ok', pre: 'Accepted password ', password: '', post: ' for root.' },
+        line: {
+          id: 'a2',
+          kind: 'auth-ok',
+          pre: 'Accepted password ',
+          password: '',
+          post: ' for root.',
+        },
       },
     })
     const cred = w.find('.cred')

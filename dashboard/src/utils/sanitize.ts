@@ -26,8 +26,7 @@ const TRUNCATION_MARKER = '\n... [truncated]'
 
 /** True for C0 controls (minus allowed whitespace), DEL/C1, bidi marks + overrides. */
 function isDangerous(code: number, allowWhitespace: boolean): boolean {
-  const isAllowedWs =
-    allowWhitespace && (code === 0x09 || code === 0x0a || code === 0x0d)
+  const isAllowedWs = allowWhitespace && (code === 0x09 || code === 0x0a || code === 0x0d)
   if (isAllowedWs) return false
   return (
     code <= 0x1f || // C0 controls

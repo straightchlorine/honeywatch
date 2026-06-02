@@ -13,6 +13,12 @@ describe('fmtNumber', () => {
   it('formats small numbers without separators', () => {
     expect(fmtNumber(42)).toBe('42')
   })
+
+  it('renders an em dash for missing or non-finite values (never throws)', () => {
+    expect(fmtNumber(undefined)).toBe('—')
+    expect(fmtNumber(null)).toBe('—')
+    expect(fmtNumber(NaN)).toBe('—')
+  })
 })
 
 describe('fmtDelta', () => {

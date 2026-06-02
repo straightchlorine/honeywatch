@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetSessionByIdData, GetSessionByIdErrors, GetSessionByIdResponses, HealthLiveData, HealthLiveErrors, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, StatsActivityData, StatsActivityErrors, StatsActivityResponses, StatsHeatmapData, StatsHeatmapErrors, StatsHeatmapResponses, StatsTopCountriesData, StatsTopCountriesErrors, StatsTopCountriesResponses, StatsTopPasswordsData, StatsTopPasswordsErrors, StatsTopPasswordsResponses, StatsTotalsData, StatsTotalsErrors, StatsTotalsResponses, StatsTrendData, StatsTrendErrors, StatsTrendResponses } from './types.gen';
+import type { GetSessionByIdData, GetSessionByIdErrors, GetSessionByIdResponses, HealthLiveData, HealthLiveErrors, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, StatsActivityData, StatsActivityErrors, StatsActivityResponses, StatsAuthOutcomesData, StatsAuthOutcomesErrors, StatsAuthOutcomesResponses, StatsHeatmapData, StatsHeatmapErrors, StatsHeatmapResponses, StatsPasswordCompositionData, StatsPasswordCompositionErrors, StatsPasswordCompositionResponses, StatsPasswordsByLengthData, StatsPasswordsByLengthErrors, StatsPasswordsByLengthResponses, StatsTopCountriesData, StatsTopCountriesErrors, StatsTopCountriesResponses, StatsTopCredentialsData, StatsTopCredentialsErrors, StatsTopCredentialsResponses, StatsTopPasswordsData, StatsTopPasswordsErrors, StatsTopPasswordsResponses, StatsTotalsData, StatsTotalsErrors, StatsTotalsResponses, StatsTrendData, StatsTrendErrors, StatsTrendResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -34,14 +34,34 @@ export const getSessionById = <ThrowOnError extends boolean = false>(options: Op
 export const statsActivity = <ThrowOnError extends boolean = false>(options?: Options<StatsActivityData, ThrowOnError>) => (options?.client ?? client).get<StatsActivityResponses, StatsActivityErrors, ThrowOnError>({ url: '/api/v1/stats/activity', ...options });
 
 /**
+ * Return the accept/reject split across all auth attempts.
+ */
+export const statsAuthOutcomes = <ThrowOnError extends boolean = false>(options?: Options<StatsAuthOutcomesData, ThrowOnError>) => (options?.client ?? client).get<StatsAuthOutcomesResponses, StatsAuthOutcomesErrors, ThrowOnError>({ url: '/api/v1/stats/auth-outcomes', ...options });
+
+/**
  * Return session counts per (weekday, hour) cell.
  */
 export const statsHeatmap = <ThrowOnError extends boolean = false>(options?: Options<StatsHeatmapData, ThrowOnError>) => (options?.client ?? client).get<StatsHeatmapResponses, StatsHeatmapErrors, ThrowOnError>({ url: '/api/v1/stats/heatmap', ...options });
 
 /**
+ * Return the password length histogram + charset-class breakdown.
+ */
+export const statsPasswordComposition = <ThrowOnError extends boolean = false>(options?: Options<StatsPasswordCompositionData, ThrowOnError>) => (options?.client ?? client).get<StatsPasswordCompositionResponses, StatsPasswordCompositionErrors, ThrowOnError>({ url: '/api/v1/stats/password-composition', ...options });
+
+/**
+ * Return the top-N passwords of a given length (histogram drill-down).
+ */
+export const statsPasswordsByLength = <ThrowOnError extends boolean = false>(options: Options<StatsPasswordsByLengthData, ThrowOnError>) => (options.client ?? client).get<StatsPasswordsByLengthResponses, StatsPasswordsByLengthErrors, ThrowOnError>({ url: '/api/v1/stats/passwords-by-length', ...options });
+
+/**
  * Return the top-N attacking countries ranked by session count.
  */
 export const statsTopCountries = <ThrowOnError extends boolean = false>(options?: Options<StatsTopCountriesData, ThrowOnError>) => (options?.client ?? client).get<StatsTopCountriesResponses, StatsTopCountriesErrors, ThrowOnError>({ url: '/api/v1/stats/top-countries', ...options });
+
+/**
+ * Return the top-N attempted credentials ranked by the chosen metric.
+ */
+export const statsTopCredentials = <ThrowOnError extends boolean = false>(options?: Options<StatsTopCredentialsData, ThrowOnError>) => (options?.client ?? client).get<StatsTopCredentialsResponses, StatsTopCredentialsErrors, ThrowOnError>({ url: '/api/v1/stats/top-credentials', ...options });
 
 /**
  * Return the top-N attempted passwords ranked by count.

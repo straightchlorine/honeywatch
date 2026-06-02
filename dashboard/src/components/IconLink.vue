@@ -1,23 +1,23 @@
 <script setup lang="ts">
-import { computed } from "vue";
-import { ICONS, type IconName } from "./icons";
+  import { computed } from 'vue'
+  import { ICONS, type IconName } from './icons'
 
-const props = defineProps<{
-  icon: IconName;
-  href: string;
-  label: string;
-}>();
+  const props = defineProps<{
+    icon: IconName
+    href: string
+    label: string
+  }>()
 
-const safeHref = computed(() => {
-  const h = props.href;
-  if (h.startsWith("/") || h.startsWith("#") || /^https?:\/\//i.test(h)) {
-    return h;
-  }
-  if (import.meta.env.DEV) {
-    console.warn("[IconLink] Blocked disallowed href scheme:", h);
-  }
-  return "#";
-});
+  const safeHref = computed(() => {
+    const h = props.href
+    if (h.startsWith('/') || h.startsWith('#') || /^https?:\/\//i.test(h)) {
+      return h
+    }
+    if (import.meta.env.DEV) {
+      console.warn('[IconLink] Blocked disallowed href scheme:', h)
+    }
+    return '#'
+  })
 </script>
 
 <template>
@@ -36,25 +36,27 @@ const safeHref = computed(() => {
 </template>
 
 <style scoped>
-.icon-link {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  border-radius: 0.375rem;
-  color: var(--text-muted);
-  transition: color 120ms ease, background 120ms ease;
-}
+  .icon-link {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 2rem;
+    height: 2rem;
+    border-radius: 0.375rem;
+    color: var(--text-muted);
+    transition:
+      color 120ms ease,
+      background 120ms ease;
+  }
 
-.icon-link:hover {
-  color: var(--text);
-  background: var(--surface-hover);
-}
+  .icon-link:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
 
-.icon-link svg {
-  width: 1.1rem;
-  height: 1.1rem;
-  fill: currentColor;
-}
+  .icon-link svg {
+    width: 1.1rem;
+    height: 1.1rem;
+    fill: currentColor;
+  }
 </style>

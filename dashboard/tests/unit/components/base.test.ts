@@ -48,7 +48,11 @@ describe('BarList', () => {
 
 describe('EmptyState', () => {
   it('defaults to an h2 heading', () => {
-    expect(mount(EmptyState, { props: { title: 'Empty' } }).find('h2').exists()).toBe(true)
+    expect(
+      mount(EmptyState, { props: { title: 'Empty' } })
+        .find('h2')
+        .exists(),
+    ).toBe(true)
   })
 
   it('honors headingLevel and renders the hint', () => {
@@ -60,12 +64,18 @@ describe('EmptyState', () => {
 
 describe('Card', () => {
   it('renders the title prop as an h2 by default', () => {
-    expect(mount(Card, { props: { title: 'T' } }).find('h2.card-title').exists()).toBe(true)
+    expect(
+      mount(Card, { props: { title: 'T' } })
+        .find('h2.card-title')
+        .exists(),
+    ).toBe(true)
   })
 
   it('honors headingLevel', () => {
     expect(
-      mount(Card, { props: { title: 'T', headingLevel: 3 } }).find('h3.card-title').exists(),
+      mount(Card, { props: { title: 'T', headingLevel: 3 } })
+        .find('h3.card-title')
+        .exists(),
     ).toBe(true)
   })
 
@@ -79,7 +89,11 @@ describe('Card', () => {
   })
 
   it('applies the padding class', () => {
-    expect(mount(Card, { props: { padding: 'lg' } }).find('.pad-lg').exists()).toBe(true)
+    expect(
+      mount(Card, { props: { padding: 'lg' } })
+        .find('.pad-lg')
+        .exists(),
+    ).toBe(true)
   })
 })
 
@@ -91,7 +105,11 @@ describe('PageHeader', () => {
   })
 
   it('omits the sub when not provided', () => {
-    expect(mount(PageHeader, { props: { title: 'X' } }).find('.page-sub').exists()).toBe(false)
+    expect(
+      mount(PageHeader, { props: { title: 'X' } })
+        .find('.page-sub')
+        .exists(),
+    ).toBe(false)
   })
 })
 

@@ -15,12 +15,7 @@
 </script>
 
 <template>
-  <span
-    v-if="decorative"
-    class="spinner"
-    :class="sizeClass"
-    aria-hidden="true"
-  />
+  <span v-if="decorative" class="spinner" :class="sizeClass" aria-hidden="true" />
   <span
     v-else
     class="spinner"

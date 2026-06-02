@@ -37,9 +37,7 @@ describe('sanitizeAttackerText (strip mode)', () => {
   })
 
   it('with allowWhitespace=false also strips tab/newline/CR', () => {
-    expect(
-      sanitizeAttackerText('a\tb\nc', { mode: 'strip', allowWhitespace: false }),
-    ).toBe('abc')
+    expect(sanitizeAttackerText('a\tb\nc', { mode: 'strip', allowWhitespace: false })).toBe('abc')
   })
 })
 

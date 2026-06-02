@@ -27,7 +27,13 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/SessionDetailView.vue'),
     meta: { title: 'Session' },
   },
-  // Credentials and IP views are still deferred until their data/UX is ready
+  {
+    path: '/credentials',
+    name: 'credentials',
+    component: () => import('../views/CredentialsView.vue'),
+    meta: { title: 'Credentials' },
+  },
+  // The IP view is still deferred until its data/UX is ready
   // (see docs/frontend-foundation-plan.md). Unknown paths fall through below.
   {
     path: '/:pathMatch(.*)*',

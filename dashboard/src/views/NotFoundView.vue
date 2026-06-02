@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import Card from '@/components/base/Card.vue'
-import EmptyState from '@/components/base/EmptyState.vue'
-import PageHeader from '@/components/base/PageHeader.vue'
+  import Card from '@/components/base/Card.vue'
+  import EmptyState from '@/components/base/EmptyState.vue'
+  import PageHeader from '@/components/base/PageHeader.vue'
 </script>
 
 <template>
