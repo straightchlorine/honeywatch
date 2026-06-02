@@ -1,10 +1,16 @@
-export function fmtNumber(n: number): string {
-  return n.toLocaleString('en')
+/**
+ * The single number formatter for the whole dashboard -- every count goes
+ * through here, never a raw `.toLocaleString`. Non-finite input (undefined /
+ * null / NaN, e.g. a field a stale API hasn't sent yet) renders as an em dash
+ * instead of throwing, so one missing field can never blank the page.
+ */
+export function fmtNumber(n: number | null | undefined): string {
+  return typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('en') : '—'
 }
 
 export function fmtDelta(t: { delta: number; pct_change: number | null }): string {
   const sign = t.delta > 0 ? '+' : t.delta < 0 ? '-' : ''
-  const abs = Math.abs(t.delta).toLocaleString('en')
+  const abs = fmtNumber(Math.abs(t.delta))
   if (t.pct_change === null) return `${sign}${abs}`
   const pct = Math.abs(t.pct_change).toFixed(1)
   return `${sign}${abs} (${sign}${pct}%)`

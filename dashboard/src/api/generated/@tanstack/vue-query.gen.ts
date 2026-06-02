@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/vue-query';
 
 import { client } from '../client.gen';
-import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsHeatmap, statsTopCountries, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
-import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
+import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAuthOutcomes, statsHeatmap, statsPasswordComposition, statsPasswordsByLength, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
+import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -149,6 +149,24 @@ export const statsActivityOptions = (options?: Options<StatsActivityData>) => qu
     queryKey: statsActivityQueryKey(options)
 });
 
+export const statsAuthOutcomesQueryKey = (options?: Options<StatsAuthOutcomesData>) => createQueryKey('statsAuthOutcomes', options, false, ['stats']);
+
+/**
+ * Return the accept/reject split across all auth attempts.
+ */
+export const statsAuthOutcomesOptions = (options?: Options<StatsAuthOutcomesData>) => queryOptions<StatsAuthOutcomesResponse, StatsAuthOutcomesError, StatsAuthOutcomesResponse, ReturnType<typeof statsAuthOutcomesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsAuthOutcomes({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsAuthOutcomesQueryKey(options)
+});
+
 export const statsHeatmapQueryKey = (options?: Options<StatsHeatmapData>) => createQueryKey('statsHeatmap', options, false, ['stats']);
 
 /**
@@ -167,6 +185,42 @@ export const statsHeatmapOptions = (options?: Options<StatsHeatmapData>) => quer
     queryKey: statsHeatmapQueryKey(options)
 });
 
+export const statsPasswordCompositionQueryKey = (options?: Options<StatsPasswordCompositionData>) => createQueryKey('statsPasswordComposition', options, false, ['stats']);
+
+/**
+ * Return the password length histogram + charset-class breakdown.
+ */
+export const statsPasswordCompositionOptions = (options?: Options<StatsPasswordCompositionData>) => queryOptions<StatsPasswordCompositionResponse, StatsPasswordCompositionError, StatsPasswordCompositionResponse, ReturnType<typeof statsPasswordCompositionQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsPasswordComposition({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsPasswordCompositionQueryKey(options)
+});
+
+export const statsPasswordsByLengthQueryKey = (options: Options<StatsPasswordsByLengthData>) => createQueryKey('statsPasswordsByLength', options, false, ['stats']);
+
+/**
+ * Return the top-N passwords of a given length (histogram drill-down).
+ */
+export const statsPasswordsByLengthOptions = (options: Options<StatsPasswordsByLengthData>) => queryOptions<StatsPasswordsByLengthResponse, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, ReturnType<typeof statsPasswordsByLengthQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsPasswordsByLength({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsPasswordsByLengthQueryKey(options)
+});
+
 export const statsTopCountriesQueryKey = (options?: Options<StatsTopCountriesData>) => createQueryKey('statsTopCountries', options, false, ['stats']);
 
 /**
@@ -183,6 +237,24 @@ export const statsTopCountriesOptions = (options?: Options<StatsTopCountriesData
         return data;
     },
     queryKey: statsTopCountriesQueryKey(options)
+});
+
+export const statsTopCredentialsQueryKey = (options?: Options<StatsTopCredentialsData>) => createQueryKey('statsTopCredentials', options, false, ['stats']);
+
+/**
+ * Return the top-N attempted credentials ranked by the chosen metric.
+ */
+export const statsTopCredentialsOptions = (options?: Options<StatsTopCredentialsData>) => queryOptions<StatsTopCredentialsResponse, StatsTopCredentialsError, StatsTopCredentialsResponse, ReturnType<typeof statsTopCredentialsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsTopCredentials({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsTopCredentialsQueryKey(options)
 });
 
 export const statsTopPasswordsQueryKey = (options?: Options<StatsTopPasswordsData>) => createQueryKey('statsTopPasswords', options, false, ['stats']);

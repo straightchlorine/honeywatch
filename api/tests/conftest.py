@@ -198,3 +198,130 @@ def seed_data(db_session: Session) -> dict[str, Any]:
         "commands": [cmd1],
         "downloads": [dl1],
     }
+
+
+# A password chosen to fall into each charset-class branch of the server-side
+# regex CASE (src.services.stats.StatsService.password_composition). The order
+# pins the branch priority: empty -> symbol -> digits -> lower -> upper ->
+# alnum. ``LONG_PASSWORD`` (18 chars) exercises the >= PASSWORD_LENGTH_CAP tail.
+LONG_PASSWORD = "abcdefghijklmnopqr"  # 18 chars, all lowercase -> "lower" class
+_CHARSET_PASSWORDS: dict[str, str] = {
+    "empty": "",
+    "symbol": "p@ss!",
+    "digits": "12345",
+    "lower": "secret",
+    "upper": "ROOT",
+    "alnum": "abc123",
+    # mixed-case-with-digits also lands in alnum; keep one extra long sample so
+    # the >= cap length-tail drill-down has a row to return.
+    "long": LONG_PASSWORD,
+}
+
+
+@pytest.fixture()
+def charset_seed(db_session: Session) -> dict[str, Any]:
+    """Seed one auth attempt per charset class (plus a >= cap-length password).
+
+    Isolated from :func:`seed_data` so the exact-count assertions there stay
+    valid: this fixture stands alone and lets the charset / length-tail tests
+    assert their own totals.
+    """
+    now = datetime.now(timezone.utc)
+    session = HoneypotSession(
+        id="charset-001",
+        src_ip="203.0.113.10",
+        src_port=40000,
+        dst_port=22,
+        protocol="ssh",
+        started_at=now,
+        sensor="sensor-1",
+    )
+    db_session.add(session)
+    db_session.flush()
+
+    attempts = [
+        AuthAttempt(
+            session_id="charset-001",
+            username="attacker",
+            password=password,
+            success=False,
+            timestamp=now,
+        )
+        for password in _CHARSET_PASSWORDS.values()
+    ]
+    db_session.add_all(attempts)
+    db_session.flush()
+    return {"expected": dict(_CHARSET_PASSWORDS), "attempts": attempts}
+
+
+@pytest.fixture()
+def ip_fanout_seed(db_session: Session) -> dict[str, Any]:
+    """Seed a shared credential tried from two distinct IPs + a single-IP one.
+
+    Two sessions with different ``src_ip`` both submit the SAME
+    ``(botnet, sharedpw)`` pair (distinct_ips == 2 -- the distributed-botnet
+    signal), while ``(loner, lonelypw)`` is tried from a single IP
+    (distinct_ips == 1). Isolated from :func:`seed_data` so ip_fanout ranking
+    is unambiguous.
+    """
+    now = datetime.now(timezone.utc)
+    sessions = [
+        HoneypotSession(
+            id="fanout-001",
+            src_ip="198.51.100.10",
+            src_port=50001,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+            sensor="sensor-1",
+        ),
+        HoneypotSession(
+            id="fanout-002",
+            src_ip="198.51.100.20",
+            src_port=50002,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+            sensor="sensor-1",
+        ),
+        HoneypotSession(
+            id="fanout-003",
+            src_ip="198.51.100.30",
+            src_port=50003,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+            sensor="sensor-1",
+        ),
+    ]
+    db_session.add_all(sessions)
+    db_session.flush()
+
+    attempts = [
+        # Same (username, password) from two distinct source IPs -> fanout 2.
+        AuthAttempt(
+            session_id="fanout-001",
+            username="botnet",
+            password="sharedpw",
+            success=False,
+            timestamp=now,
+        ),
+        AuthAttempt(
+            session_id="fanout-002",
+            username="botnet",
+            password="sharedpw",
+            success=False,
+            timestamp=now,
+        ),
+        # A different pair tried from a single IP -> fanout 1.
+        AuthAttempt(
+            session_id="fanout-003",
+            username="loner",
+            password="lonelypw",
+            success=False,
+            timestamp=now,
+        ),
+    ]
+    db_session.add_all(attempts)
+    db_session.flush()
+    return {"sessions": sessions, "attempts": attempts}

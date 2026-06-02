@@ -44,12 +44,16 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def configure_logging(level: str | None = None) -> None:
-    """Configure root + ``app`` + key library loggers via ``dictConfig``.
+def build_logging_config(level: str | None = None) -> dict[str, Any]:
+    """Build the ``dictConfig`` dict for the API's structured logging.
 
-    Idempotent: ``dictConfig`` replaces (not appends) the root handler list, so
-    calling this from create_app, tests, and CLI never doubles handlers.
-    ``LOG_LEVEL`` env var overrides the default (INFO).
+    Returned (not applied) so gunicorn can hand it to its own
+    ``logconfig_dict`` and route ``gunicorn.access`` / ``gunicorn.error``
+    through the same JSON handler as the Flask app (see ``gunicorn.conf.py``),
+    giving prod one structured log stream instead of two mismatched formats.
+
+    ``LOG_LEVEL`` env var overrides the default (INFO); ``LOG_FORMAT`` /
+    ``ENVIRONMENT`` choose json vs text.
     """
     resolved = (level or os.environ.get("LOG_LEVEL", "INFO")).upper()
     env = os.environ.get("ENVIRONMENT", "production").strip().lower()
@@ -58,7 +62,7 @@ def configure_logging(level: str | None = None) -> None:
     ).lower()
     handler_formatter = "json" if log_format == "json" else "default"
 
-    config: dict[str, Any] = {
+    return {
         "version": 1,
         "disable_existing_loggers": False,
         "filters": {
@@ -87,6 +91,25 @@ def configure_logging(level: str | None = None) -> None:
             "werkzeug": {"level": "INFO"},
             "sqlalchemy.engine": {"level": "WARNING"},
             "flask_smorest": {"level": "INFO"},
+            "gunicorn.access": {
+                "level": "INFO",
+                "handlers": ["stderr"],
+                "propagate": False,
+            },
+            "gunicorn.error": {
+                "level": resolved,
+                "handlers": ["stderr"],
+                "propagate": False,
+            },
         },
     }
-    logging.config.dictConfig(config)
+
+
+def configure_logging(level: str | None = None) -> None:
+    """Configure root + ``app`` + key library loggers via ``dictConfig``.
+
+    Idempotent: ``dictConfig`` replaces (not appends) the root handler list, so
+    calling this from create_app, tests, and CLI never doubles handlers.
+    ``LOG_LEVEL`` env var overrides the default (INFO).
+    """
+    logging.config.dictConfig(build_logging_config(level))

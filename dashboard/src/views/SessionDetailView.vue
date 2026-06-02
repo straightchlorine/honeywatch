@@ -1,20 +1,20 @@
 <script setup lang="ts">
-import { computed } from 'vue'
-import { useRoute } from 'vue-router'
-import { useQuery } from '@tanstack/vue-query'
-import { getSessionByIdOptions } from '@/api/queries'
-import PageHeader from '@/components/base/PageHeader.vue'
-import SessionTerminal from '@/components/sessions/SessionTerminal.vue'
+  import { computed } from 'vue'
+  import { useRoute } from 'vue-router'
+  import { useQuery } from '@tanstack/vue-query'
+  import { getSessionByIdOptions } from '@/api/queries'
+  import PageHeader from '@/components/base/PageHeader.vue'
+  import SessionTerminal from '@/components/sessions/SessionTerminal.vue'
 
-const route = useRoute()
-const sessionId = computed(() => String(route.params.id ?? ''))
+  const route = useRoute()
+  const sessionId = computed(() => String(route.params.id ?? ''))
 
-const detailQ = useQuery(
-  computed(() => getSessionByIdOptions({ path: { session_id: sessionId.value } })),
-)
-await detailQ.suspense()
+  const detailQ = useQuery(
+    computed(() => getSessionByIdOptions({ path: { session_id: sessionId.value } })),
+  )
+  await detailQ.suspense()
 
-const session = computed(() => detailQ.data.value!)
+  const session = computed(() => detailQ.data.value!)
 </script>
 
 <template>
@@ -26,24 +26,24 @@ const session = computed(() => detailQ.data.value!)
 </template>
 
 <style scoped>
-.session-detail {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  flex: 1 1 auto;
-  min-height: 0;
-}
+  .session-detail {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 
-.back {
-  flex: 0 0 auto;
-  width: max-content;
-  font-size: var(--type-sm);
-  color: var(--text-muted);
-}
+  .back {
+    flex: 0 0 auto;
+    width: max-content;
+    font-size: var(--type-sm);
+    color: var(--text-muted);
+  }
 
-/* The terminal is the hero: fills the leftover height; its body scrolls. */
-.terminal-hero {
-  flex: 1 1 auto;
-  min-height: 0;
-}
+  /* The terminal is the hero: fills the leftover height; its body scrolls. */
+  .terminal-hero {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
 </style>

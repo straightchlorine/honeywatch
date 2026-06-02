@@ -38,6 +38,60 @@ async function mockApi(page: Page): Promise<void> {
         { weekday: 0, hour: 13, count: 7 }, // Sunday cell (0=Sun)
         { weekday: 2, hour: 14, count: 12 },
       ])
+    if (path.endsWith('/stats/top-credentials')) {
+      const q = new URL(route.request().url()).searchParams
+      if (q.get('outcome') === 'success')
+        return json([{ username: 'root', password: 'toor', count: 3, distinct_ips: null }])
+      if (q.get('metric') === 'ip_fanout')
+        return json([
+          { username: 'root', password: 'xc3511', count: 400, distinct_ips: 37 },
+          { username: 'admin', password: 'admin', count: 120, distinct_ips: 1 },
+        ])
+      if (q.get('by') === 'password')
+        return json([
+          { username: null, password: 'hunter2', count: 64, distinct_ips: null },
+          { username: null, password: '123456', count: 30, distinct_ips: null },
+        ])
+      if (q.get('by') === 'username')
+        return json([
+          { username: 'root', password: null, count: 220, distinct_ips: null },
+          { username: 'admin', password: null, count: 90, distinct_ips: null },
+        ])
+      return json([
+        { username: 'root', password: '123456', count: 140, distinct_ips: null },
+        { username: 'admin', password: 'admin', count: 90, distinct_ips: null },
+      ])
+    }
+    if (path.endsWith('/stats/auth-outcomes'))
+      return json({
+        total: 99,
+        successful: 4,
+        failed: 95,
+        success_rate: 4.04,
+        unique_passwords: 61,
+        unique_usernames: 18,
+      })
+    if (path.endsWith('/stats/password-composition'))
+      return json({
+        total: 99,
+        capped_at: 16,
+        lengths: [
+          { length: 4, count: 10 },
+          { length: 6, count: 40 },
+          { length: 8, count: 20 },
+          { length: 16, count: 5 },
+        ],
+        classes: [
+          { name: 'digits', count: 50 },
+          { name: 'lower', count: 30 },
+          { name: 'alnum', count: 19 },
+        ],
+      })
+    if (path.endsWith('/stats/passwords-by-length'))
+      return json([
+        { password: '123456', count: 12 },
+        { password: 'qwerty', count: 4 },
+      ])
     // List has a trailing slash (/sessions/); the detail route does not.
     if (path.endsWith('/sessions/'))
       return json({
@@ -128,6 +182,40 @@ test.describe('dashboard accessibility smoke', () => {
     await expectAxeClean(page)
   })
 
+  test('credentials renders the leaderboard, toggles lenses, axe-clean', async ({ page }) => {
+    await page.goto('/credentials')
+    await expect(page.getByRole('heading', { level: 1, name: 'Credentials' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Top credentials' })).toBeVisible()
+    // Hero pair row (username + ":password" rendered together).
+    await expect(page.getByText('root:123456')).toBeVisible()
+    // Accepted-credentials mini list from the success-filtered query.
+    await expect(page.getByText('root:toor')).toBeVisible()
+
+    // Switching to the IP fan-out lens re-ranks by distinct source IPs.
+    await page.getByRole('button', { name: 'IP fan-out' }).click()
+    await expect(page.getByText('37 IPs')).toBeVisible()
+
+    // The Passwords lens lists raw passwords (no username).
+    await page.getByRole('button', { name: 'Passwords', exact: true }).click()
+    await expect(page.getByText('hunter2')).toBeVisible()
+
+    // Clicking a length bar swaps the whole card into a scrollable password
+    // list with a back button (no in-place reflow).
+    await page.getByRole('button', { name: /6 characters/ }).click()
+    await expect(page.getByText('123456')).toBeVisible()
+    const back = page.getByRole('button', { name: /Composition/ })
+    await expect(back).toBeVisible()
+    // The hover tooltip must not survive the view swap (it used to freeze on
+    // the graph at the click point).
+    await expect(page.getByRole('tooltip')).toHaveCount(0)
+
+    await expectAxeClean(page)
+
+    // Back returns to the histogram (the length bars reappear).
+    await back.click()
+    await expect(page.getByRole('button', { name: /6 characters/ })).toBeVisible()
+  })
+
   test('not-found renders and is axe-clean', async ({ page }) => {
     await page.goto('/this-route-does-not-exist')
     await expect(page.getByRole('heading', { level: 1, name: 'Route not found' })).toBeVisible()
@@ -160,6 +248,8 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(term).toContainText('whoami')
     await expect(term).toContainText('‹ip›')
     await expect(term).not.toContainText('34.11.136.102')
+    // Command lines carry the capture time in the gutter (HH:MM:SS UTC).
+    await expect(term).toContainText('13:41:49')
 
     // The Sessions nav tab stays active on the detail route (exact name so the
     // "← All sessions" back-link doesn't also match).

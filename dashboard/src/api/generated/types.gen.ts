@@ -38,6 +38,44 @@ export type AuthAttemptResponse = {
     username: string;
 };
 
+export type AuthOutcomesResponse = {
+    /**
+     * Attempts cowrie rejected.
+     */
+    failed: number;
+    /**
+     * Accepted percentage (null when there are no attempts).
+     */
+    success_rate: number | null;
+    /**
+     * Attempts cowrie accepted.
+     */
+    successful: number;
+    /**
+     * Total auth attempts recorded.
+     */
+    total: number;
+    /**
+     * Distinct passwords attempted (attacker wordlist size).
+     */
+    unique_passwords: number;
+    /**
+     * Distinct usernames attempted.
+     */
+    unique_usernames: number;
+};
+
+export type CharsetClassResponse = {
+    /**
+     * Number of attempts in this charset class.
+     */
+    count: number;
+    /**
+     * Charset class: empty | symbol | digits | lower | upper | alnum.
+     */
+    name: string;
+};
+
 export type CommandResponse = {
     /**
      * Command row id.
@@ -55,6 +93,17 @@ export type CommandResponse = {
      * ISO 8601 UTC timestamp of when the command ran.
      */
     timestamp: string | null;
+};
+
+export type CredentialLengthResponse = {
+    /**
+     * Number of attempts with this password length.
+     */
+    count: number;
+    /**
+     * Password length (capped; the top bucket is the tail).
+     */
+    length: number;
 };
 
 export type DownloadResponse = {
@@ -171,6 +220,25 @@ export type PaginationMetadata = {
      * Total number of pages.
      */
     total_pages?: number;
+};
+
+export type PasswordCompositionResponse = {
+    /**
+     * Length cap; the top length bucket is this value or more.
+     */
+    capped_at: number;
+    /**
+     * Charset-class breakdown, descending by count.
+     */
+    classes: Array<CharsetClassResponse>;
+    /**
+     * Password-length histogram, ascending by length.
+     */
+    lengths: Array<CredentialLengthResponse>;
+    /**
+     * Total passwords classified.
+     */
+    total: number;
 };
 
 export type ReadyResponse = {
@@ -306,6 +374,25 @@ export type TopCountryResponse = {
      * ISO 3166-1 alpha-2 country code.
      */
     country_code: string | null;
+};
+
+export type TopCredentialResponse = {
+    /**
+     * Number of attempts for this credential.
+     */
+    count: number;
+    /**
+     * Distinct source addresses that tried this credential; only populated for the ip_fanout metric (null otherwise). A high value signals a distributed botnet sharing one credential.
+     */
+    distinct_ips: number | null;
+    /**
+     * Password attempted (null when grouping by username).
+     */
+    password: string | null;
+    /**
+     * Username attempted.
+     */
+    username: string | null;
 };
 
 export type TopPasswordResponse = {
@@ -502,6 +589,35 @@ export type StatsActivityResponses = {
 
 export type StatsActivityResponse = StatsActivityResponses[keyof StatsActivityResponses];
 
+export type StatsAuthOutcomesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/stats/auth-outcomes';
+};
+
+export type StatsAuthOutcomesErrors = {
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsAuthOutcomesError = StatsAuthOutcomesErrors[keyof StatsAuthOutcomesErrors];
+
+export type StatsAuthOutcomesResponses = {
+    /**
+     * OK
+     */
+    200: AuthOutcomesResponse;
+};
+
+export type StatsAuthOutcomesResponse = StatsAuthOutcomesResponses[keyof StatsAuthOutcomesResponses];
+
 export type StatsHeatmapData = {
     body?: never;
     path?: never;
@@ -540,6 +656,77 @@ export type StatsHeatmapResponses = {
 
 export type StatsHeatmapResponse = StatsHeatmapResponses[keyof StatsHeatmapResponses];
 
+export type StatsPasswordCompositionData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/stats/password-composition';
+};
+
+export type StatsPasswordCompositionErrors = {
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsPasswordCompositionError = StatsPasswordCompositionErrors[keyof StatsPasswordCompositionErrors];
+
+export type StatsPasswordCompositionResponses = {
+    /**
+     * OK
+     */
+    200: PasswordCompositionResponse;
+};
+
+export type StatsPasswordCompositionResponse = StatsPasswordCompositionResponses[keyof StatsPasswordCompositionResponses];
+
+export type StatsPasswordsByLengthData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Password length to list. At the cap this lists every password of that length or longer (the histogram's tail bucket).
+         */
+        length: number;
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/passwords-by-length';
+};
+
+export type StatsPasswordsByLengthErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsPasswordsByLengthError = StatsPasswordsByLengthErrors[keyof StatsPasswordsByLengthErrors];
+
+export type StatsPasswordsByLengthResponses = {
+    /**
+     * OK
+     */
+    200: Array<TopPasswordResponse>;
+};
+
+export type StatsPasswordsByLengthResponse = StatsPasswordsByLengthResponses[keyof StatsPasswordsByLengthResponses];
+
 export type StatsTopCountriesData = {
     body?: never;
     path?: never;
@@ -577,6 +764,56 @@ export type StatsTopCountriesResponses = {
 };
 
 export type StatsTopCountriesResponse = StatsTopCountriesResponses[keyof StatsTopCountriesResponses];
+
+export type StatsTopCredentialsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Group by username+password ('pair'), username only, or password only (the raw most-common-passwords view).
+         */
+        by?: 'pair' | 'password' | 'username';
+        /**
+         * Rank by raw attempt count or distinct-IP fan-out.
+         */
+        metric?: 'attempts' | 'ip_fanout';
+        /**
+         * Filter to cowrie-accepted, rejected, or all attempts.
+         */
+        outcome?: 'any' | 'failed' | 'success';
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/top-credentials';
+};
+
+export type StatsTopCredentialsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsTopCredentialsError = StatsTopCredentialsErrors[keyof StatsTopCredentialsErrors];
+
+export type StatsTopCredentialsResponses = {
+    /**
+     * OK
+     */
+    200: Array<TopCredentialResponse>;
+};
+
+export type StatsTopCredentialsResponse = StatsTopCredentialsResponses[keyof StatsTopCredentialsResponses];
 
 export type StatsTopPasswordsData = {
     body?: never;

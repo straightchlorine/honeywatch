@@ -46,6 +46,7 @@ live in `k8s/`.
 - Captures SSH client intel: client HASSH, offered public-key fingerprints, and
   direct-tcpip (port-forward / relay) attempts for clustering and threat analysis
 - Ingests Cowrie's JSON event log into PostgreSQL
+- Analyses captured credentials: top username/password pairs, distributed-botnet IP fan-out, password length/charset composition, and Cowrie accept-rate
 - Serves a Vue 3 dashboard
 - Exposes a public read-only REST API (Flask + flask-smorest, OpenAPI 3.1)
 - Grafana wired in as a Postgres query UI for ad-hoc exploration and metrics
@@ -75,7 +76,7 @@ See `justfile` for the full command list.
 
 ## URLs
 
-- Dashboard: http://localhost:8080
+- Dashboard: http://localhost:8080 (Overview / Activity / Sessions / Credentials pages; Activity and Sessions accept a `?country=<alpha2>` URL scope)
 - API: http://localhost:5000 (docs at `/api/v1/swagger` and `/api/v1/redoc`)
 - Grafana: http://localhost:3000
 
