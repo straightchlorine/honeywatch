@@ -303,24 +303,39 @@
         <div v-if="selectedCode" class="dt-scroll">
           <p v-if="detailPending" class="dt-loading" role="status">Loading breakdown…</p>
           <template v-else>
-            <h3 class="dt-sub">Top passwords</h3>
-            <BarList
-              :items="passwordRows"
-              label="Top passwords from this country"
-              empty-text="No passwords from here yet"
-            />
-            <h3 class="dt-sub">Top usernames</h3>
-            <BarList
-              :items="usernameRows"
-              label="Top usernames from this country"
-              empty-text="No usernames from here yet"
-            />
-            <h3 class="dt-sub">Top networks (ASN)</h3>
-            <BarList
-              :items="asnRows"
-              label="Top source networks for this country"
-              empty-text="No network data yet"
-            />
+            <!-- Three equal slots so the section headers sit at constant
+                 positions regardless of each list's length (no jump when
+                 switching country); each list scrolls inside its own slot. -->
+            <section class="dt-section">
+              <h3 class="dt-sub">Top passwords</h3>
+              <div class="dt-section-body">
+                <BarList
+                  :items="passwordRows"
+                  label="Top passwords from this country"
+                  empty-text="No passwords from here yet"
+                />
+              </div>
+            </section>
+            <section class="dt-section">
+              <h3 class="dt-sub">Top usernames</h3>
+              <div class="dt-section-body">
+                <BarList
+                  :items="usernameRows"
+                  label="Top usernames from this country"
+                  empty-text="No usernames from here yet"
+                />
+              </div>
+            </section>
+            <section class="dt-section">
+              <h3 class="dt-sub">Top networks (ASN)</h3>
+              <div class="dt-section-body">
+                <BarList
+                  :items="asnRows"
+                  label="Top source networks for this country"
+                  empty-text="No network data yet"
+                />
+              </div>
+            </section>
           </template>
         </div>
         <EmptyState
@@ -612,11 +627,27 @@
   .dt-scroll {
     height: 100%;
     min-height: 0;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
+    /* Three equal slots so the section headers stay at fixed positions (top,
+       one-third, two-thirds) no matter how long each list is. The panel itself
+       never scrolls -- each list scrolls inside its own slot when it overflows. */
+    display: grid;
+    grid-template-rows: repeat(3, minmax(0, 1fr));
+    gap: var(--space-3);
+    overflow: hidden;
+  }
+
+  .dt-section {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    min-height: 0;
+  }
+
+  .dt-section-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    /* reserve the gutter so the bars line up whether or not a slot scrolls */
+    scrollbar-gutter: stable;
   }
 
   .dt-loading {
@@ -627,16 +658,14 @@
   }
 
   .dt-sub {
-    margin: var(--space-2) 0 0;
+    flex: 0 0 auto;
+    margin: 0 0 var(--space-2);
     font-size: var(--type-xs);
     line-height: var(--type-xs-lh);
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.06em;
     color: var(--text-dim);
-  }
-  .dt-sub:first-child {
-    margin-top: 0;
   }
 
   /* --- mobile (<=768px): drill navigation, page scrolls -------------------- */
@@ -683,6 +712,16 @@
     .lb-scroll,
     .dt-scroll {
       height: auto;
+      overflow: visible;
+    }
+    /* No bounded panel height on mobile (the page scrolls), so the fixed-thirds
+       split is meaningless -- stack the sections at content height and let each
+       list grow, with the page handling the scroll. */
+    .dt-scroll {
+      display: flex;
+      flex-direction: column;
+    }
+    .dt-section-body {
       overflow: visible;
     }
     /* The 3 sort buttons as a tidy full-width row. */
