@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import {
   buildCharsetRows,
+  buildCredentialFieldRows,
   buildCredentialRows,
   buildLengthBars,
   buildPairBarRows,
@@ -180,5 +181,46 @@ describe('buildPasswordRows — attacker-text sanitization', () => {
     const rows = buildPasswordRows([{ password: 'http://1.2.3.4/x', count: 5 }])
     expect(rows[0]!.label).not.toContain('1.2.3.4')
     expect(rows[0]!.label).toContain('‹ip›')
+  })
+})
+
+describe('buildCredentialFieldRows', () => {
+  it('labels by the password field and scales bars to the max count', () => {
+    const rows = buildCredentialFieldRows(
+      [
+        { username: null, password: '123456', count: 80, distinct_ips: null },
+        { username: null, password: 'admin', count: 20, distinct_ips: null },
+      ],
+      'password',
+    )
+    expect(rows.map((r) => r.label)).toEqual(['123456', 'admin'])
+    expect(rows[0]!.widthPct).toBe('100%')
+    expect(rows[1]!.widthPct).toBe('25%')
+    expect(rows[0]!.title).toContain('80 attempts')
+  })
+
+  it('labels by the username field when grouping by username', () => {
+    const rows = buildCredentialFieldRows(
+      [{ username: 'root', password: null, count: 5, distinct_ips: null }],
+      'username',
+    )
+    expect(rows[0]!.label).toBe('root')
+  })
+
+  it('sanitizes an attacker-controlled credential string', () => {
+    const rows = buildCredentialFieldRows(
+      [{ username: null, password: 'http://1.2.3.4/x', count: 1, distinct_ips: null }],
+      'password',
+    )
+    expect(rows[0]!.label).not.toContain('1.2.3.4')
+    expect(rows[0]!.label).toContain('‹ip›')
+  })
+
+  it('shows the empty-marker for a blank value', () => {
+    const rows = buildCredentialFieldRows(
+      [{ username: null, password: '', count: 3, distinct_ips: null }],
+      'password',
+    )
+    expect(rows[0]!.label).toBe('‹empty›')
   })
 })

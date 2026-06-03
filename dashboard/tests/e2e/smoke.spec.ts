@@ -27,6 +27,51 @@ async function mockApi(page: Page): Promise<void> {
       ])
     if (path.endsWith('/stats/top-countries'))
       return json([{ country_code: 'US', country: 'United States', count: 8 }])
+    if (path.endsWith('/stats/countries'))
+      return json({
+        countries: [
+          {
+            country_code: 'CN',
+            country: 'China',
+            sessions: 1200,
+            distinct_ips: 50,
+            attempts: 5000,
+            successful: 6,
+            success_rate: 0.12,
+            distinct_usernames: 30,
+            distinct_passwords: 96,
+          },
+          {
+            country_code: 'US',
+            country: 'United States',
+            sessions: 400,
+            distinct_ips: 200,
+            attempts: 900,
+            successful: 12,
+            success_rate: 1.33,
+            distinct_usernames: 18,
+            distinct_passwords: 60,
+          },
+          {
+            country_code: '??',
+            country: 'Unknown',
+            sessions: 80,
+            distinct_ips: 40,
+            attempts: 120,
+            successful: 0,
+            success_rate: 0,
+            distinct_usernames: 5,
+            distinct_passwords: 10,
+          },
+        ],
+        total_countries: 2,
+        geo_resolved_pct: 81.3,
+      })
+    if (path.endsWith('/stats/asns'))
+      return json([
+        { asn: 16276, as_org: 'OVH SAS', sessions: 88, distinct_ips: 12 },
+        { asn: 4837, as_org: 'China Unicom', sessions: 40, distinct_ips: 8 },
+      ])
     if (path.endsWith('/stats/activity'))
       return json([
         { bucket: '2026-05-29T00:00:00+00:00', count: 4 },
@@ -214,6 +259,80 @@ test.describe('dashboard accessibility smoke', () => {
     // Back returns to the histogram (the length bars reappear).
     await back.click()
     await expect(page.getByRole('button', { name: /6 characters/ })).toBeVisible()
+  })
+
+  test('countries: master-detail leaderboard drills into a country, axe-clean', async ({
+    page,
+  }) => {
+    await page.goto('/countries')
+    await expect(page.getByRole('heading', { level: 1, name: 'Countries' })).toBeVisible()
+
+    // Leaderboard rows (China ranks first by sessions).
+    await expect(page.getByRole('button', { name: /China/ })).toBeVisible()
+    await expect(page.getByRole('button', { name: /United States/ })).toBeVisible()
+
+    // The #1 country is auto-selected, so the detail panel paints without a
+    // click: its passwords (by=password mock) and top network are visible.
+    await expect(page.getByRole('heading', { level: 2, name: 'China' })).toBeVisible()
+    await expect(page.getByText('hunter2')).toBeVisible()
+    await expect(page.getByText('OVH SAS')).toBeVisible()
+
+    // Selecting another country drives the URL and swaps the detail.
+    await page.getByRole('button', { name: /United States/ }).click()
+    await expect(page).toHaveURL(/country=US/)
+    await expect(page.getByRole('heading', { level: 2, name: 'United States' })).toBeVisible()
+
+    // The geo-less "Unknown" bucket is drillable too (?? sentinel), surfacing
+    // its credentials like any country.
+    await page.getByRole('button', { name: /Unknown/ }).click()
+    await expect(page).toHaveURL(/country=(\?\?|%3F%3F)/)
+    await expect(page.getByRole('heading', { level: 2, name: 'Unknown' })).toBeVisible()
+    await expect(page.getByText('hunter2')).toBeVisible()
+
+    // Re-ranking by a different metric is URL-driven.
+    await page.getByRole('button', { name: 'Unique IPs' }).click()
+    await expect(page).toHaveURL(/sort=ips/)
+
+    await expectAxeClean(page)
+  })
+
+  test('countries: mobile collapses to drill navigation (list -> detail -> back)', async ({
+    page,
+  }) => {
+    await page.setViewportSize({ width: 390, height: 780 })
+    await page.goto('/countries')
+
+    // List view: the leaderboard is visible, the detail back-affordance is not.
+    await expect(page.getByRole('button', { name: /China/ })).toBeVisible()
+    const back = page.getByRole('button', { name: /^Countries$/ })
+    await expect(back).toBeHidden()
+
+    // Tapping a country drills into its detail; the leaderboard row is gone and
+    // the back button + breakdown are shown.
+    await page.getByRole('button', { name: /China/ }).click()
+    await expect(page).toHaveURL(/country=CN/)
+    await expect(back).toBeVisible()
+    await expect(page.getByText('OVH SAS')).toBeVisible()
+    await expect(page.getByRole('button', { name: /United States/ })).toBeHidden()
+
+    await expectAxeClean(page)
+
+    // Back returns to the list.
+    await back.click()
+    await expect(page).not.toHaveURL(/country=/)
+    await expect(page.getByRole('button', { name: /United States/ })).toBeVisible()
+  })
+
+  test('overview map drills into the countries page', async ({ page }) => {
+    await page.goto('/')
+    // The map's offscreen accessible list exposes a drill button per attacked
+    // country (US in the top-countries mock -> count 8). It is visually clipped
+    // (the SVG paths are the mouse target), so exercise the keyboard path it
+    // exists for: focus + Enter.
+    const drill = page.getByRole('button', { name: /United States/ })
+    await drill.focus()
+    await page.keyboard.press('Enter')
+    await expect(page).toHaveURL(/\/countries\?country=US/)
   })
 
   test('not-found renders and is axe-clean', async ({ page }) => {

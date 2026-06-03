@@ -9,9 +9,13 @@
     counts: Map<string, number>
   }>()
 
+  // Forward the country drill-through up to the page (Overview navigates to
+  // /countries?country=XX).
+  const emit = defineEmits<{ select: [code: string] }>()
+
   const geometry = await loadWorldGeometry()
 </script>
 
 <template>
-  <WorldMapView :geometry="geometry" :counts="counts" />
+  <WorldMapView :geometry="geometry" :counts="counts" @select="emit('select', $event)" />
 </template>

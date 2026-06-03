@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/vue-query';
 
 import { client } from '../client.gen';
-import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAuthOutcomes, statsHeatmap, statsPasswordComposition, statsPasswordsByLength, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
-import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
+import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCountries, statsHeatmap, statsPasswordComposition, statsPasswordsByLength, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
+import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -149,6 +149,24 @@ export const statsActivityOptions = (options?: Options<StatsActivityData>) => qu
     queryKey: statsActivityQueryKey(options)
 });
 
+export const statsAsnsQueryKey = (options?: Options<StatsAsnsData>) => createQueryKey('statsAsns', options, false, ['stats']);
+
+/**
+ * Return the top-N source networks (ASN / org) by session count.
+ */
+export const statsAsnsOptions = (options?: Options<StatsAsnsData>) => queryOptions<StatsAsnsResponse, StatsAsnsError, StatsAsnsResponse, ReturnType<typeof statsAsnsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsAsns({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsAsnsQueryKey(options)
+});
+
 export const statsAuthOutcomesQueryKey = (options?: Options<StatsAuthOutcomesData>) => createQueryKey('statsAuthOutcomes', options, false, ['stats']);
 
 /**
@@ -165,6 +183,24 @@ export const statsAuthOutcomesOptions = (options?: Options<StatsAuthOutcomesData
         return data;
     },
     queryKey: statsAuthOutcomesQueryKey(options)
+});
+
+export const statsCountriesQueryKey = (options?: Options<StatsCountriesData>) => createQueryKey('statsCountries', options, false, ['stats']);
+
+/**
+ * Return the per-country attack leaderboard ranked by the chosen sort.
+ */
+export const statsCountriesOptions = (options?: Options<StatsCountriesData>) => queryOptions<StatsCountriesResponse, StatsCountriesError, StatsCountriesResponse, ReturnType<typeof statsCountriesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsCountries({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsCountriesQueryKey(options)
 });
 
 export const statsHeatmapQueryKey = (options?: Options<StatsHeatmapData>) => createQueryKey('statsHeatmap', options, false, ['stats']);

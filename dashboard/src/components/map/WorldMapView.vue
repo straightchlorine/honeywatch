@@ -3,12 +3,23 @@
   import { fmtNumber } from '@/utils/format'
   import { useChoropleth } from './useChoropleth'
   import type { WorldGeometry } from './useWorldGeometry'
+  import { NUMERIC_TO_ALPHA2 } from './numeric-to-alpha2'
   import WorldMapLegend from './WorldMapLegend.vue'
 
   const props = defineProps<{
     geometry: WorldGeometry
     counts: Map<string, number>
   }>()
+
+  // Drill-through: a country click/activation emits its alpha-2 code (the
+  // Overview wires this to /countries?country=XX). Mouse path clicks are an
+  // enhancement; the offscreen ranked list below is the keyboard/SR-accessible
+  // equivalent (focusable buttons), so we never make ~190 SVG paths tab stops.
+  const emit = defineEmits<{ select: [code: string] }>()
+  function onSelect(numericId: string): void {
+    const code = NUMERIC_TO_ALPHA2[numericId]
+    if (code) emit('select', code)
+  }
 
   const choropleth = computed(() => useChoropleth(props.counts))
 
@@ -89,11 +100,12 @@
         <g>
           <!--
             The accessible data path is the role="img" summary above plus the
-            offscreen <ul> below; the hover tooltip is mouse-only visual sugar,
-            so the mouse-without-key-events / static-interaction rules don't
-            apply here (the standard pattern for an SVG data-viz).
+            offscreen list of <button>s below (keyboard/SR drill-through); the
+            hover tooltip and path click are mouse-only enhancements, so the
+            mouse-without-key-events / static-interaction / click-without-key
+            rules don't apply here (the standard pattern for an SVG data-viz).
           -->
-          <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
+          <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
           <path
             v-for="c in geometry.countries"
             :key="c.id"
@@ -102,8 +114,9 @@
             :fill="choropleth.fill(c.id)"
             @mouseenter="onEnter(c.id, $event)"
             @mouseleave="onLeave"
+            @click="onSelect(c.id)"
           />
-          <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
+          <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
         </g>
         <path class="borders" :d="geometry.borders" />
         <path class="coast" :d="geometry.coast" />
@@ -122,8 +135,13 @@
       </div>
     </div>
 
-    <ul class="visually-hidden">
-      <li v-for="r in ranked" :key="r.id">{{ r.name }}: {{ fmtNumber(r.count) }} sessions</li>
+    <ul class="sr-nav visually-hidden">
+      <li v-for="r in ranked" :key="r.id">
+        <button v-if="NUMERIC_TO_ALPHA2[r.id]" type="button" @click="onSelect(r.id)">
+          {{ r.name }}: {{ fmtNumber(r.count) }} sessions
+        </button>
+        <template v-else>{{ r.name }}: {{ fmtNumber(r.count) }} sessions</template>
+      </li>
     </ul>
   </figure>
 </template>
@@ -158,6 +176,7 @@
   }
 
   .country {
+    cursor: pointer;
     transition: fill var(--motion-base) ease;
   }
 
@@ -165,6 +184,14 @@
     stroke: var(--accent);
     stroke-width: 0.75px;
     vector-effect: non-scaling-stroke;
+  }
+
+  /* The offscreen drill-nav stays reachable by keyboard: visually-hidden clips
+     it, but its <button>s must still take focus so keyboard/SR users can jump to
+     a country. focus is allowed to surface a ring for that. */
+  .sr-nav button {
+    all: unset;
+    cursor: pointer;
   }
 
   .graticule {

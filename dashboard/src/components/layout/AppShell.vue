@@ -46,6 +46,9 @@
           <RouterLink to="/activity" class="nav-link" active-class="nav-link-active">
             Activity
           </RouterLink>
+          <RouterLink to="/countries" class="nav-link" active-class="nav-link-active">
+            Countries
+          </RouterLink>
           <RouterLink to="/credentials" class="nav-link" active-class="nav-link-active">
             Credentials
           </RouterLink>
@@ -334,10 +337,18 @@
     .brand {
       display: none;
     }
+    /* Full-width nav row; spread all 5 tabs evenly on one line (shrink the
+       per-link padding + font so the long "Credentials" label still fits). */
     .shell-nav {
       order: 3;
       flex-basis: 100%;
       margin-left: 0;
+      gap: 2px;
+      justify-content: space-between;
+    }
+    .nav-link {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--type-xs);
     }
 
     /* Drop the contributor credits; the footer becomes "● Honeywatch + GitHub". */

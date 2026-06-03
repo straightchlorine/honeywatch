@@ -73,4 +73,17 @@ describe('WorldMapView', () => {
     expect(tip.text()).toContain('China')
     expect(tip.text()).toContain('1,200 sessions')
   })
+
+  it('emits the alpha-2 code when a country path is clicked', async () => {
+    const wrapper = mountMap(new Map([['156', 1200]]))
+    // China is index 1 (numeric id 156 -> CN).
+    await wrapper.findAll('.country')[1]!.trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['CN']])
+  })
+
+  it('drills through from the offscreen accessible list button', async () => {
+    const wrapper = mountMap(new Map([['840', 400]]))
+    await wrapper.find('.sr-nav button').trigger('click')
+    expect(wrapper.emitted('select')).toEqual([['US']])
+  })
 })
