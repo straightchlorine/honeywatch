@@ -1,6 +1,8 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
+from src.models.auth_attempt import AuthAttempt
+from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
 from tests.conftest import LONG_PASSWORD
 
@@ -467,6 +469,156 @@ def test_strict_country_endpoints_reject_unknown_sentinel(client: Any) -> None:
     """Only the credential/ASN leaderboards accept '??'; activity stays strict."""
     assert client.get("/api/v1/stats/activity?bucket=day&country=??").status_code == 422
     assert client.get("/api/v1/stats/heatmap?country=??").status_code == 422
+
+
+def _add_session(
+    db_session: Any,
+    sid: str,
+    ip: str,
+    *,
+    country_code: str | None = None,
+    country: str | None = None,
+    asn: int | None = None,
+    as_org: str | None = None,
+    attempts: int = 0,
+    successful: int = 0,
+) -> None:
+    """Seed a session (+ optional geo row + N auth attempts) for edge-case tests.
+
+    ``country_code=None`` with an ``asn`` models the MaxMind ASN-hit-without-city
+    case; ``attempts=0`` models a country with sessions but no auth attempts.
+    """
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        HoneypotSession(
+            id=sid,
+            src_ip=ip,
+            src_port=2222,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+            sensor="edge",
+        )
+    )
+    db_session.flush()
+    if country_code is not None or asn is not None:
+        db_session.add(
+            GeoLocation(
+                ip=ip,
+                country_code=country_code,
+                country=country,
+                asn=asn,
+                as_org=as_org,
+                last_updated=now,
+            )
+        )
+    for i in range(attempts):
+        db_session.add(
+            AuthAttempt(
+                session_id=sid,
+                username="root",
+                password=f"pw-{i}",
+                success=i < successful,
+                timestamp=now,
+            )
+        )
+    db_session.flush()
+
+
+def test_asns_unknown_bucket_includes_null_country_with_asn(
+    client: Any, db_session: Any
+) -> None:
+    """country=?? surfaces a geo row that carries an ASN but no country_code.
+
+    The MaxMind ASN-hit-without-city case: ``country_code`` NULL but ``asn`` set.
+    It must appear in the ?? bucket (and the global list) yet stay out of any
+    resolved-country scope.
+    """
+    _add_session(
+        db_session,
+        "sess-null-ctry",
+        "203.0.113.5",
+        asn=64500,
+        as_org="Null-Country Net",
+    )
+    unknown = client.get("/api/v1/stats/asns?country=??").get_json()
+    assert [(r["asn"], r["as_org"]) for r in unknown] == [(64500, "Null-Country Net")]
+    # Present globally (asn is not null) but absent from a resolved-country scope.
+    assert [r["asn"] for r in client.get("/api/v1/stats/asns").get_json()] == [64500]
+    assert client.get("/api/v1/stats/asns?country=US").get_json() == []
+
+
+def test_countries_total_countries_independent_of_top_n(
+    client: Any, db_session: Any
+) -> None:
+    """total_countries counts every distinct country, not just the returned page.
+
+    Three resolved countries seeded; ?top_n=1 returns one row but the header
+    still reports 3 -- proving the count is not derived from the truncated list.
+    """
+    for i, cc in enumerate(("US", "CN", "DE")):
+        _add_session(
+            db_session,
+            f"sess-tc-{i}",
+            f"198.51.100.{i + 1}",
+            country_code=cc,
+            country=cc,
+            attempts=1,
+        )
+    data = client.get("/api/v1/stats/countries?top_n=1").get_json()
+    assert len(data["countries"]) == 1
+    assert data["total_countries"] == 3
+
+
+def test_countries_success_rate_sort_puts_no_attempt_country_last(
+    client: Any, db_session: Any
+) -> None:
+    """A country with sessions but zero auth attempts sorts last under
+    success_rate (the COALESCE(-1) floor), not first, and its rate is null."""
+    _add_session(
+        db_session,
+        "sess-aa",
+        "198.51.100.10",
+        country_code="AA",
+        country="Aland",
+        attempts=1,
+        successful=1,
+    )
+    _add_session(
+        db_session,
+        "sess-zz",
+        "198.51.100.11",
+        country_code="ZZ",
+        country="Zedland",
+        attempts=0,
+    )
+    data = client.get("/api/v1/stats/countries?sort=success_rate").get_json()
+    order = [r["country_code"] for r in data["countries"]]
+    assert order[-1] == "ZZ"  # null rate floored to -1 -> last under DESC, not first
+    assert order.index("AA") < order.index("ZZ")
+    zz = _country_row(data, "ZZ")
+    assert zz["success_rate"] is None
+    assert zz["attempts"] == 0
+
+
+def test_country_filter_normalizes_lowercase(client: Any, seed_data: Any) -> None:
+    """A lowercase ?country=us resolves to the US data (case-insensitive filter)."""
+    del seed_data
+    lower = client.get("/api/v1/stats/asns?country=us").get_json()
+    upper = client.get("/api/v1/stats/asns?country=US").get_json()
+    assert lower == upper
+    assert [r["asn"] for r in lower] == [14618]
+
+
+def test_strict_country_filter_normalizes_lowercase(
+    client: Any, seed_data: Any
+) -> None:
+    """The strict country filter (activity/trend/heatmap) also upper-cases input."""
+    del seed_data
+    lower = client.get("/api/v1/stats/activity?bucket=day&country=us")
+    assert lower.status_code == 200
+    upper = client.get("/api/v1/stats/activity?bucket=day&country=US")
+    assert lower.get_json() == upper.get_json()
 
 
 def test_password_composition(client: Any, seed_data: Any) -> None:

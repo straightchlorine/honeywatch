@@ -126,12 +126,12 @@ class StatsService:
 
         One row per source country with both session-grain metrics (sessions,
         distinct source IPs) and auth-grain metrics (attempts, accepted,
-        distinct usernames/passwords). The ``auth_attempts`` join fans a session
-        out by its attempts, so session/IP counts use ``COUNT(DISTINCT ...)``
-        while attempts use ``COUNT(auth_attempts.id)`` -- mixing the grains in
-        one pass without inflating the session counts. Geo-less sessions bucket
-        under "Unknown"/"??" (outer join + COALESCE), same as
-        :meth:`top_countries`.
+        distinct usernames/passwords). Each grain is aggregated at its native
+        level first (a session-grain subquery and an auth-grain subquery), then
+        joined on the country code -- so the session/IP counts are never
+        multiplied by a session's auth-attempt count (the fan-out a single
+        mixed-grain join would cause). Geo-less sessions bucket under
+        "Unknown"/"??" (outer join + COALESCE), same as :meth:`top_countries`.
 
         Args:
             sort: Ranking metric; one of :data:`VALID_COUNTRY_SORTS`.
@@ -142,30 +142,61 @@ class StatsService:
         if sort not in VALID_COUNTRY_SORTS:
             raise ValueError(f"sort must be one of {sorted(VALID_COUNTRY_SORTS)}")
 
-        country_code = func.coalesce(GeoLocation.country_code, "??").label(
+        # Session grain: one row per session (no auth join), so the distinct
+        # session/IP counts are exact. geo.ip is the PK -> the outer join is
+        # 1:1; geo-less sessions COALESCE into the "??"/"Unknown" bucket.
+        sess_cc = func.coalesce(GeoLocation.country_code, UNKNOWN_COUNTRY).label(
             "country_code"
         )
-        country = func.coalesce(GeoLocation.country, "Unknown").label("country")
-        sessions = func.count(func.distinct(Session.id)).label("sessions")
-        distinct_ips = func.count(func.distinct(Session.src_ip)).label("distinct_ips")
-        attempts = func.count(AuthAttempt.id).label("attempts")
-        successful = (
-            func.count(AuthAttempt.id)
-            .filter(AuthAttempt.success.is_(True))
-            .label("successful")
+        sess_country = func.coalesce(GeoLocation.country, "Unknown").label("country")
+        sess_agg = (
+            select(
+                sess_cc,
+                sess_country,
+                func.count(func.distinct(Session.id)).label("sessions"),
+                func.count(func.distinct(Session.src_ip)).label("distinct_ips"),
+            )
+            .select_from(Session)
+            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+            .group_by(sess_cc, sess_country)
+            .subquery()
         )
-        distinct_usernames = func.count(func.distinct(AuthAttempt.username)).label(
-            "distinct_usernames"
+
+        # Auth grain: one row per auth attempt. Every attempt's session is in
+        # sess_agg under the same country, so these metrics LEFT JOIN back onto
+        # the session-grain rows.
+        auth_cc = func.coalesce(GeoLocation.country_code, UNKNOWN_COUNTRY).label(
+            "country_code"
         )
-        distinct_passwords = func.count(func.distinct(AuthAttempt.password)).label(
-            "distinct_passwords"
+        auth_agg = (
+            select(
+                auth_cc,
+                func.count(AuthAttempt.id).label("attempts"),
+                func.count(AuthAttempt.id)
+                .filter(AuthAttempt.success.is_(True))
+                .label("successful"),
+                func.count(func.distinct(AuthAttempt.username)).label(
+                    "distinct_usernames"
+                ),
+                func.count(func.distinct(AuthAttempt.password)).label(
+                    "distinct_passwords"
+                ),
+            )
+            .select_from(AuthAttempt)
+            .join(Session, Session.id == AuthAttempt.session_id)
+            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+            .group_by(auth_cc)
+            .subquery()
         )
+
+        sessions = sess_agg.c.sessions
+        distinct_ips = sess_agg.c.distinct_ips
+        attempts = func.coalesce(auth_agg.c.attempts, 0).label("attempts")
+        successful = func.coalesce(auth_agg.c.successful, 0).label("successful")
         # COALESCE null (no-attempt country) to -1 so it sorts last under DESC
         # without a separate NULLS LAST clause.
         rate_order = func.coalesce(
-            func.count(AuthAttempt.id).filter(AuthAttempt.success.is_(True))
-            * 1.0
-            / func.nullif(func.count(AuthAttempt.id), 0),
+            auth_agg.c.successful * 1.0 / func.nullif(auth_agg.c.attempts, 0),
             -1.0,
         )
         order_by = {
@@ -177,19 +208,21 @@ class StatsService:
 
         rows = self.db.execute(
             select(
-                country_code,
-                country,
+                sess_agg.c.country_code,
+                sess_agg.c.country,
                 sessions,
                 distinct_ips,
                 attempts,
                 successful,
-                distinct_usernames,
-                distinct_passwords,
+                func.coalesce(auth_agg.c.distinct_usernames, 0).label(
+                    "distinct_usernames"
+                ),
+                func.coalesce(auth_agg.c.distinct_passwords, 0).label(
+                    "distinct_passwords"
+                ),
             )
-            .select_from(Session)
-            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
-            .outerjoin(AuthAttempt, AuthAttempt.session_id == Session.id)
-            .group_by(country_code, country)
+            .select_from(sess_agg)
+            .outerjoin(auth_agg, auth_agg.c.country_code == sess_agg.c.country_code)
             # Stable tiebreak on sessions keeps equal-rank rows deterministic.
             .order_by(order_by, sessions.desc())
             .limit(self.top_n)
@@ -212,31 +245,29 @@ class StatsService:
                 }
             )
 
-        # Geo-enrichment coverage: share of sessions carrying a geo row. geo.ip
-        # is the PK so the outer join is 1:1 (no session fan-out).
-        coverage = self.db.execute(
+        # Header counters in one scan of Session <-> GeoLocation (one round-trip):
+        # total/resolved session counts for the coverage pct, plus the distinct
+        # resolved-country count. geo.ip is the PK so the outer join is 1:1 (no
+        # session fan-out); COUNT(DISTINCT country_code) ignores the null bucket.
+        header = self.db.execute(
             select(
                 func.count().label("total"),
                 func.count()
                 .filter(GeoLocation.country_code.isnot(None))
                 .label("resolved"),
+                func.count(func.distinct(GeoLocation.country_code)).label(
+                    "total_countries"
+                ),
             )
             .select_from(Session)
             .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
         ).one()
-        total_countries = self.db.execute(
-            select(func.count(func.distinct(GeoLocation.country_code)))
-            .select_from(Session)
-            .join(GeoLocation, GeoLocation.ip == Session.src_ip)
-        ).scalar_one()
         geo_resolved_pct = (
-            round(coverage.resolved / coverage.total * 100, 2)
-            if coverage.total
-            else None
+            round(header.resolved / header.total * 100, 2) if header.total else None
         )
         return {
             "countries": countries,
-            "total_countries": total_countries,
+            "total_countries": header.total_countries,
             "geo_resolved_pct": geo_resolved_pct,
         }
 
