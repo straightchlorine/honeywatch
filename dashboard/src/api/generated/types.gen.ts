@@ -114,6 +114,44 @@ export type CommandResponse = {
     timestamp: string | null;
 };
 
+export type CommandStatsResponse = {
+    /**
+     * Distinct sessions that ran at least one command.
+     */
+    active_sessions: number;
+    /**
+     * Atomic commands grouped by attacker tactic.
+     */
+    tactics: Array<CommandTacticResponse>;
+    /**
+     * Top executables by frequency, descending.
+     */
+    top_commands: Array<TopCommandResponse>;
+    /**
+     * Top compound one-liners (dropper scripts).
+     */
+    top_lines: Array<TopCommandLineResponse>;
+    /**
+     * All command rows recorded (atomic + compound).
+     */
+    total_commands: number;
+    /**
+     * Distinct executable buckets among atomic commands.
+     */
+    unique_commands: number;
+};
+
+export type CommandTacticResponse = {
+    /**
+     * Atomic commands classified into this tactic.
+     */
+    count: number;
+    /**
+     * Attacker tactic: recon | download | execute | persist | destroy | shell | other.
+     */
+    name: string;
+};
+
 export type CountriesResponse = {
     /**
      * Per-country rows, ranked by the chosen sort.
@@ -434,6 +472,28 @@ export type SessionsListResponse = {
     meta: PaginationMeta;
 };
 
+export type TopCommandLineResponse = {
+    /**
+     * Times this exact one-liner was seen.
+     */
+    count: number;
+    /**
+     * Verbatim compound one-liner (a chained/piped dropper script), IP-redacted.
+     */
+    input: string;
+};
+
+export type TopCommandResponse = {
+    /**
+     * Executable basename bucket -- '/bin/uname', 'uname -a' and 'uname' all collapse here (IPs redacted).
+     */
+    command: string;
+    /**
+     * Atomic commands that ran this executable.
+     */
+    count: number;
+};
+
 export type TopCountryResponse = {
     /**
      * Number of sessions originating from this country.
@@ -732,6 +792,44 @@ export type StatsAuthOutcomesResponses = {
 };
 
 export type StatsAuthOutcomesResponse = StatsAuthOutcomesResponses[keyof StatsAuthOutcomesResponses];
+
+export type StatsCommandsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/commands';
+};
+
+export type StatsCommandsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsCommandsError = StatsCommandsErrors[keyof StatsCommandsErrors];
+
+export type StatsCommandsResponses = {
+    /**
+     * OK
+     */
+    200: CommandStatsResponse;
+};
+
+export type StatsCommandsResponse = StatsCommandsResponses[keyof StatsCommandsResponses];
 
 export type StatsCountriesData = {
     body?: never;

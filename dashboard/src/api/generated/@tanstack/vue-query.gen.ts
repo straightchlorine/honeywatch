@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/vue-query';
 
 import { client } from '../client.gen';
-import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCountries, statsHeatmap, statsPasswordComposition, statsPasswordsByLength, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
-import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
+import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCommands, statsCountries, statsHeatmap, statsPasswordComposition, statsPasswordsByLength, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
+import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCommandsData, StatsCommandsError, StatsCommandsResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -183,6 +183,24 @@ export const statsAuthOutcomesOptions = (options?: Options<StatsAuthOutcomesData
         return data;
     },
     queryKey: statsAuthOutcomesQueryKey(options)
+});
+
+export const statsCommandsQueryKey = (options?: Options<StatsCommandsData>) => createQueryKey('statsCommands', options, false, ['stats']);
+
+/**
+ * Return command analytics (top commands, tactics, dropper scripts).
+ */
+export const statsCommandsOptions = (options?: Options<StatsCommandsData>) => queryOptions<StatsCommandsResponse, StatsCommandsError, StatsCommandsResponse, ReturnType<typeof statsCommandsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsCommands({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsCommandsQueryKey(options)
 });
 
 export const statsCountriesQueryKey = (options?: Options<StatsCountriesData>) => createQueryKey('statsCountries', options, false, ['stats']);

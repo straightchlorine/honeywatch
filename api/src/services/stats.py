@@ -7,18 +7,24 @@ from sqlalchemy import Select, case, func, select
 from sqlalchemy.orm import Session as DbSession
 
 from src.models.auth_attempt import AuthAttempt
+from src.models.command import Command
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
+from src.services.redact import redact_ips
 from src.services.types import (
     ActivityBucketDict,
     AuthOutcomesDict,
     CharsetClassDict,
+    CommandStatsDict,
+    CommandTacticDict,
     CountriesDict,
     CountryAsnDict,
     CountryRowDict,
     CredentialLengthDict,
     HeatmapPointDict,
     PasswordCompositionDict,
+    TopCommandDict,
+    TopCommandLineDict,
     TopCountryDict,
     TopCredentialDict,
     TopPasswordDict,
@@ -53,6 +59,130 @@ UNKNOWN_COUNTRY = "??"
 # Attacker passwords are short and weak; cap the length histogram so a single
 # pathological multi-KB password can't stretch the x-axis.
 PASSWORD_LENGTH_CAP = 16
+
+# Command tactics (the Commands page). Each atomic command is bucketed by its
+# executable basename, then mapped to one attacker tactic; anything not listed
+# is "other". Evaluated in fixed order so the rollup is deterministic. This map
+# is the single source of truth for the partition -- a curated, low-churn set
+# (commands don't change), so it needs no maintenance once shipped.
+COMMAND_TACTICS: tuple[str, ...] = (
+    "recon",
+    "download",
+    "execute",
+    "persist",
+    "destroy",
+    "shell",
+    "other",
+)
+
+# Executable basename -> tactic. Covers the common attacker toolset; the long
+# tail (random dropper names like ``./meow``) falls through to "other".
+_COMMAND_TACTIC_MAP: dict[str, str] = {
+    # recon / discovery -- fingerprint the host before acting
+    "uname": "recon",
+    "whoami": "recon",
+    "id": "recon",
+    "hostname": "recon",
+    "hostnamectl": "recon",
+    "w": "recon",
+    "who": "recon",
+    "last": "recon",
+    "uptime": "recon",
+    "lscpu": "recon",
+    "nproc": "recon",
+    "lspci": "recon",
+    "lsblk": "recon",
+    "free": "recon",
+    "df": "recon",
+    "cat": "recon",
+    "ls": "recon",
+    "ps": "recon",
+    "top": "recon",
+    "env": "recon",
+    "printenv": "recon",
+    "getconf": "recon",
+    "dmesg": "recon",
+    "arch": "recon",
+    "lsb_release": "recon",
+    "head": "recon",
+    "tail": "recon",
+    "grep": "recon",
+    "find": "recon",
+    "pwd": "recon",
+    "netstat": "recon",
+    "ss": "recon",
+    "ifconfig": "recon",
+    "ip": "recon",
+    # download / ingress -- pull the payload
+    "wget": "download",
+    "curl": "download",
+    "tftp": "download",
+    "ftpget": "download",
+    "ftp": "download",
+    "scp": "download",
+    "fetch": "download",
+    # execute -- run / prep the payload
+    "sh": "execute",
+    "bash": "execute",
+    "ash": "execute",
+    "python": "execute",
+    "python3": "execute",
+    "perl": "execute",
+    "php": "execute",
+    "chmod": "execute",
+    "busybox": "execute",
+    "exec": "execute",
+    "nohup": "execute",
+    # persist -- backdoor accounts, keys, cron
+    "useradd": "persist",
+    "usermod": "persist",
+    "userdel": "persist",
+    "adduser": "persist",
+    "passwd": "persist",
+    "chpasswd": "persist",
+    "crontab": "persist",
+    "ssh-keygen": "persist",
+    "groupadd": "persist",
+    "systemctl": "persist",
+    "service": "persist",
+    # destroy / impact -- wipe traces or files
+    "rm": "destroy",
+    "shred": "destroy",
+    "dd": "destroy",
+    "kill": "destroy",
+    "killall": "destroy",
+    "pkill": "destroy",
+    "history": "destroy",
+    # shell / housekeeping -- navigation and glue
+    "cd": "shell",
+    "echo": "shell",
+    "export": "shell",
+    "ulimit": "shell",
+    "exit": "shell",
+    "clear": "shell",
+    "set": "shell",
+    "unset": "shell",
+    "sleep": "shell",
+    "sudo": "shell",
+    "su": "shell",
+    "mkdir": "shell",
+    "touch": "shell",
+    "cp": "shell",
+    "mv": "shell",
+    "tee": "shell",
+    "printf": "shell",
+    "wc": "shell",
+    "sort": "shell",
+}
+
+
+def classify_tactic(executable: str) -> str:
+    """Map a command's executable basename to its attacker tactic.
+
+    Unknown executables (random dropper names, exotic tooling) fall through to
+    ``"other"``. The single source of truth for the Commands tactic breakdown.
+    """
+    return _COMMAND_TACTIC_MAP.get(executable, "other")
 
 
 class StatsService:
@@ -607,3 +737,88 @@ class StatsService:
             .limit(self.top_n)
         ).all()
         return [{"password": row[0], "count": row[1]} for row in rows]
+
+    def command_stats(self) -> CommandStatsDict:
+        """Return the Commands page payload in one service call.
+
+        The shell input cowrie records splits into two populations:
+
+        * **atomic** commands -- a single program invocation (no shell
+          separator). Bucketed by executable basename, so ``/bin/uname``,
+          ``uname -a`` and ``uname`` all collapse to ``uname``. Drives the top
+          list, the unique count and the tactic rollup.
+        * **compound** lines -- one-liners chaining commands with ``;`` / ``|``
+          / ``&`` (the dropper scripts). Surfaced verbatim, top-N by frequency,
+          so a repeated botnet payload reads as "seen N times".
+
+        All free text leaving here is IP-redacted: a C2 host an attacker typed
+        inside ``wget http://<ip>/x`` is blotted before it crosses the boundary
+        (same policy as the session command serializer).
+        """
+        # argv[0] basename, lower-cased, in SQL: strip from the first whitespace
+        # to end (first token), then strip any leading path. POSIX regex via
+        # regexp_replace -- no command rows are materialized, only the small
+        # per-executable aggregate.
+        first_token = func.regexp_replace(func.btrim(Command.input), r"\s.*$", "")
+        exe = func.lower(func.regexp_replace(first_token, r"^.*/", ""))
+        # A command is "compound" if it chains/pipes (`;`, `&`, `|`).
+        is_compound = Command.input.op("~")(r"[;&|]")
+
+        # Atomic frequency by executable (small: tens of distinct exes), ordered
+        # so the top slice is ready and the same set feeds the unique count and
+        # the tactic rollup -- one GROUP BY, not three.
+        atomic_rows = self.db.execute(
+            select(exe.label("exe"), func.count().label("count"))
+            .where(func.btrim(Command.input) != "")
+            .where(~is_compound)
+            .group_by(exe)
+            .order_by(func.count().desc())
+        ).all()
+        # Index access, not r.count -- a Row's `.count` is its built-in method,
+        # not the labeled aggregate (the same reason top_passwords uses row[1]).
+        groups = [(row[0], row[1]) for row in atomic_rows if row[0]]
+
+        top_commands: list[TopCommandDict] = [
+            {"command": redact_ips(name) or "", "count": count}
+            for name, count in groups[: self.top_n]
+        ]
+
+        tactic_totals: dict[str, int] = dict.fromkeys(COMMAND_TACTICS, 0)
+        for name, count in groups:
+            tactic_totals[classify_tactic(name)] += count
+        tactics: list[CommandTacticDict] = sorted(
+            (
+                {"name": name, "count": count}
+                for name, count in tactic_totals.items()
+                if count
+            ),
+            key=lambda t: t["count"],
+            reverse=True,
+        )
+
+        line_rows = self.db.execute(
+            select(Command.input, func.count().label("count"))
+            .where(is_compound)
+            .group_by(Command.input)
+            .order_by(func.count().desc())
+            .limit(self.top_n)
+        ).all()
+        top_lines: list[TopCommandLineDict] = [
+            {"input": redact_ips(row[0]) or "", "count": row[1]} for row in line_rows
+        ]
+
+        active_sessions = self.db.execute(
+            select(func.count(func.distinct(Command.session_id)))
+        ).scalar_one()
+        total_commands = self.db.execute(
+            select(func.count()).select_from(Command)
+        ).scalar_one()
+
+        return {
+            "active_sessions": active_sessions,
+            "total_commands": total_commands,
+            "unique_commands": len(groups),
+            "top_commands": top_commands,
+            "tactics": tactics,
+            "top_lines": top_lines,
+        }

@@ -159,3 +159,30 @@ class CountryAsnDict(TypedDict):
     as_org: str | None
     sessions: int
     distinct_ips: int
+
+
+class TopCommandDict(TypedDict):
+    # Executable basename bucket (e.g. "uname"); IP-redacted defensively.
+    command: str
+    count: int
+
+
+class CommandTacticDict(TypedDict):
+    # One of src.services.stats.COMMAND_TACTICS.
+    name: str
+    count: int
+
+
+class TopCommandLineDict(TypedDict):
+    # Verbatim compound one-liner (dropper script); IP-redacted.
+    input: str
+    count: int
+
+
+class CommandStatsDict(TypedDict):
+    active_sessions: int
+    total_commands: int
+    unique_commands: int
+    top_commands: list[TopCommandDict]
+    tactics: list[CommandTacticDict]
+    top_lines: list[TopCommandLineDict]

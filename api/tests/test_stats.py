@@ -711,3 +711,74 @@ def test_passwords_by_length_requires_length(client: Any) -> None:
 def test_passwords_by_length_rejects_out_of_range(client: Any) -> None:
     assert client.get("/api/v1/stats/passwords-by-length?length=-1").status_code == 422
     assert client.get("/api/v1/stats/passwords-by-length?length=99").status_code == 422
+
+
+def test_commands_payload_shape(client: Any, command_seed: Any) -> None:
+    response = client.get("/api/v1/stats/commands")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert set(data.keys()) == {
+        "active_sessions",
+        "total_commands",
+        "unique_commands",
+        "top_commands",
+        "tactics",
+        "top_lines",
+    }
+    assert data["active_sessions"] == 1
+    assert data["total_commands"] == 7
+    # Atomic distinct executables: uname, whoami, wget (the two compound lines
+    # never count toward the executable buckets).
+    assert data["unique_commands"] == 3
+
+
+def test_commands_buckets_executable_variants(client: Any, command_seed: Any) -> None:
+    """`/bin/uname`, `uname -a` and `uname` collapse into one `uname` bucket."""
+    data = client.get("/api/v1/stats/commands").get_json()
+    by_cmd = {row["command"]: row["count"] for row in data["top_commands"]}
+    assert by_cmd["uname"] == 3
+    assert by_cmd["whoami"] == 1
+    assert by_cmd["wget"] == 1
+    # The atomic list never carries a chained/piped line.
+    assert all(";" not in c and "|" not in c for c in by_cmd)
+    # Top list is ordered by count, descending.
+    counts = [row["count"] for row in data["top_commands"]]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_commands_tactics(client: Any, command_seed: Any) -> None:
+    data = client.get("/api/v1/stats/commands").get_json()
+    tactics = {row["name"]: row["count"] for row in data["tactics"]}
+    # uname x3 + whoami x1 = 4 recon; wget x1 = 1 download.
+    assert tactics["recon"] == 4
+    assert tactics["download"] == 1
+    counts = [row["count"] for row in data["tactics"]]
+    assert counts == sorted(counts, reverse=True)
+
+
+def test_commands_top_lines_surfaces_compound_and_redacts(
+    client: Any, command_seed: Any
+) -> None:
+    response = client.get("/api/v1/stats/commands")
+    data = response.get_json()
+    lines = [row["input"] for row in data["top_lines"]]
+    # Both chained/piped one-liners surface; the atomic wget does not.
+    assert any("chpasswd" in ln for ln in lines)
+    assert any("chmod 777 x" in ln for ln in lines)
+    # The C2 IP is blotted everywhere in the response (no raw literal crosses).
+    assert b"203.0.113.99" not in response.data
+    assert any("‹ip›" in ln for ln in lines)
+
+
+def test_commands_top_n_clamp(client: Any, command_seed: Any) -> None:
+    data = client.get("/api/v1/stats/commands?top_n=1").get_json()
+    assert len(data["top_commands"]) == 1
+    assert len(data["top_lines"]) == 1
+
+
+def test_commands_no_compound_yields_empty_lines(client: Any, seed_data: Any) -> None:
+    # seed_data carries a single atomic `whoami` and no compound one-liners.
+    data = client.get("/api/v1/stats/commands").get_json()
+    assert data["top_lines"] == []
+    assert data["active_sessions"] == 1
+    assert data["total_commands"] == 1

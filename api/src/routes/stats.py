@@ -11,6 +11,7 @@ from src.schemas.stats import (
     AsnQuery,
     AsnResponse,
     AuthOutcomesResponse,
+    CommandStatsResponse,
     CountriesQuery,
     CountriesResponse,
     HeatmapPointResponse,
@@ -111,6 +112,18 @@ def stats_asns(query_args: dict[str, Any]) -> list[dict[str, Any]]:
     """Return the top-N source networks (ASN / org) by session count."""
     service = StatsService(get_db(), top_n=query_args["top_n"])
     return [dict(row) for row in service.country_asns(query_args.get("country"))]
+
+
+@stats_bp.route("/commands")
+@stats_bp.doc(operationId="statsCommands")
+@stats_bp.arguments(TopNQuery, location="query")
+@stats_bp.response(200, CommandStatsResponse)
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_commands(query_args: dict[str, Any]) -> dict[str, Any]:
+    """Return command analytics (top commands, tactics, dropper scripts)."""
+    service = StatsService(get_db(), top_n=query_args["top_n"])
+    return dict(service.command_stats())
 
 
 @stats_bp.route("/auth-outcomes")

