@@ -64,7 +64,7 @@ describe('useCountryOptions', () => {
     const opts = mountOptions('the world', [
       { country_code: 'US', country: 'United States', count: 10 },
       { country_code: 'XYZ', country: 'Invalid', count: 5 }, // 3 chars - rejected
-      { country_code: null, country: 'Unknown', count: 3 },  // null - rejected
+      { country_code: null, country: 'Unknown', count: 3 }, // null - rejected
     ])
     const entries = opts.value.slice(1)
     expect(entries).toHaveLength(1)
@@ -72,9 +72,7 @@ describe('useCountryOptions', () => {
   })
 
   it('falls back to country_code as label when the country name is absent', () => {
-    const opts = mountOptions('the world', [
-      { country_code: 'TW', country: null, count: 7 },
-    ])
+    const opts = mountOptions('the world', [{ country_code: 'TW', country: null, count: 7 }])
     const entries = opts.value.slice(1)
     expect(entries[0]).toEqual({ value: 'TW', label: 'TW' })
   })

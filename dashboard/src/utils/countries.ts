@@ -1,14 +1,15 @@
-import type { AsnResponse, CountryRowResponse } from '@/api/generated/types.gen'
+import type { AsnResponse, CountryRowResponse, StatsCountriesData } from '@/api/generated/types.gen'
 import { isAlpha2 } from '@/composables/useCountryFilter'
 import { fmtNumber } from './format'
 import { fmtSuccessRate, pctWidth, type BarRow } from './credentials'
 
 /**
- * Leaderboard sort axes exposed in the UI. Maps 1:1 onto the API's `sort`
- * query param (which also accepts `attempts`, unused here). `success_rate`
- * ranks by accept-rate; the others by their raw counts.
+ * Every `sort` value the API accepts, derived from the generated client so a
+ * sort added server-side surfaces here automatically (no hand-kept union to
+ * drift). The UI exposes a curated subset in {@link COUNTRY_SORTS}; `attempts`
+ * is a valid axis but intentionally not surfaced.
  */
-export type CountrySort = 'sessions' | 'ips' | 'success_rate'
+export type CountrySort = NonNullable<NonNullable<StatsCountriesData['query']>['sort']>
 
 export const COUNTRY_SORTS: { id: CountrySort; label: string }[] = [
   { id: 'sessions', label: 'Sessions' },
@@ -57,7 +58,7 @@ function metricValue(row: CountryRowResponse, sort: CountrySort): number {
   return row.sessions
 }
 
-export interface CountryLeaderRow {
+interface CountryLeaderRow {
   key: string
   /** Alpha-2 code, '??' for the geo-less Unknown bucket, or '' if unselectable. */
   code: string

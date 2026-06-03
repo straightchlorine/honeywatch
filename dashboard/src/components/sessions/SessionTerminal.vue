@@ -5,6 +5,7 @@
   import TerminalLine from './TerminalLine.vue'
   import { humanizeDuration } from '@/utils/duration'
   import { sanitizeAttackerText } from '@/utils/sanitize'
+  import { ICONS } from '../icons'
 
   const props = defineProps<{ session: SessionDetailResponse }>()
 
@@ -109,8 +110,18 @@
         <span class="term-id">{{ idLine }}</span>
         <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
       </span>
-      <button type="button" class="copy-btn" @click="copyTranscript">
-        {{ copied ? 'Copied' : canCopy ? 'Copy transcript' : 'Select transcript' }}
+      <button
+        type="button"
+        class="copy-btn"
+        :aria-label="canCopy ? 'Copy transcript' : 'Select transcript'"
+        @click="copyTranscript"
+      >
+        <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+          <path :d="copied ? ICONS.check : ICONS.copy" />
+        </svg>
+        <span class="copy-label">{{
+          copied ? 'Copied' : canCopy ? 'Copy transcript' : 'Select transcript'
+        }}</span>
       </button>
       <span class="visually-hidden" role="status" aria-live="polite">{{
         copied ? 'Transcript copied to clipboard' : ''
@@ -203,6 +214,9 @@
 
   .copy-btn {
     flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
     min-height: var(--control-h);
     background: var(--surface);
     color: var(--text);
@@ -215,6 +229,14 @@
     transition:
       background var(--motion-fast) ease,
       border-color var(--motion-fast) ease;
+  }
+
+  /* Desktop keeps the text button; the icon is the mobile-only affordance. */
+  .copy-icon {
+    display: none;
+    width: 1rem;
+    height: 1rem;
+    fill: currentColor;
   }
 
   .copy-btn:hover {
@@ -278,14 +300,15 @@
     }
   }
 
-  /* Mobile: the joined title can't fit beside the dots + Copy button. Row 1 =
-     dots (left) + a slim Copy button pinned top-right; row 2 = the metadata as
-     two controlled lines (identity, then time/duration) so nothing truncates
-     and the wrap point is intentional. */
+  /* Mobile: row 1 is the window dots + a compact copy icon (the joined title
+     won't fit beside a full text button); the two-line metadata (identity, then
+     time/duration) drops to its own full-width rows beneath. */
   @media (max-width: 768px) {
     .term-bar {
       flex-wrap: wrap;
-      align-items: flex-start;
+      align-items: center;
+      /* tighten the wrap gap between the dots/copy row and the metadata below */
+      row-gap: var(--space-1);
     }
     .term-title {
       display: none;
@@ -293,8 +316,26 @@
     .copy-btn {
       order: 2;
       margin-left: auto;
-      min-height: 32px;
-      padding: var(--space-1) var(--space-2);
+      /* Bare glyph, no card chrome: just the copy icon up by the window dots.
+         5px padding keeps a >=24px tap target (WCAG 2.5.8) without a button box. */
+      min-height: auto;
+      padding: 5px;
+      background: transparent;
+      border-color: transparent;
+      color: var(--text-muted);
+    }
+    .copy-btn:hover {
+      background: transparent;
+      border-color: transparent;
+      color: var(--text);
+    }
+    .copy-icon {
+      display: block;
+      width: 0.9rem;
+      height: 0.9rem;
+    }
+    .copy-label {
+      display: none;
     }
     .term-meta {
       order: 3;

@@ -173,7 +173,10 @@
     max-width: 1280px;
     margin: 0 auto;
     padding: var(--space-3) var(--space-5);
-    display: flex;
+    /* brand | nav | empty -- the centre auto column keeps the nav centred in the
+       header regardless of the brand width. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: var(--space-5);
   }
@@ -200,8 +203,6 @@
   .shell-nav {
     display: flex;
     gap: var(--space-1);
-    flex: 1;
-    margin-left: var(--space-4);
   }
 
   .nav-link {
@@ -329,6 +330,7 @@
       scrollbar-gutter: auto;
     }
     .shell-header-inner {
+      display: flex;
       flex-wrap: wrap;
     }
     /* Drop the brand from the header on mobile -- it reappears in the footer

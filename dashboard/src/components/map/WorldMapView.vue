@@ -194,6 +194,13 @@
     cursor: pointer;
   }
 
+  /* `all: unset` strips the UA focus ring; restore one so a sighted keyboard
+     user can see which offscreen country is focused (WCAG 2.4.7). */
+  .sr-nav button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
   .graticule {
     fill: none;
     stroke: var(--map-graticule);

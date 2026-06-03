@@ -289,8 +289,9 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(page.getByRole('heading', { level: 2, name: 'Unknown' })).toBeVisible()
     await expect(page.getByText('hunter2')).toBeVisible()
 
-    // Re-ranking by a different metric is URL-driven.
-    await page.getByRole('button', { name: 'Unique IPs' }).click()
+    // Re-ranking by a different metric is URL-driven (the sort control is a
+    // radiogroup: single-select among the ranking axes).
+    await page.getByRole('radio', { name: 'Unique IPs' }).click()
     await expect(page).toHaveURL(/sort=ips/)
 
     await expectAxeClean(page)

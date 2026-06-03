@@ -32,8 +32,20 @@ describe('COUNTRY_SORTS', () => {
 
 describe('buildCountryLeaderboardRows', () => {
   const rows: CountryRowResponse[] = [
-    country({ country_code: 'CN', country: 'China', sessions: 1200, distinct_ips: 50, success_rate: 1.2 }),
-    country({ country_code: 'US', country: 'United States', sessions: 400, distinct_ips: 200, success_rate: 8.5 }),
+    country({
+      country_code: 'CN',
+      country: 'China',
+      sessions: 1200,
+      distinct_ips: 50,
+      success_rate: 1.2,
+    }),
+    country({
+      country_code: 'US',
+      country: 'United States',
+      sessions: 400,
+      distinct_ips: 200,
+      success_rate: 8.5,
+    }),
   ]
 
   it('ranks the bar by the chosen sort metric, scaled to the max', () => {
@@ -51,7 +63,10 @@ describe('buildCountryLeaderboardRows', () => {
 
   it('formats the success-rate axis as a percentage (dash when null)', () => {
     const out = buildCountryLeaderboardRows(
-      [country({ country_code: 'US', success_rate: 8.5 }), country({ country_code: 'RU', success_rate: null })],
+      [
+        country({ country_code: 'US', success_rate: 8.5 }),
+        country({ country_code: 'RU', success_rate: null }),
+      ],
       'success_rate',
     )
     expect(out[0]!.valueLabel).toBe('8.50%')
@@ -59,7 +74,10 @@ describe('buildCountryLeaderboardRows', () => {
   })
 
   it('marks a real country selectable with an upper-cased code and full name', () => {
-    const [row] = buildCountryLeaderboardRows([country({ country_code: 'cn', country: null })], 'sessions')
+    const [row] = buildCountryLeaderboardRows(
+      [country({ country_code: 'cn', country: null })],
+      'sessions',
+    )
     expect(row!.code).toBe('CN')
     expect(row!.selectable).toBe(true)
     // Name comes from the code even when the API name is null.

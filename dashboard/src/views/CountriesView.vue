@@ -23,6 +23,8 @@
     type CountrySort,
   } from '@/utils/countries'
   import { fmtNumber } from '@/utils/format'
+  import { isAlpha2 } from '@/composables/useCountryFilter'
+  import { ICONS } from '@/components/icons'
 
   // The country leaderboard is the heaviest aggregate in the app (sessions x
   // geo x auth_attempts, grouped). It barely moves minute-to-minute and is
@@ -35,12 +37,13 @@
 
   // Selection + sort live in the URL so a country view is shareable/reloadable.
   // Read country directly (not useCountryFilter, which is strict alpha-2) so the
-  // '??' Unknown-bucket sentinel survives -- only this view drills into it.
+  // '??' Unknown-bucket sentinel survives -- only this view drills into it. The
+  // alpha-2 check reuses isAlpha2 so the validation regex lives in one place.
   const country = computed<string>(() => {
     const c = route.query.country
     if (typeof c !== 'string') return ''
     if (c === UNKNOWN_CODE) return UNKNOWN_CODE
-    return /^[A-Za-z]{2}$/.test(c) ? c.toUpperCase() : ''
+    return isAlpha2(c) ? c.toUpperCase() : ''
   })
   const SORT_IDS = COUNTRY_SORTS.map((s) => s.id)
   const sort = computed<CountrySort>(() => {
@@ -61,8 +64,17 @@
 
   const rows = computed(() => countriesQ.data.value?.countries ?? [])
   const totalCountries = computed(() => countriesQ.data.value?.total_countries ?? 0)
-  const geoPctLabel = computed(() => fmtSuccessRate(countriesQ.data.value?.geo_resolved_pct ?? null))
+  const geoPctLabel = computed(() =>
+    fmtSuccessRate(countriesQ.data.value?.geo_resolved_pct ?? null),
+  )
   const leaderRows = computed(() => buildCountryLeaderboardRows(rows.value, sort.value))
+
+  // The leaderboard's ranking axis, surfaced to assistive tech: the list is
+  // ordered by it, but that order is invisible to a screen reader otherwise.
+  const activeSortLabel = computed(
+    () => COUNTRY_SORTS.find((s) => s.id === sort.value)?.label ?? 'Sessions',
+  )
+  const leaderboardLabel = computed(() => `Country leaderboard, ranked by ${activeSortLabel.value}`)
 
   // Auto-select the #1 selectable country when the URL names none, so the detail
   // panel (and the selected-country KPIs) are never empty on first paint. No
@@ -118,14 +130,27 @@
     })),
   )
 
-  const passwordRows = computed(() => buildCredentialFieldRows(passwordsQ.data.value ?? [], 'password'))
-  const usernameRows = computed(() => buildCredentialFieldRows(usernamesQ.data.value ?? [], 'username'))
+  const passwordRows = computed(() =>
+    buildCredentialFieldRows(passwordsQ.data.value ?? [], 'password'),
+  )
+  const usernameRows = computed(() =>
+    buildCredentialFieldRows(usernamesQ.data.value ?? [], 'username'),
+  )
   const asnRows = computed(() => buildAsnRows(asnsQ.data.value ?? []))
   // First load of a country's breakdown (no prior data to hold). Distinct from
   // an empty bucket so the lists don't flash "none yet" before they resolve.
-  const detailPending = computed(
-    () => Boolean(selectedCode.value) && passwordsQ.isPending.value,
-  )
+  const detailPending = computed(() => Boolean(selectedCode.value) && passwordsQ.isPending.value)
+
+  // Announce the selected country + its breakdown once it resolves, so a screen
+  // reader hears the detail panel change (the swap is otherwise silent). Cleared
+  // while pending so the polite region speaks the resolved state, not the
+  // loading flash.
+  const selectionAnnouncement = computed(() => {
+    if (!selectedCode.value || detailPending.value) return ''
+    return detailSubline.value
+      ? `Showing ${selectedName.value}. ${detailSubline.value}.`
+      : `Showing ${selectedName.value}.`
+  })
 
   // After the first successful load, cached data stays on screen even if a
   // background poll fails; surface that so numbers are not silently stale.
@@ -176,6 +201,10 @@
   <div class="countries">
     <PageHeader title="Countries" />
 
+    <!-- Announce the selected country + its breakdown; the detail-panel swap is
+         otherwise silent to a screen reader. -->
+    <div class="visually-hidden" role="status" aria-live="polite">{{ selectionAnnouncement }}</div>
+
     <p v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</p>
 
     <section class="stats-grid" aria-label="Country totals">
@@ -206,14 +235,15 @@
         <template #title>
           <div class="lb-head">
             <h2 class="lb-title">Countries</h2>
-            <div class="seg" role="group" aria-label="Rank countries by">
+            <div class="seg" role="radiogroup" aria-label="Rank countries by">
               <button
                 v-for="s in COUNTRY_SORTS"
                 :key="s.id"
                 type="button"
+                role="radio"
                 class="seg-btn"
                 :class="{ 'seg-btn-active': sort === s.id }"
-                :aria-pressed="sort === s.id"
+                :aria-checked="sort === s.id"
                 @click="setSort(s.id)"
               >
                 {{ s.label }}
@@ -223,14 +253,15 @@
         </template>
 
         <div ref="listRef" class="lb-scroll" tabindex="-1">
-          <ul v-if="leaderRows.length" class="lb-list" aria-label="Country leaderboard">
-            <li v-for="row in leaderRows" :key="row.key">
+          <ul v-if="leaderRows.length" class="lb-list" :aria-label="leaderboardLabel">
+            <li v-for="(row, i) in leaderRows" :key="row.key">
               <button
                 v-if="row.selectable"
                 type="button"
                 class="lb-row"
                 :class="{ 'lb-row-active': row.code === selectedCode }"
-                :aria-pressed="row.code === selectedCode"
+                :aria-current="row.code === selectedCode ? 'true' : undefined"
+                :aria-label="`${i + 1}. ${row.label}, ${row.valueLabel}`"
                 :title="row.title"
                 @click="selectCountry(row.code)"
               >
@@ -257,7 +288,10 @@
         <template #title>
           <div class="dt-head">
             <button ref="backBtnRef" type="button" class="back-btn" @click="backToList">
-              <span aria-hidden="true">←</span> Countries
+              <svg class="back-chevron" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path :d="ICONS['chevron-left']" />
+              </svg>
+              Countries
             </button>
             <div class="dt-headings">
               <h2 class="dt-title">{{ selectedName || 'Select a country' }}</h2>
@@ -542,6 +576,15 @@
     outline-offset: 1px;
   }
 
+  .back-chevron {
+    width: 1.1em;
+    height: 1.1em;
+    fill: currentColor;
+    flex: 0 0 auto;
+    /* nudge off the optical right-bias of the chevron glyph */
+    margin-left: -2px;
+  }
+
   .dt-headings {
     min-width: 0;
   }
@@ -606,6 +649,12 @@
     /* 2x2 KPIs so big numbers / "81.3%" never clip or side-scroll. */
     .stats-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    /* Keep the selected-country KPI cards a stable height: force the delta (the
+       country name) onto its own line so a short value like "—" can't pull it
+       inline and shrink the card relative to a wide "42.6%". */
+    .stats-grid :deep(.stat-delta) {
+      flex-basis: 100%;
     }
     /* Master-detail can't sit side-by-side: stack to a content-height column and
        show one pane at a time (drill navigation). */

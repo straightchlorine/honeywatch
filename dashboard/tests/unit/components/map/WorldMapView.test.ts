@@ -15,6 +15,8 @@ const GEOMETRY: WorldGeometry = {
     { id: '840', name: 'United States', d: 'M1,1L2,2Z' },
     { id: '156', name: 'China', d: 'M3,3L4,4Z' },
     { id: '004', name: 'Afghanistan', d: 'M5,5L6,6Z' },
+    // '999' is not an assigned ISO 3166-1 numeric id -> no alpha-2 mapping.
+    { id: '999', name: 'Disputed Area', d: 'M7,7L8,8Z' },
   ],
 }
 
@@ -25,7 +27,7 @@ function mountMap(counts: Map<string, number>) {
 describe('WorldMapView', () => {
   it('renders one path per country', () => {
     const wrapper = mountMap(new Map([['156', 1200]]))
-    expect(wrapper.findAll('.country')).toHaveLength(3)
+    expect(wrapper.findAll('.country')).toHaveLength(4)
   })
 
   it('paints attacked countries with the ramp and others with the land color', () => {
@@ -85,5 +87,19 @@ describe('WorldMapView', () => {
     const wrapper = mountMap(new Map([['840', 400]]))
     await wrapper.find('.sr-nav button').trigger('click')
     expect(wrapper.emitted('select')).toEqual([['US']])
+  })
+
+  it('does not emit or render a drill button for a country with no alpha-2 code', async () => {
+    // Numeric id '999' has no alpha-2 mapping (disputed/unassigned TopoJSON ids
+    // exist). Clicking its path must emit nothing, so Overview never navigates
+    // to /countries?country=undefined.
+    const wrapper = mountMap(new Map([['999', 500]]))
+    await wrapper.findAll('.country')[3]!.trigger('click')
+    expect(wrapper.emitted('select')).toBeUndefined()
+    // It still appears in the offscreen list, but as plain text (no button).
+    const items = wrapper.findAll('.visually-hidden li')
+    expect(items).toHaveLength(1)
+    expect(items[0]!.text()).toContain('Disputed Area')
+    expect(wrapper.find('.sr-nav button').exists()).toBe(false)
   })
 })
