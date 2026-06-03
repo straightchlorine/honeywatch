@@ -1,6 +1,31 @@
 from __future__ import annotations
 
+from collections.abc import Mapping
+from typing import Any
+
 from marshmallow import Schema, fields, validate
+
+
+class CountryCodeField(fields.String):
+    """Country-code string that upper-cases on load.
+
+    MaxMind stores alpha-2 codes upper-case, but the validator accepts either
+    case; without this a lowercase ``?country=us`` would pass validation and
+    then silently match nothing. Upper-casing during deserialization (before
+    the regex validator runs) makes the filter case-insensitive. The ``"??"``
+    Unknown sentinel is unaffected (``"??".upper() == "??"``).
+    """
+
+    def _deserialize(
+        self,
+        value: Any,
+        attr: str | None,
+        data: Mapping[str, Any] | None,
+        **kwargs: Any,
+    ) -> str:
+        # None is handled by Field.deserialize before _deserialize runs, so the
+        # parent always returns a str here.
+        return super()._deserialize(value, attr, data, **kwargs).upper()
 
 
 def country_filter_field() -> fields.Str:
@@ -10,12 +35,33 @@ def country_filter_field() -> fields.Str:
     needs its own instance; this factory keeps the regex and metadata defined
     in exactly one place.
     """
-    return fields.Str(
+    return CountryCodeField(
         load_default=None,
         allow_none=True,
         validate=validate.Regexp(r"^[A-Za-z]{2}$"),
         metadata={
             "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "example": "CN",
+        },
+    )
+
+
+def country_or_unknown_field() -> fields.Str:
+    """Country filter that also accepts ``"??"`` -- the geo-less bucket.
+
+    Same as :func:`country_filter_field`, but the credential/ASN leaderboards
+    let the Countries page drill into the "Unknown" row (sessions whose source
+    IP has no resolved country), addressed by the ``"??"`` sentinel.
+    """
+    return CountryCodeField(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Regexp(r"^([A-Za-z]{2}|\?\?)$"),
+        metadata={
+            "description": (
+                "Scope to a single ISO 3166-1 alpha-2 source country, or '??' "
+                "for the geo-less (Unknown) bucket."
+            ),
             "example": "CN",
         },
     )

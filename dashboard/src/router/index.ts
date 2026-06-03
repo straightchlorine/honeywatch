@@ -33,6 +33,12 @@ const routes: RouteRecordRaw[] = [
     component: () => import('../views/CredentialsView.vue'),
     meta: { title: 'Credentials' },
   },
+  {
+    path: '/countries',
+    name: 'countries',
+    component: () => import('../views/CountriesView.vue'),
+    meta: { title: 'Countries' },
+  },
   // The IP view is still deferred until its data/UX is ready
   // (see docs/frontend-foundation-plan.md). Unknown paths fall through below.
   {

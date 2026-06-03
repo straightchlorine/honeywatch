@@ -46,6 +46,9 @@
           <RouterLink to="/activity" class="nav-link" active-class="nav-link-active">
             Activity
           </RouterLink>
+          <RouterLink to="/countries" class="nav-link" active-class="nav-link-active">
+            Countries
+          </RouterLink>
           <RouterLink to="/credentials" class="nav-link" active-class="nav-link-active">
             Credentials
           </RouterLink>
@@ -170,7 +173,10 @@
     max-width: 1280px;
     margin: 0 auto;
     padding: var(--space-3) var(--space-5);
-    display: flex;
+    /* brand | nav | empty -- the centre auto column keeps the nav centred in the
+       header regardless of the brand width. */
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
     align-items: center;
     gap: var(--space-5);
   }
@@ -197,8 +203,6 @@
   .shell-nav {
     display: flex;
     gap: var(--space-1);
-    flex: 1;
-    margin-left: var(--space-4);
   }
 
   .nav-link {
@@ -326,6 +330,7 @@
       scrollbar-gutter: auto;
     }
     .shell-header-inner {
+      display: flex;
       flex-wrap: wrap;
     }
     /* Drop the brand from the header on mobile -- it reappears in the footer
@@ -334,10 +339,18 @@
     .brand {
       display: none;
     }
+    /* Full-width nav row; spread all 5 tabs evenly on one line (shrink the
+       per-link padding + font so the long "Credentials" label still fits). */
     .shell-nav {
       order: 3;
       flex-basis: 100%;
       margin-left: 0;
+      gap: 2px;
+      justify-content: space-between;
+    }
+    .nav-link {
+      padding: var(--space-1) var(--space-2);
+      font-size: var(--type-xs);
     }
 
     /* Drop the contributor credits; the footer becomes "● Honeywatch + GitHub". */

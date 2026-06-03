@@ -117,6 +117,32 @@ export function buildPairBarRows(items: TopCredentialResponse[]): BarRow[] {
   })
 }
 
+/**
+ * Single-field credential rows (username-only or password-only), sanitized.
+ * Used by the Countries detail panel, which scopes `/top-credentials` to one
+ * country with `by=password` / `by=username`; the unused field is null. Shares
+ * cleanCred so per-country creds get the same control/bidi + IP-literal scrub
+ * as the Credentials page.
+ */
+export function buildCredentialFieldRows(
+  items: TopCredentialResponse[],
+  field: 'username' | 'password',
+): BarRow[] {
+  let max = 0
+  for (const it of items) if (it.count > max) max = it.count
+  return items.map((it, idx) => {
+    const raw = field === 'username' ? it.username : it.password
+    const label = cleanCred(raw ?? '') || EMPTY
+    return {
+      key: `${raw ?? ''}|${idx}`,
+      label,
+      count: it.count,
+      widthPct: pctWidth(it.count, max),
+      title: `${label} — ${fmtNumber(it.count)} attempts`,
+    }
+  })
+}
+
 const CHARSET_LABELS: Record<string, string> = {
   empty: 'Empty',
   symbol: 'Has symbol',

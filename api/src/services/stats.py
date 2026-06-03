@@ -13,6 +13,9 @@ from src.services.types import (
     ActivityBucketDict,
     AuthOutcomesDict,
     CharsetClassDict,
+    CountriesDict,
+    CountryAsnDict,
+    CountryRowDict,
     CredentialLengthDict,
     HeatmapPointDict,
     PasswordCompositionDict,
@@ -38,6 +41,14 @@ _BUCKET_WINDOWS = {
 VALID_CRED_GROUPINGS = frozenset({"pair", "username", "password"})
 VALID_CRED_METRICS = frozenset({"attempts", "ip_fanout"})
 VALID_CRED_OUTCOMES = frozenset({"any", "success", "failed"})
+
+# Country leaderboard ranking knobs (the Countries page). The sort picks which
+# per-country aggregate ranks the list. Shared as a frozenset so the marshmallow
+# query schema and the service agree on the allowed values.
+VALID_COUNTRY_SORTS = frozenset({"sessions", "ips", "attempts", "success_rate"})
+
+# Sentinel country code for the geo-less bucket (no resolved country_code).
+UNKNOWN_COUNTRY = "??"
 
 # Attacker passwords are short and weak; cap the length histogram so a single
 # pathological multi-KB password can't stretch the x-axis.
@@ -109,6 +120,193 @@ class StatsService:
             .limit(self.top_n)
         ).all()
         return [{"country_code": r[0], "country": r[1], "count": r[2]} for r in rows]
+
+    def country_breakdown(self, sort: str = "sessions") -> CountriesDict:
+        """Return per-country attack metrics for the Countries leaderboard.
+
+        One row per source country with both session-grain metrics (sessions,
+        distinct source IPs) and auth-grain metrics (attempts, accepted,
+        distinct usernames/passwords). Each grain is aggregated at its native
+        level first (a session-grain subquery and an auth-grain subquery), then
+        joined on the country code -- so the session/IP counts are never
+        multiplied by a session's auth-attempt count (the fan-out a single
+        mixed-grain join would cause). Geo-less sessions bucket under
+        "Unknown"/"??" (outer join + COALESCE), same as :meth:`top_countries`.
+
+        Args:
+            sort: Ranking metric; one of :data:`VALID_COUNTRY_SORTS`.
+
+        Raises:
+            ValueError: When ``sort`` is not a recognized value.
+        """
+        if sort not in VALID_COUNTRY_SORTS:
+            raise ValueError(f"sort must be one of {sorted(VALID_COUNTRY_SORTS)}")
+
+        # Session grain: one row per session (no auth join), so the distinct
+        # session/IP counts are exact. geo.ip is the PK -> the outer join is
+        # 1:1; geo-less sessions COALESCE into the "??"/"Unknown" bucket.
+        sess_cc = func.coalesce(GeoLocation.country_code, UNKNOWN_COUNTRY).label(
+            "country_code"
+        )
+        sess_country = func.coalesce(GeoLocation.country, "Unknown").label("country")
+        sess_agg = (
+            select(
+                sess_cc,
+                sess_country,
+                func.count(func.distinct(Session.id)).label("sessions"),
+                func.count(func.distinct(Session.src_ip)).label("distinct_ips"),
+            )
+            .select_from(Session)
+            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+            .group_by(sess_cc, sess_country)
+            .subquery()
+        )
+
+        # Auth grain: one row per auth attempt. Every attempt's session is in
+        # sess_agg under the same country, so these metrics LEFT JOIN back onto
+        # the session-grain rows.
+        auth_cc = func.coalesce(GeoLocation.country_code, UNKNOWN_COUNTRY).label(
+            "country_code"
+        )
+        auth_agg = (
+            select(
+                auth_cc,
+                func.count(AuthAttempt.id).label("attempts"),
+                func.count(AuthAttempt.id)
+                .filter(AuthAttempt.success.is_(True))
+                .label("successful"),
+                func.count(func.distinct(AuthAttempt.username)).label(
+                    "distinct_usernames"
+                ),
+                func.count(func.distinct(AuthAttempt.password)).label(
+                    "distinct_passwords"
+                ),
+            )
+            .select_from(AuthAttempt)
+            .join(Session, Session.id == AuthAttempt.session_id)
+            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+            .group_by(auth_cc)
+            .subquery()
+        )
+
+        sessions = sess_agg.c.sessions
+        distinct_ips = sess_agg.c.distinct_ips
+        attempts = func.coalesce(auth_agg.c.attempts, 0).label("attempts")
+        successful = func.coalesce(auth_agg.c.successful, 0).label("successful")
+        # COALESCE null (no-attempt country) to -1 so it sorts last under DESC
+        # without a separate NULLS LAST clause.
+        rate_order = func.coalesce(
+            auth_agg.c.successful * 1.0 / func.nullif(auth_agg.c.attempts, 0),
+            -1.0,
+        )
+        order_by = {
+            "sessions": sessions.desc(),
+            "ips": distinct_ips.desc(),
+            "attempts": attempts.desc(),
+            "success_rate": rate_order.desc(),
+        }[sort]
+
+        rows = self.db.execute(
+            select(
+                sess_agg.c.country_code,
+                sess_agg.c.country,
+                sessions,
+                distinct_ips,
+                attempts,
+                successful,
+                func.coalesce(auth_agg.c.distinct_usernames, 0).label(
+                    "distinct_usernames"
+                ),
+                func.coalesce(auth_agg.c.distinct_passwords, 0).label(
+                    "distinct_passwords"
+                ),
+            )
+            .select_from(sess_agg)
+            .outerjoin(auth_agg, auth_agg.c.country_code == sess_agg.c.country_code)
+            # Stable tiebreak on sessions keeps equal-rank rows deterministic.
+            .order_by(order_by, sessions.desc())
+            .limit(self.top_n)
+        ).all()
+
+        countries: list[CountryRowDict] = []
+        for r in rows:
+            att = r.attempts
+            countries.append(
+                {
+                    "country_code": r.country_code,
+                    "country": r.country,
+                    "sessions": r.sessions,
+                    "distinct_ips": r.distinct_ips,
+                    "attempts": att,
+                    "successful": r.successful,
+                    "success_rate": round(r.successful / att * 100, 2) if att else None,
+                    "distinct_usernames": r.distinct_usernames,
+                    "distinct_passwords": r.distinct_passwords,
+                }
+            )
+
+        # Header counters in one scan of Session <-> GeoLocation (one round-trip):
+        # total/resolved session counts for the coverage pct, plus the distinct
+        # resolved-country count. geo.ip is the PK so the outer join is 1:1 (no
+        # session fan-out); COUNT(DISTINCT country_code) ignores the null bucket.
+        header = self.db.execute(
+            select(
+                func.count().label("total"),
+                func.count()
+                .filter(GeoLocation.country_code.isnot(None))
+                .label("resolved"),
+                func.count(func.distinct(GeoLocation.country_code)).label(
+                    "total_countries"
+                ),
+            )
+            .select_from(Session)
+            .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+        ).one()
+        geo_resolved_pct = (
+            round(header.resolved / header.total * 100, 2) if header.total else None
+        )
+        return {
+            "countries": countries,
+            "total_countries": header.total_countries,
+            "geo_resolved_pct": geo_resolved_pct,
+        }
+
+    def country_asns(self, country: str | None = None) -> list[CountryAsnDict]:
+        """Return the top-N source networks (ASN / org) by session count.
+
+        Surfaces which hosting/cloud networks the attacks ride. ``country``
+        scopes to one origin (the Countries detail panel always passes one);
+        ``"??"`` scopes to the geo-less bucket (sessions with no resolved country
+        that still carry an ASN -- the MaxMind ASN-hit-without-city case); None
+        returns the global top networks. Rows without an ``asn`` are excluded.
+        Reports counts only -- no source addresses cross the boundary.
+        """
+        sessions = func.count(func.distinct(Session.id)).label("sessions")
+        distinct_ips = func.count(func.distinct(Session.src_ip)).label("distinct_ips")
+        stmt = (
+            select(GeoLocation.asn, GeoLocation.as_org, sessions, distinct_ips)
+            .select_from(Session)
+            .join(GeoLocation, GeoLocation.ip == Session.src_ip)
+            .where(GeoLocation.asn.isnot(None))
+        )
+        if country == UNKNOWN_COUNTRY:
+            stmt = stmt.where(GeoLocation.country_code.is_(None))
+        elif country is not None:
+            stmt = stmt.where(GeoLocation.country_code == country)
+        rows = self.db.execute(
+            stmt.group_by(GeoLocation.asn, GeoLocation.as_org)
+            .order_by(sessions.desc())
+            .limit(self.top_n)
+        ).all()
+        return [
+            {
+                "asn": r.asn,
+                "as_org": r.as_org,
+                "sessions": r.sessions,
+                "distinct_ips": r.distinct_ips,
+            }
+            for r in rows
+        ]
 
     def activity(
         self, bucket: str, country: str | None = None
@@ -214,6 +412,7 @@ class StatsService:
         by: str = "pair",
         metric: str = "attempts",
         outcome: str = "any",
+        country: str | None = None,
     ) -> list[TopCredentialDict]:
         """Return the top-N attempted credentials, ranked by ``metric``.
 
@@ -230,6 +429,9 @@ class StatsService:
                 attempts view avoids the sessions join.
             outcome: ``"any"`` / ``"success"`` / ``"failed"`` filters on what
                 cowrie accepted (``success=success`` / ``failed``).
+            country: ISO 3166-1 alpha-2 code to scope to one source country --
+                the per-country credential dictionary (top passwords/usernames
+                from that origin), or None for all countries.
 
         Raises:
             ValueError: For an unrecognized ``by`` / ``metric`` / ``outcome``.
@@ -255,8 +457,20 @@ class StatsService:
             selected.append(fanout_col)
 
         stmt = select(*selected).select_from(AuthAttempt)
-        if metric == "ip_fanout":
+        # Reach Session once for either the fan-out distinct-IP count or the
+        # country geo join (both need AuthAttempt -> Session);
+        if metric == "ip_fanout" or country is not None:
             stmt = stmt.join(Session, Session.id == AuthAttempt.session_id)
+        if country == UNKNOWN_COUNTRY:
+            # The geo-less bucket: scope to sessions whose src_ip has no resolved
+            # country (outer join keeps null-geo rows that an inner join drops).
+            stmt = stmt.outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip).where(
+                GeoLocation.country_code.is_(None)
+            )
+        elif country is not None:
+            stmt = stmt.join(GeoLocation, GeoLocation.ip == Session.src_ip).where(
+                GeoLocation.country_code == country
+            )
         if outcome == "success":
             stmt = stmt.where(AuthAttempt.success.is_(True))
         elif outcome == "failed":

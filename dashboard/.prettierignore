@@ -4,3 +4,6 @@ pnpm-lock.yaml
 *.svg
 src/api/schema.d.ts
 src/api/generated
+coverage
+test-results
+public/geo

@@ -73,6 +73,44 @@
         ],
         "type": "object"
       },
+      "AsnResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "as_org": {
+            "description": "Autonomous System organisation.",
+            "example": "OVH SAS",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "asn": {
+            "description": "Autonomous System Number.",
+            "example": 16276,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "distinct_ips": {
+            "description": "Distinct source IPs from this network.",
+            "example": 12,
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Distinct sessions from this network.",
+            "example": 88,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "as_org",
+          "asn",
+          "distinct_ips",
+          "sessions"
+        ],
+        "type": "object"
+      },
       "AuthAttemptResponse": {
         "additionalProperties": false,
         "properties": {
@@ -218,6 +256,108 @@
           "input",
           "success",
           "timestamp"
+        ],
+        "type": "object"
+      },
+      "CountriesResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "countries": {
+            "description": "Per-country rows, ranked by the chosen sort.",
+            "items": {
+              "$ref": "#/components/schemas/CountryRowResponse"
+            },
+            "type": "array"
+          },
+          "geo_resolved_pct": {
+            "description": "Share of sessions with geolocation resolved (null when there are no sessions). Geo enrichment lags ingestion, so the remainder is bucketed under Unknown -- surfaced so counts are not read as totals.",
+            "example": 81.3,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "total_countries": {
+            "description": "Distinct resolved countries (excludes the Unknown bucket).",
+            "example": 47,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "countries",
+          "geo_resolved_pct",
+          "total_countries"
+        ],
+        "type": "object"
+      },
+      "CountryRowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "attempts": {
+            "description": "Auth attempts from this country.",
+            "example": 512,
+            "type": "integer"
+          },
+          "country": {
+            "description": "Human-readable country name.",
+            "example": "China",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "CN",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "distinct_ips": {
+            "description": "Distinct source IPs from this country (fan-out width).",
+            "example": 42,
+            "type": "integer"
+          },
+          "distinct_passwords": {
+            "description": "Distinct passwords tried.",
+            "example": 96,
+            "type": "integer"
+          },
+          "distinct_usernames": {
+            "description": "Distinct usernames tried.",
+            "example": 18,
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Distinct sessions from this country.",
+            "example": 137,
+            "type": "integer"
+          },
+          "success_rate": {
+            "description": "Accepted percentage (null when no attempts).",
+            "example": 0.59,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "successful": {
+            "description": "Attempts cowrie accepted.",
+            "example": 3,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "attempts",
+          "country",
+          "country_code",
+          "distinct_ips",
+          "distinct_passwords",
+          "distinct_usernames",
+          "sessions",
+          "success_rate",
+          "successful"
         ],
         "type": "object"
       },
@@ -1113,6 +1253,69 @@
         ]
       }
     },
+    "/api/v1/stats/asns": {
+      "get": {
+        "operationId": "statsAsns",
+        "parameters": [
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country, or '??' for the geo-less (Unknown) bucket.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^([A-Za-z]{2}|\\?\\?)$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Number of networks to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/AsnResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N source networks (ASN / org) by session count.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
     "/api/v1/stats/auth-outcomes": {
       "get": {
         "operationId": "statsAuthOutcomes",
@@ -1135,6 +1338,68 @@
           }
         },
         "summary": "Return the accept/reject split across all auth attempts.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/countries": {
+      "get": {
+        "operationId": "statsCountries",
+        "parameters": [
+          {
+            "description": "Ranking metric: sessions, ips (distinct source IPs), attempts, or success_rate.",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "sessions",
+              "enum": [
+                "attempts",
+                "ips",
+                "sessions",
+                "success_rate"
+              ],
+              "example": "sessions",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Number of countries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 50,
+              "example": 50,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountriesResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the per-country attack leaderboard ranked by the chosen sort.",
         "tags": [
           "stats"
         ]
@@ -1374,6 +1639,21 @@
               ],
               "example": "any",
               "type": "string"
+            }
+          },
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country, or '??' for the geo-less (Unknown) bucket.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^([A-Za-z]{2}|\\?\\?)$",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {

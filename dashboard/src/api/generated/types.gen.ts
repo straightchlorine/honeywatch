@@ -15,6 +15,25 @@ export type ActivityBucketResponse = {
     count: number;
 };
 
+export type AsnResponse = {
+    /**
+     * Autonomous System organisation.
+     */
+    as_org: string | null;
+    /**
+     * Autonomous System Number.
+     */
+    asn: number | null;
+    /**
+     * Distinct source IPs from this network.
+     */
+    distinct_ips: number;
+    /**
+     * Distinct sessions from this network.
+     */
+    sessions: number;
+};
+
 export type AuthAttemptResponse = {
     /**
      * Auth attempt row id.
@@ -93,6 +112,60 @@ export type CommandResponse = {
      * ISO 8601 UTC timestamp of when the command ran.
      */
     timestamp: string | null;
+};
+
+export type CountriesResponse = {
+    /**
+     * Per-country rows, ranked by the chosen sort.
+     */
+    countries: Array<CountryRowResponse>;
+    /**
+     * Share of sessions with geolocation resolved (null when there are no sessions). Geo enrichment lags ingestion, so the remainder is bucketed under Unknown -- surfaced so counts are not read as totals.
+     */
+    geo_resolved_pct: number | null;
+    /**
+     * Distinct resolved countries (excludes the Unknown bucket).
+     */
+    total_countries: number;
+};
+
+export type CountryRowResponse = {
+    /**
+     * Auth attempts from this country.
+     */
+    attempts: number;
+    /**
+     * Human-readable country name.
+     */
+    country: string | null;
+    /**
+     * ISO 3166-1 alpha-2 country code.
+     */
+    country_code: string | null;
+    /**
+     * Distinct source IPs from this country (fan-out width).
+     */
+    distinct_ips: number;
+    /**
+     * Distinct passwords tried.
+     */
+    distinct_passwords: number;
+    /**
+     * Distinct usernames tried.
+     */
+    distinct_usernames: number;
+    /**
+     * Distinct sessions from this country.
+     */
+    sessions: number;
+    /**
+     * Accepted percentage (null when no attempts).
+     */
+    success_rate: number | null;
+    /**
+     * Attempts cowrie accepted.
+     */
+    successful: number;
 };
 
 export type CredentialLengthResponse = {
@@ -589,6 +662,48 @@ export type StatsActivityResponses = {
 
 export type StatsActivityResponse = StatsActivityResponses[keyof StatsActivityResponses];
 
+export type StatsAsnsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country, or '??' for the geo-less (Unknown) bucket.
+         */
+        country?: string | null;
+        /**
+         * Number of networks to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/asns';
+};
+
+export type StatsAsnsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsAsnsError = StatsAsnsErrors[keyof StatsAsnsErrors];
+
+export type StatsAsnsResponses = {
+    /**
+     * OK
+     */
+    200: Array<AsnResponse>;
+};
+
+export type StatsAsnsResponse = StatsAsnsResponses[keyof StatsAsnsResponses];
+
 export type StatsAuthOutcomesData = {
     body?: never;
     path?: never;
@@ -617,6 +732,48 @@ export type StatsAuthOutcomesResponses = {
 };
 
 export type StatsAuthOutcomesResponse = StatsAuthOutcomesResponses[keyof StatsAuthOutcomesResponses];
+
+export type StatsCountriesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Ranking metric: sessions, ips (distinct source IPs), attempts, or success_rate.
+         */
+        sort?: 'attempts' | 'ips' | 'sessions' | 'success_rate';
+        /**
+         * Number of countries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/countries';
+};
+
+export type StatsCountriesErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsCountriesError = StatsCountriesErrors[keyof StatsCountriesErrors];
+
+export type StatsCountriesResponses = {
+    /**
+     * OK
+     */
+    200: CountriesResponse;
+};
+
+export type StatsCountriesResponse = StatsCountriesResponses[keyof StatsCountriesResponses];
 
 export type StatsHeatmapData = {
     body?: never;
@@ -781,6 +938,10 @@ export type StatsTopCredentialsData = {
          * Filter to cowrie-accepted, rejected, or all attempts.
          */
         outcome?: 'any' | 'failed' | 'success';
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country, or '??' for the geo-less (Unknown) bucket.
+         */
+        country?: string | null;
         /**
          * Number of top entries to return (max 100).
          */

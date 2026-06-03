@@ -2,7 +2,7 @@
 
 import type { Client, Options as Options2, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetSessionByIdData, GetSessionByIdErrors, GetSessionByIdResponses, HealthLiveData, HealthLiveErrors, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, StatsActivityData, StatsActivityErrors, StatsActivityResponses, StatsAuthOutcomesData, StatsAuthOutcomesErrors, StatsAuthOutcomesResponses, StatsHeatmapData, StatsHeatmapErrors, StatsHeatmapResponses, StatsPasswordCompositionData, StatsPasswordCompositionErrors, StatsPasswordCompositionResponses, StatsPasswordsByLengthData, StatsPasswordsByLengthErrors, StatsPasswordsByLengthResponses, StatsTopCountriesData, StatsTopCountriesErrors, StatsTopCountriesResponses, StatsTopCredentialsData, StatsTopCredentialsErrors, StatsTopCredentialsResponses, StatsTopPasswordsData, StatsTopPasswordsErrors, StatsTopPasswordsResponses, StatsTotalsData, StatsTotalsErrors, StatsTotalsResponses, StatsTrendData, StatsTrendErrors, StatsTrendResponses } from './types.gen';
+import type { GetSessionByIdData, GetSessionByIdErrors, GetSessionByIdResponses, HealthLiveData, HealthLiveErrors, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, StatsActivityData, StatsActivityErrors, StatsActivityResponses, StatsAsnsData, StatsAsnsErrors, StatsAsnsResponses, StatsAuthOutcomesData, StatsAuthOutcomesErrors, StatsAuthOutcomesResponses, StatsCountriesData, StatsCountriesErrors, StatsCountriesResponses, StatsHeatmapData, StatsHeatmapErrors, StatsHeatmapResponses, StatsPasswordCompositionData, StatsPasswordCompositionErrors, StatsPasswordCompositionResponses, StatsPasswordsByLengthData, StatsPasswordsByLengthErrors, StatsPasswordsByLengthResponses, StatsTopCountriesData, StatsTopCountriesErrors, StatsTopCountriesResponses, StatsTopCredentialsData, StatsTopCredentialsErrors, StatsTopCredentialsResponses, StatsTopPasswordsData, StatsTopPasswordsErrors, StatsTopPasswordsResponses, StatsTotalsData, StatsTotalsErrors, StatsTotalsResponses, StatsTrendData, StatsTrendErrors, StatsTrendResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -34,9 +34,19 @@ export const getSessionById = <ThrowOnError extends boolean = false>(options: Op
 export const statsActivity = <ThrowOnError extends boolean = false>(options?: Options<StatsActivityData, ThrowOnError>) => (options?.client ?? client).get<StatsActivityResponses, StatsActivityErrors, ThrowOnError>({ url: '/api/v1/stats/activity', ...options });
 
 /**
+ * Return the top-N source networks (ASN / org) by session count.
+ */
+export const statsAsns = <ThrowOnError extends boolean = false>(options?: Options<StatsAsnsData, ThrowOnError>) => (options?.client ?? client).get<StatsAsnsResponses, StatsAsnsErrors, ThrowOnError>({ url: '/api/v1/stats/asns', ...options });
+
+/**
  * Return the accept/reject split across all auth attempts.
  */
 export const statsAuthOutcomes = <ThrowOnError extends boolean = false>(options?: Options<StatsAuthOutcomesData, ThrowOnError>) => (options?.client ?? client).get<StatsAuthOutcomesResponses, StatsAuthOutcomesErrors, ThrowOnError>({ url: '/api/v1/stats/auth-outcomes', ...options });
+
+/**
+ * Return the per-country attack leaderboard ranked by the chosen sort.
+ */
+export const statsCountries = <ThrowOnError extends boolean = false>(options?: Options<StatsCountriesData, ThrowOnError>) => (options?.client ?? client).get<StatsCountriesResponses, StatsCountriesErrors, ThrowOnError>({ url: '/api/v1/stats/countries', ...options });
 
 /**
  * Return session counts per (weekday, hour) cell.

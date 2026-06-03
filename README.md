@@ -76,7 +76,7 @@ See `justfile` for the full command list.
 
 ## URLs
 
-- Dashboard: http://localhost:8080 (Overview / Activity / Sessions / Credentials pages; Activity and Sessions accept a `?country=<alpha2>` URL scope)
+- Dashboard: http://localhost:8080
 - API: http://localhost:5000 (docs at `/api/v1/swagger` and `/api/v1/redoc`)
 - Grafana: http://localhost:3000
 

@@ -118,7 +118,7 @@ test-api:
       POSTGRES_HOST=localhost \
       POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" \
       POSTGRES_TEST_DB=honeywatch_test \
-      uv run pytest -q
+      uv run --extra dev pytest -q
 
 # Iterate fast: ingestor pytest. Uses the same dev postgres + test DB as the
 # api suite; assumes `just dev` (or at least `just test-db-init`) has been run.

@@ -8,7 +8,11 @@ from src.extensions import get_db
 from src.schemas.stats import (
     ActivityBucketResponse,
     ActivityQuery,
+    AsnQuery,
+    AsnResponse,
     AuthOutcomesResponse,
+    CountriesQuery,
+    CountriesResponse,
     HeatmapPointResponse,
     HeatmapQuery,
     PasswordCompositionResponse,
@@ -80,8 +84,33 @@ def stats_top_credentials(query_args: dict[str, Any]) -> list[dict[str, Any]]:
             by=query_args["by"],
             metric=query_args["metric"],
             outcome=query_args["outcome"],
+            country=query_args.get("country"),
         )
     ]
+
+
+@stats_bp.route("/countries")
+@stats_bp.doc(operationId="statsCountries")
+@stats_bp.arguments(CountriesQuery, location="query")
+@stats_bp.response(200, CountriesResponse)
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_countries(query_args: dict[str, Any]) -> dict[str, Any]:
+    """Return the per-country attack leaderboard ranked by the chosen sort."""
+    service = StatsService(get_db(), top_n=query_args["top_n"])
+    return dict(service.country_breakdown(sort=query_args["sort"]))
+
+
+@stats_bp.route("/asns")
+@stats_bp.doc(operationId="statsAsns")
+@stats_bp.arguments(AsnQuery, location="query")
+@stats_bp.response(200, AsnResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_asns(query_args: dict[str, Any]) -> list[dict[str, Any]]:
+    """Return the top-N source networks (ASN / org) by session count."""
+    service = StatsService(get_db(), top_n=query_args["top_n"])
+    return [dict(row) for row in service.country_asns(query_args.get("country"))]
 
 
 @stats_bp.route("/auth-outcomes")

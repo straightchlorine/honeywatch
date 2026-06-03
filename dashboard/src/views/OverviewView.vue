@@ -1,5 +1,6 @@
 <script setup lang="ts">
   import { computed, defineAsyncComponent } from 'vue'
+  import { useRouter } from 'vue-router'
   import { useQuery } from '@tanstack/vue-query'
   import {
     statsTotalsOptions,
@@ -12,11 +13,21 @@
   import BarList from '@/components/base/BarList.vue'
   import PageHeader from '@/components/base/PageHeader.vue'
   import { fmtNumber, fmtDelta } from '@/utils/format'
+  import { countryDisplayName } from '@/utils/countries'
   import { ALPHA2_TO_NUMERIC } from '@/components/map/alpha2-to-numeric'
 
   // The world map lazy-loads its own chunk (d3-geo + topojson) so it stays out
   // of the main bundle; it Suspends on the TopoJSON fetch independently of stats.
   const WorldMap = defineAsyncComponent(() => import('@/components/map/WorldMap.vue'))
+
+  const router = useRouter()
+
+  // Clicking a country on the map drills into its full breakdown on the
+  // Countries page (the map's own offscreen list drives the same nav for
+  // keyboard/SR users).
+  function onCountrySelect(code: string): void {
+    void router.push({ name: 'countries', query: { country: code } })
+  }
 
   // Poll aggregates so the dashboard tracks attacks without SSE. 10s is well
   // under the 60-req/min per-IP API rate limit (4 queries x 6/min = 24/min) and
@@ -27,15 +38,16 @@
     ...statsTrendOptions({ query: { period_days: 7 } }),
     refetchInterval: POLL_MS,
   })
-  // Overview shows a top-4 summary; the map is the anchor and full leaderboards
-  // live on their own detail pages. Capped at 4 rows so the lists can never grow
-  // tall enough to squeeze the map, on top of the flex:0 0 auto pin below.
+  // Overview shows a top-5 summary; the map is the anchor and the full
+  // leaderboards live on their own detail pages (Countries / Credentials).
+  // Capped low so the lists can never grow tall enough to squeeze the map, on
+  // top of the flex:0 0 auto pin below.
   const topPasswordsQ = useQuery({
-    ...statsTopPasswordsOptions({ query: { top_n: 4 } }),
+    ...statsTopPasswordsOptions({ query: { top_n: 5 } }),
     refetchInterval: POLL_MS,
   })
   const topCountriesQ = useQuery({
-    ...statsTopCountriesOptions({ query: { top_n: 4 } }),
+    ...statsTopCountriesOptions({ query: { top_n: 5 } }),
     refetchInterval: POLL_MS,
   })
   // The map consumes the same endpoint at the API's max top_n (100) - a separate
@@ -103,7 +115,7 @@
     let max = 0
     for (const c of countryItems.value) if (c.count > max) max = c.count
     return countryItems.value.map((i, idx) => {
-      const label = i.country ?? i.country_code ?? 'Unknown'
+      const label = countryDisplayName(i.country_code, i.country)
       return {
         key: i.country_code ?? i.country ?? `unknown-${idx}`,
         label,
@@ -152,7 +164,7 @@
     <section class="map-pane" aria-label="Attack origins">
       <h2 class="map-eyebrow">Attack origins</h2>
       <Suspense>
-        <WorldMap :counts="mapCounts" />
+        <WorldMap :counts="mapCounts" @select="onCountrySelect" />
         <template #fallback>
           <div class="map-skeleton" aria-hidden="true" />
         </template>
