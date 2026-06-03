@@ -134,3 +134,28 @@ class PasswordCompositionDict(TypedDict):
     capped_at: int
     lengths: list[CredentialLengthDict]
     classes: list[CharsetClassDict]
+
+
+class CountryRowDict(TypedDict):
+    country_code: str | None
+    country: str | None
+    sessions: int
+    distinct_ips: int
+    attempts: int
+    successful: int
+    success_rate: float | None
+    distinct_usernames: int
+    distinct_passwords: int
+
+
+class CountriesDict(TypedDict):
+    countries: list[CountryRowDict]
+    total_countries: int
+    geo_resolved_pct: float | None
+
+
+class CountryAsnDict(TypedDict):
+    asn: int | None
+    as_org: str | None
+    sessions: int
+    distinct_ips: int

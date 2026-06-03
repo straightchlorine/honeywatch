@@ -21,6 +21,27 @@ def country_filter_field() -> fields.Str:
     )
 
 
+def country_or_unknown_field() -> fields.Str:
+    """Country filter that also accepts ``"??"`` -- the geo-less bucket.
+
+    Same as :func:`country_filter_field`, but the credential/ASN leaderboards
+    let the Countries page drill into the "Unknown" row (sessions whose source
+    IP has no resolved country), addressed by the ``"??"`` sentinel.
+    """
+    return fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Regexp(r"^([A-Za-z]{2}|\?\?)$"),
+        metadata={
+            "description": (
+                "Scope to a single ISO 3166-1 alpha-2 source country, or '??' "
+                "for the geo-less (Unknown) bucket."
+            ),
+            "example": "CN",
+        },
+    )
+
+
 class BaseSchema(Schema):
     """Project-wide base schema.
 

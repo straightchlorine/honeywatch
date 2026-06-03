@@ -2,10 +2,15 @@ from __future__ import annotations
 
 from marshmallow import fields, validate
 
-from src.schemas.common import BaseSchema, country_filter_field
+from src.schemas.common import (
+    BaseSchema,
+    country_filter_field,
+    country_or_unknown_field,
+)
 from src.services.stats import (
     PASSWORD_LENGTH_CAP,
     VALID_BUCKETS,
+    VALID_COUNTRY_SORTS,
     VALID_CRED_GROUPINGS,
     VALID_CRED_METRICS,
     VALID_CRED_OUTCOMES,
@@ -69,6 +74,117 @@ class TopCountryResponse(BaseSchema):
         metadata={
             "description": "Number of sessions originating from this country.",
             "example": 137,
+        },
+    )
+
+
+class CountryRowResponse(BaseSchema):
+    """One country's full attack breakdown (Countries leaderboard row)."""
+
+    country_code = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={"description": "ISO 3166-1 alpha-2 country code.", "example": "CN"},
+    )
+    country = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Human-readable country name.", "example": "China"},
+    )
+    sessions = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct sessions from this country.",
+            "example": 137,
+        },
+    )
+    distinct_ips = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct source IPs from this country (fan-out width).",
+            "example": 42,
+        },
+    )
+    attempts = fields.Int(
+        required=True,
+        metadata={"description": "Auth attempts from this country.", "example": 512},
+    )
+    successful = fields.Int(
+        required=True,
+        metadata={"description": "Attempts cowrie accepted.", "example": 3},
+    )
+    success_rate = fields.Float(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Accepted percentage (null when no attempts).",
+            "example": 0.59,
+        },
+    )
+    distinct_usernames = fields.Int(
+        required=True,
+        metadata={"description": "Distinct usernames tried.", "example": 18},
+    )
+    distinct_passwords = fields.Int(
+        required=True,
+        metadata={"description": "Distinct passwords tried.", "example": 96},
+    )
+
+
+class CountriesResponse(BaseSchema):
+    """Country leaderboard envelope returned by GET /api/v1/stats/countries."""
+
+    countries = fields.List(
+        fields.Nested(CountryRowResponse),
+        required=True,
+        metadata={"description": "Per-country rows, ranked by the chosen sort."},
+    )
+    total_countries = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct resolved countries (excludes the Unknown bucket).",
+            "example": 47,
+        },
+    )
+    geo_resolved_pct = fields.Float(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": (
+                "Share of sessions with geolocation resolved (null when there are "
+                "no sessions). Geo enrichment lags ingestion, so the remainder is "
+                "bucketed under Unknown -- surfaced so counts are not read as totals."
+            ),
+            "example": 81.3,
+        },
+    )
+
+
+class AsnResponse(BaseSchema):
+    """One source network (ASN / org) in the Countries detail breakdown."""
+
+    asn = fields.Int(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Autonomous System Number.", "example": 16276},
+    )
+    as_org = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Autonomous System organisation.",
+            "example": "OVH SAS",
+        },
+    )
+    sessions = fields.Int(
+        required=True,
+        metadata={"description": "Distinct sessions from this network.", "example": 88},
+    )
+    distinct_ips = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct source IPs from this network.",
+            "example": 12,
         },
     )
 
@@ -336,11 +452,50 @@ class TopCredentialsQuery(BaseSchema):
             "example": "any",
         },
     )
+    country = country_or_unknown_field()
     top_n = fields.Int(
         load_default=10,
         validate=validate.Range(min=1, max=100),
         metadata={
             "description": "Number of top entries to return (max 100).",
+            "example": 10,
+        },
+    )
+
+
+class CountriesQuery(BaseSchema):
+    """Query args for the country leaderboard (Countries page)."""
+
+    sort = fields.Str(
+        load_default="sessions",
+        validate=validate.OneOf(sorted(VALID_COUNTRY_SORTS)),
+        metadata={
+            "description": (
+                "Ranking metric: sessions, ips (distinct source IPs), attempts, "
+                "or success_rate."
+            ),
+            "example": "sessions",
+        },
+    )
+    top_n = fields.Int(
+        load_default=50,
+        validate=validate.Range(min=1, max=100),
+        metadata={
+            "description": "Number of countries to return (max 100).",
+            "example": 50,
+        },
+    )
+
+
+class AsnQuery(BaseSchema):
+    """Query args for the source-network (ASN) breakdown."""
+
+    country = country_or_unknown_field()
+    top_n = fields.Int(
+        load_default=10,
+        validate=validate.Range(min=1, max=100),
+        metadata={
+            "description": "Number of networks to return (max 100).",
             "example": 10,
         },
     )
