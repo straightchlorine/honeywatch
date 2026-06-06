@@ -80,8 +80,3 @@ dashboard/.playwright/
 
 # openapi-ts crash logs (written to dashboard/ on codegen failure)
 dashboard/openapi-ts-error-*.log
-
-# --- Postgres TLS  ---
-postgres/tls/server.crt
-postgres/tls/server.key
-postgres/tls/*.pem
