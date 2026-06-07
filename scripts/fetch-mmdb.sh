@@ -17,10 +17,15 @@ mkdir -p "$TARGET_DIR"
 TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT
 
+# Keep the MaxMind credential OUT of the process argv.
+# Curl reads it from a 0600 config file inside the 0700 mktemp dir instead.
+cred_cfg="$TMP/curl-cred.cfg"
+( umask 077; printf 'user = "%s:%s"\n' "$MAXMIND_ACCOUNT_ID" "$MAXMIND_LICENSE_KEY" > "$cred_cfg" )
+
 curl_opts=(
     --fail --silent --show-error --location
     --retry 5 --retry-delay 30 --retry-all-errors
-    --user "${MAXMIND_ACCOUNT_ID}:${MAXMIND_LICENSE_KEY}"
+    --config "$cred_cfg"
 )
 
 fetch_edition() {
