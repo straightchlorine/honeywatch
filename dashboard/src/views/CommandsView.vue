@@ -109,8 +109,9 @@
     flex: 1 1 auto;
     min-height: 0;
     display: grid;
-    /* commands | tactics | attack scripts (scripts widest — long one-liners). */
-    grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr) minmax(0, 1.4fr);
+    /* Three equal columns so the body cards line up edge-to-edge with the three
+       stat cards above (same 1fr thirds + matching gap). */
+    grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: var(--space-3);
   }
 
@@ -127,6 +128,21 @@
        proven mobile recipe from Credentials / Countries. */
     .commands {
       overflow-y: auto;
+    }
+    /* Fixed two-up grid on mobile (auto-fit would leave a half-width orphan in
+       the bottom row). An odd final card — the lone third stat — spans the full
+       width instead of hanging left, and its value/label centre so the wide
+       card reads as a deliberate footer, not a misaligned one. A future fourth
+       metric makes this a clean 2x2 with no rule change. */
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+    .stats-grid > :last-child:nth-child(odd) {
+      grid-column: 1 / -1;
+    }
+    .stats-grid > :last-child:nth-child(odd) :deep(.stat) {
+      align-items: center;
+      text-align: center;
     }
     .body {
       display: flex;
