@@ -112,7 +112,7 @@ jobs:
           else
             echo "spec=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: stoplightio/spectral-action@6764380955704e0e4de894ee69fdfc0705d6037c # v0.8.9
+      - uses: stoplightio/spectral-action@6416fd018ae38e60136775066eb3e98172143141 # v0.8.13
         if: steps.changed.outputs.spec == 'true'
         with:
           file_glob: 'api/openapi.json'
