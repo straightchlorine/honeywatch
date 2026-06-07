@@ -85,6 +85,11 @@
     font-variant-numeric: tabular-nums;
     color: var(--text-muted);
     flex-shrink: 0;
+    /* Never split the delta mid-string: the symbol, count and percentage stay
+       together as one unit. It still wraps below the value as a whole (the
+       flex-wrap on .stat-line) on narrow cards, but the "(+1.8k%)" can no
+       longer drop onto its own line and inflate the card height. */
+    white-space: nowrap;
   }
 
   .stat-trend-symbol {
