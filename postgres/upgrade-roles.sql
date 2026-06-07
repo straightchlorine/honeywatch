@@ -7,7 +7,6 @@
 --     postgres psql -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
 --     -v INGESTOR_PW="$POSTGRES_INGESTOR_PASSWORD" \
 --     -v API_PW="$POSTGRES_API_PASSWORD" \
---     -v STREAM_PW="$POSTGRES_STREAM_PASSWORD" \
 --     -f /etc/honeywatch/upgrade-roles.sql
 --
 -- (Mount this file into the container first, e.g. via a temporary
@@ -27,17 +26,6 @@ BEGIN
         EXECUTE format('CREATE ROLE honeywatch_api WITH LOGIN PASSWORD %L', :'API_PW');
     ELSE
         EXECUTE format('ALTER ROLE honeywatch_api WITH LOGIN PASSWORD %L', :'API_PW');
-    END IF;
-END$$;
-
--- stream consumer for LISTEN/NOTIFY over the tailnet. LISTEN needs no
--- privilege and CONNECT is default-PUBLIC, so this role gets no grants.
-DO $$
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'honeywatch_stream') THEN
-        EXECUTE format('CREATE ROLE honeywatch_stream WITH LOGIN PASSWORD %L', :'STREAM_PW');
-    ELSE
-        EXECUTE format('ALTER ROLE honeywatch_stream WITH LOGIN PASSWORD %L', :'STREAM_PW');
     END IF;
 END$$;
 

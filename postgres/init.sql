@@ -19,8 +19,3 @@ ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT ON TABLES TO honeywatch_api;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public
     GRANT SELECT ON SEQUENCES TO honeywatch_api;
-
--- stream consumer for LISTEN/NOTIFY over the tailnet. It only runs LISTEN,
--- which is not governed by any privilege, and CONNECT is granted to PUBLIC by
--- default, so this role needs no grants at all - just LOGIN + password.
-CREATE ROLE honeywatch_stream WITH LOGIN PASSWORD :'STREAM_PW';

@@ -34,6 +34,15 @@ cowrie-log:
 fetch-mmdb:
     ./scripts/fetch-mmdb.sh ingestor/data
 
+# Seed the dev database with synthetic data for UI testing. WIPES all tables
+# first, then packs this and previous week's window with sessions.
+seed *args:
+    cd api && \
+      POSTGRES_HOST=localhost \
+      POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" \
+      ENVIRONMENT=development \
+      uv run python scripts/seed_dev.py {{args}}
+
 # ---------------------------------------------------------------------------
 # Database (one postgres container hosts both `${POSTGRES_DB}` for dev and
 # `honeywatch_test` for the test suite - transactions roll back per-test)
@@ -95,17 +104,6 @@ test-db-reset:
     docker compose exec -T postgres psql -U "$POSTGRES_USER" -d postgres \
       -c "DROP DATABASE IF EXISTS honeywatch_test;"
     @just test-db-init
-
-# Generate the self-signed TLS cert+key for the postgres tailnet listener.
-# Output gitignored under postgres/tls/. Restart postgres after regen.
-postgres-cert:
-    ./postgres/tls/gen.sh
-
-# Local smoke: prod postgres with TLS in an isolated project; assert the
-# tailnet honeywatch_stream role works over SSL only. Run `just postgres-cert`
-# first. Cleans up on exit.
-verify-tls:
-    ./postgres/tls/verify-tls.sh
 
 # ---------------------------------------------------------------------------
 # Tests
