@@ -1,18 +1,12 @@
 /**
- * Resilient loader for code-split chunks (lazy components + lazy routes).
+ * Loader for code-split chunks.
  *
  * Two distinct failure modes are handled:
- *   - Transient blip (network hiccup, a momentary edge 429): a short retry with
- *     exponential backoff + jitter usually rides it out.
- *   - Stale deploy: after a new build, the already-loaded index.html points at
- *     hashed chunk filenames that no longer exist (404). Retrying the dead URL
- *     can never succeed, so the only recovery is a full reload that fetches the
- *     fresh index.html. That reload is guarded against loops -- at most one
- *     within RELOAD_WINDOW_MS; after that the error is surfaced (to the nearest
- *     ErrorBoundary for components, or router.onError for routes).
+ *   - Transient blip: a short retry with exponential backoff
+ *   - Stale deploy: ensuring that after RELOAD_WINDOW_MS, one reload is attempted
+ *                   to fetch the new index.html
  *
- * Shared by lazyComponent() and the router's lazy route imports so both
- * surfaces recover identically and a single reload guard governs them.
+ * Shared by lazyComponent() and the router's lazy route imports.
  */
 
 const RELOAD_GUARD_KEY = 'honeywatch:chunk-reload-at'

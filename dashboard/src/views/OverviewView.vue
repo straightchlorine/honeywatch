@@ -17,10 +17,7 @@
   import { ALPHA2_TO_NUMERIC } from '@/components/map/alpha2-to-numeric'
   import { lazyComponent } from '@/utils/lazyComponent'
 
-  // The world map lazy-loads its own chunk (d3-geo + topojson) so it stays out
-  // of the main bundle; it Suspends on the TopoJSON fetch independently of stats.
-  // lazyComponent retries the chunk fetch so a transient blip on its request
-  // doesn't drop the whole view on the ErrorBoundary card.
+  // The world map lazy-loads its own chunk, so it stays out of the main bundle
   const WorldMap = lazyComponent(() => import('@/components/map/WorldMap.vue'))
 
   const router = useRouter()
