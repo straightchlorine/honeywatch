@@ -10,3 +10,32 @@ spec:
     average: 60
     burst: 20
     period: 1m
+---
+apiVersion: traefik.io/v1alpha1
+kind: Middleware
+metadata:
+  name: security-headers
+  namespace: honeywatch
+spec:
+  # Enforced at the edge for every response (dashboard + API), independent of
+  # the backend. Traefik sets (overwrites) these, so it stays correct even
+  # while a dashboard image is stale, and never duplicates the origin's own
+  # headers. Keep in sync with dashboard/security-headers.conf (the nginx
+  # origin copy). Verified safe against the built index.html: the SPA loads one
+  # external module script (no inline <script>), so `script-src 'self'` does
+  # not block it; Vue's runtime-injected scoped styles need style 'unsafe-inline'.
+  headers:
+    frameDeny: true
+    contentTypeNosniff: true
+    referrerPolicy: "strict-origin-when-cross-origin"
+    stsSeconds: 63072000
+    stsIncludeSubdomains: true
+    # preload deferred: do not set until honey.piotrkrzysztof.dev is submitted
+    # to the HSTS preload list (hstspreload.org). Keep in sync across the proxy
+    # + dashboard nginx copies.
+    stsPreload: false
+    contentSecurityPolicy: "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; font-src 'self' data:; connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+    customResponseHeaders:
+      Permissions-Policy: "geolocation=(), microphone=(), camera=(), payment=(), usb=(), magnetometer=(), gyroscope=(), accelerometer=()"
+      Cross-Origin-Opener-Policy: "same-origin"
+      Cross-Origin-Resource-Policy: "same-origin"

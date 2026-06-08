@@ -1,12 +1,15 @@
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  name: honeywatch
+  name: honeywatch-api
   namespace: honeywatch
   labels:
     app: honeywatch
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt"
+    # Rate-limit only.
+    #
+    # Security headers for the api managed by the proxy/nginx.conf.
     traefik.ingress.kubernetes.io/router.middlewares: honeywatch-api-ratelimit@kubernetescrd
 spec:
   ingressClassName: traefik
@@ -25,6 +28,28 @@ spec:
                 name: honeypot-api
                 port:
                   number: 5000
+---
+# No rate limiting for the dashboard. Fixes 429 on cold page loads - includes
+# assets and chunks.
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: honeywatch-dashboard
+  namespace: honeywatch
+  labels:
+    app: honeywatch
+  annotations:
+    traefik.ingress.kubernetes.io/router.middlewares: honeywatch-security-headers@kubernetescrd
+spec:
+  ingressClassName: traefik
+  tls:
+    - hosts:
+        - honey.piotrkrzysztof.dev
+      secretName: honeywatch-tls
+  rules:
+    - host: honey.piotrkrzysztof.dev
+      http:
+        paths:
           - path: /
             pathType: Prefix
             backend:
