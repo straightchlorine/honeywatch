@@ -1,22 +1,25 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
+import { retryImport, isChunkLoadError, attemptStaleChunkReload } from '@/utils/retryImport'
 
+// Route chunks load through retryImport: a transient fetch failure is retried,
+// and a stale-deploy 404 triggers a guarded one-shot reload to the fresh build.
 const routes: RouteRecordRaw[] = [
   {
     path: '/',
     name: 'overview',
-    component: () => import('../views/OverviewView.vue'),
+    component: () => retryImport(() => import('../views/OverviewView.vue')),
     meta: { title: 'Overview' },
   },
   {
     path: '/activity',
     name: 'activity',
-    component: () => import('../views/ActivityView.vue'),
+    component: () => retryImport(() => import('../views/ActivityView.vue')),
     meta: { title: 'Activity' },
   },
   {
     path: '/sessions',
     name: 'sessions',
-    component: () => import('../views/SessionsView.vue'),
+    component: () => retryImport(() => import('../views/SessionsView.vue')),
     meta: { title: 'Sessions' },
   },
   {
@@ -24,19 +27,19 @@ const routes: RouteRecordRaw[] = [
     // into the document title / history.
     path: '/sessions/:id',
     name: 'session-detail',
-    component: () => import('../views/SessionDetailView.vue'),
+    component: () => retryImport(() => import('../views/SessionDetailView.vue')),
     meta: { title: 'Session' },
   },
   {
     path: '/credentials',
     name: 'credentials',
-    component: () => import('../views/CredentialsView.vue'),
+    component: () => retryImport(() => import('../views/CredentialsView.vue')),
     meta: { title: 'Credentials' },
   },
   {
     path: '/countries',
     name: 'countries',
-    component: () => import('../views/CountriesView.vue'),
+    component: () => retryImport(() => import('../views/CountriesView.vue')),
     meta: { title: 'Countries' },
   },
   // The IP view is still deferred until its data/UX is ready
@@ -44,7 +47,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
-    component: () => import('@/views/NotFoundView.vue'),
+    component: () => retryImport(() => import('@/views/NotFoundView.vue')),
     meta: { title: 'Not found' },
   },
 ]
@@ -52,6 +55,12 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+})
+
+// Backstop: if a lazy route chunk fails to load past retryImport's own
+// recovery, fall back to the same guarded reload (no-op if it just reloaded).
+router.onError((err) => {
+  if (isChunkLoadError(err)) attemptStaleChunkReload()
 })
 
 // Keep the document title in sync per route; AppShell announces the change and
