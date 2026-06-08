@@ -19,7 +19,7 @@
   },
   "dependencies": {
     "@hey-api/client-fetch": "^0.13.1",
-    "@tanstack/vue-query": "5.100.14",
+    "@tanstack/vue-query": "5.101.0",
     "d3-geo": "^3.1.1",
     "topojson-client": "^3.1.0",
     "vue": "3.5.35",
