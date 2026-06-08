@@ -16,6 +16,7 @@ FROM nginx:1.31-alpine-slim@sha256:9e666aeefa9801445bc2ff4994c48d314736dae4cf1f5
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY security-headers.conf /etc/nginx/security-headers.conf
 
 EXPOSE 80
 

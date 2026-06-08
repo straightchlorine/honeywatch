@@ -1,6 +1,8 @@
 import type { CreateClientConfig } from './generated/client.gen'
 
-const rawBase = import.meta.env.VITE_API_BASE ?? '/'
+// `|| '/'` (not `??`) so an explicitly empty VITE_API_BASE= also resolves to
+// same-origin, matching the documented behaviour in dashboard/.env.example.
+const rawBase = import.meta.env.VITE_API_BASE || '/'
 
 if (rawBase !== '/' && !/^https?:\/\//i.test(rawBase)) {
   throw new Error(
