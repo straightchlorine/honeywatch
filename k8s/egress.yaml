@@ -142,7 +142,11 @@ spec:
     app: honeywatch-egress
 ---
 # Pin egress from the tailscale sidecar. Tailscaled needs:
-#   - TCP 443+6443 to any IP (k8s API after DNAT, DERP relays, control plane)
+#   - TCP 443+6443+8443 to any IP (DERP relays, k8s API and traefik
+#     websecure after DNAT — the headscale control plane is reached by
+#     hairpinning into this cluster's own LoadBalancer IP, so the dial
+#     to vpn.codextechnologies.org:443 is DNATed to the traefik pod's
+#     8443 before this policy is evaluated)
 #   - UDP 41641 to any public IP (direct WireGuard)
 #   - DNS (UDP/TCP 53) to the cluster resolver
 # Everything else is denied so a compromised sidecar cannot pivot into
@@ -174,8 +178,7 @@ spec:
           port: 53
         - protocol: TCP
           port: 53
-    # Tailscale control plane, DERP relays, AND k8s API (port 6443 after
-    # kube-proxy DNAT from the kubernetes Service ClusterIP on 443).
+    # Tailscale control plane, DERP relays, AND k8s API.
     - to:
         - ipBlock:
             cidr: 0.0.0.0/0
@@ -184,6 +187,8 @@ spec:
           port: 443
         - protocol: TCP
           port: 6443
+        - protocol: TCP
+          port: 8443
     # Direct WireGuard to peers (UDP 41641 any address) + STUN (UDP 3478).
     - to:
         - ipBlock:
