@@ -1,0 +1,42 @@
+[
+  {
+    "path": "/",
+    "title": "Overview",
+    "seoTitle": "Honeywatch · SSH honeypot dashboard",
+    "description": "Live overview of SSH brute-force attacks captured by a Cowrie honeypot: attack volume, top sources, and a world map of attack origins.",
+    "priority": "1.0",
+    "changefreq": "daily"
+  },
+  {
+    "path": "/activity",
+    "title": "Activity",
+    "seoTitle": "Activity · Honeywatch",
+    "description": "Time-series activity of SSH honeypot attacks: hourly and daily login attempts recorded by the Cowrie sensor.",
+    "priority": "0.8",
+    "changefreq": "daily"
+  },
+  {
+    "path": "/sessions",
+    "title": "Sessions",
+    "seoTitle": "Sessions · Honeywatch",
+    "description": "Recorded SSH honeypot sessions: attacker commands, login attempts, and SSH client fingerprints from the Cowrie sensor.",
+    "priority": "0.8",
+    "changefreq": "daily"
+  },
+  {
+    "path": "/credentials",
+    "title": "Credentials",
+    "seoTitle": "Credentials · Honeywatch",
+    "description": "Top usernames and passwords attackers tried against the SSH honeypot, ranked by frequency.",
+    "priority": "0.8",
+    "changefreq": "daily"
+  },
+  {
+    "path": "/countries",
+    "title": "Countries",
+    "seoTitle": "Countries · Honeywatch",
+    "description": "Geographic breakdown of SSH honeypot attacks by country, with per-country top credentials.",
+    "priority": "0.8",
+    "changefreq": "daily"
+  }
+]
