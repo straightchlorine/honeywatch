@@ -1,0 +1,50 @@
+name: Tailnet diagnostic
+
+on:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    environment:
+      name: production
+    steps:
+      - name: Join tailnet (same key/tag as the release rollout)
+        uses: tailscale/github-action@306e68a486fd2350f2bfc3b19fcd143891a4a2d8 # v4.1.2
+        with:
+          authkey: ${{ secrets.TS_AUTHKEY }}
+          args: >-
+            --login-server=https://vpn.codextechnologies.org --accept-dns=true
+          hostname: gha-diag
+
+      - name: Probe honeypot path
+        env:
+          HONEYPOT_HOST: ${{ secrets.HONEYPOT_HOST }}
+        run: |
+          set +e  # never fail; we want every probe's output
+          echo "::add-mask::$HONEYPOT_HOST"
+
+          echo "===== tailscale status ====="
+          tailscale status || true
+          echo "===== our tailnet IP ====="
+          tailscale ip -4 || true
+
+          echo "===== name resolution (is HONEYPOT_HOST a name or IP?) ====="
+          getent hosts "$HONEYPOT_HOST" || echo "getent: no result"
+
+          echo "===== netcheck (DERP reachability / NAT) ====="
+          tailscale netcheck || true
+
+          echo "===== tailscale ping (peer path: direct vs DERP vs no peer) ====="
+          tailscale ping --timeout=5s --c 5 "$HONEYPOT_HOST" || true
+
+          echo "===== L4 reachability to :2022 (ACL drop => timeout; no sshd => refused) ====="
+          timeout 12 bash -c "cat < /dev/null > /dev/tcp/$HONEYPOT_HOST/2022" \
+            && echo "TCP 2022 OPEN" || echo "TCP 2022 NOT reachable (timeout/refused)"
+
+          echo "===== verbose ssh handshake (-v, no command run) ====="
+          timeout 30 ssh -vvv -o BatchMode=yes -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 -p 2022 "probe@$HONEYPOT_HOST" true 2>&1 | tail -40 || true
