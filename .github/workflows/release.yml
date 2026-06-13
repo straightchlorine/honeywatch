@@ -215,6 +215,7 @@ jobs:
             HostName ${HONEYPOT_HOST}
             User ${SSH_USER}
             Port 2022
+            AddressFamily inet
             IdentityFile ~/.ssh/key
             IdentitiesOnly yes
             UserKnownHostsFile ~/.ssh/known_hosts
