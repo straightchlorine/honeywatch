@@ -6,19 +6,58 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
     <meta name="theme-color" content="#1a1410" />
+
+    <!-- Default/home SEO. Per-route titles, descriptions and canonicals are
+         baked into each route's index.html at build time by
+         scripts/prerender-seo.mjs, and kept in sync client-side on SPA
+         navigation by src/seo/head.ts. Single source: src/seo/routes.json. -->
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="https://honey.piotrkrzysztof.dev/" />
     <meta
       name="description"
-      content="Honeywatch - SSH honeypot dashboard: attack visualization and threat analysis from a Cowrie sensor."
+      content="Live overview of SSH brute-force attacks captured by a Cowrie honeypot: attack volume, top sources, and a world map of attack origins."
     />
+
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="Honeywatch" />
-    <meta property="og:title" content="Honeywatch" />
+    <meta property="og:url" content="https://honey.piotrkrzysztof.dev/" />
+    <meta property="og:title" content="Honeywatch · SSH honeypot dashboard" />
     <meta
       property="og:description"
-      content="SSH honeypot dashboard: attack visualization and threat analysis."
+      content="Live SSH honeypot dashboard: attack map, sessions, and credentials from a Cowrie sensor."
     />
-    <meta name="twitter:card" content="summary" />
-    <title>Honeywatch</title>
+    <meta property="og:image" content="https://honey.piotrkrzysztof.dev/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="Honeywatch - SSH honeypot attack dashboard" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Honeywatch · SSH honeypot dashboard" />
+    <meta
+      name="twitter:description"
+      content="Live SSH honeypot dashboard: attack map, sessions, and credentials from a Cowrie sensor."
+    />
+    <meta name="twitter:image" content="https://honey.piotrkrzysztof.dev/og.png" />
+
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Honeywatch",
+        "url": "https://honey.piotrkrzysztof.dev/",
+        "applicationCategory": "SecurityApplication",
+        "operatingSystem": "Web",
+        "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
+        "description": "Dashboard for an SSH honeypot: visualizes brute-force attacks, sessions, credentials, and attack origins captured by a Cowrie sensor.",
+        "author": [
+          { "@type": "Person", "name": "Piotr Krzysztof Lis" },
+          { "@type": "Person", "name": "Jakub Kucharski" }
+        ],
+        "sameAs": ["https://github.com/straightchlorine/honeywatch"]
+      }
+    </script>
+
+    <title>Honeywatch · SSH honeypot dashboard</title>
   </head>
   <body>
     <div id="app"></div>

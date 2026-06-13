@@ -24,6 +24,14 @@ export default [
     },
   },
   {
+    // Build-time Node scripts (e.g. the SEO prerender) run under Node, not the
+    // browser, so expose the Node globals they rely on.
+    files: ['scripts/**/*.{js,mjs}'],
+    languageOptions: {
+      globals: { process: 'readonly', console: 'readonly' },
+    },
+  },
+  {
     rules: {
       'vue/max-attributes-per-line': 'off',
       'vue/singleline-html-element-content-newline': 'off',

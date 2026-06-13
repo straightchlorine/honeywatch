@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Source for public/og.png. Regenerate with:
+     rsvg-convert -w 1200 -h 630 scripts/og-image.svg -o public/og.png
+     Honey theme: matches the dashboard tokens (warm dark bg, amber accent). -->
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630" font-family="DejaVu Sans, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1a1410"/>
+      <stop offset="1" stop-color="#241a12"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- Faint honeycomb motif, top-right -->
+  <g fill="none" stroke="#f0a830" stroke-width="2" opacity="0.10">
+    <polygon points="980,70 1040,105 1040,175 980,210 920,175 920,105"/>
+    <polygon points="1100,70 1160,105 1160,175 1100,210 1040,175 1040,105"/>
+    <polygon points="1040,175 1100,210 1100,280 1040,315 980,280 980,210"/>
+    <polygon points="1160,175 1220,210 1220,280 1160,315 1100,280 1100,210"/>
+  </g>
+
+  <!-- Brand dot + wordmark -->
+  <circle cx="84" cy="150" r="18" fill="#f0a830"/>
+  <text x="120" y="168" font-size="64" font-weight="700" fill="#f5ede0" letter-spacing="-1">Honeywatch</text>
+
+  <!-- Tagline -->
+  <text x="84" y="320" font-size="72" font-weight="700" fill="#f5ede0" letter-spacing="-2">SSH honeypot</text>
+  <text x="84" y="404" font-size="72" font-weight="700" fill="#f0a830" letter-spacing="-2">attack dashboard</text>
+
+  <!-- Sub line -->
+  <text x="86" y="470" font-size="30" fill="#b8a890">Live Cowrie sensor · attack map, sessions &amp; credentials</text>
+
+  <!-- URL footer -->
+  <text x="84" y="566" font-size="30" font-weight="600" fill="#f0a830">honey.piotrkrzysztof.dev</text>
+</svg>
