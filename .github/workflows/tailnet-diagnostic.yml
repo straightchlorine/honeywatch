@@ -1,5 +1,14 @@
 name: Tailnet diagnostic
 
+# Manual-only. Reproduces the release rollout's tailnet context (same TS_AUTHKEY
+# => same tag:cicd) and probes the honeypot path WITHOUT running a full release.
+#
+# REDACTED BY DESIGN: this is a public repo, so the step prints only verdicts
+# (reachable / timeout / refused, UDP yes/no). It never echoes raw `tailscale
+# status`/`netcheck` output, peer names, the tailnet topology, resolved IPs, or
+# the honeypot hostname -- every sensitive token is captured into a var and
+# registered with ::add-mask:: before anything is printed. Safe: read-only
+# probes, no deploy.
 on:
   workflow_dispatch: {}
 
@@ -20,31 +29,48 @@ jobs:
             --login-server=https://vpn.codextechnologies.org --accept-dns=true
           hostname: gha-diag
 
-      - name: Probe honeypot path
+      - name: Probe honeypot path (verdicts only)
         env:
           HONEYPOT_HOST: ${{ secrets.HONEYPOT_HOST }}
         run: |
-          set +e  # never fail; we want every probe's output
+          set +e  # never fail; we want every verdict
           echo "::add-mask::$HONEYPOT_HOST"
 
-          echo "===== tailscale status ====="
-          tailscale status || true
-          echo "===== our tailnet IP ====="
-          tailscale ip -4 || true
+          # Capture every sensitive token into a var and mask it BEFORE any
+          # command that could echo it. Assignments do not print, so nothing
+          # leaks during capture.
+          NC=$(tailscale netcheck 2>/dev/null)
+          HP_IP=$(getent hosts "$HONEYPOT_HOST" 2>/dev/null | awk '{print $1}')
+          HP_FQDN=$(getent hosts "$HONEYPOT_HOST" 2>/dev/null | awk '{print $2}')
+          SELF4=$(tailscale ip -4 2>/dev/null)
+          SELF6=$(tailscale ip -6 2>/dev/null)
+          PUB4=$(echo "$NC" | sed -n 's/.*IPv4: yes, \([0-9.]*\):.*/\1/p')
+          PUB6=$(echo "$NC" | sed -n 's/.*IPv6: yes, \[\([0-9a-f:]*\)\].*/\1/p')
+          for v in "$HP_IP" "$HP_FQDN" "$SELF4" "$SELF6" "$PUB4" "$PUB6" hs.internal; do
+            [ -n "$v" ] && echo "::add-mask::$v"
+          done
 
-          echo "===== name resolution (is HONEYPOT_HOST a name or IP?) ====="
-          getent hosts "$HONEYPOT_HOST" || echo "getent: no result"
+          echo "===== local NAT / DERP (summary) ====="
+          echo "UDP: $(echo "$NC" | grep -qE 'UDP: true' && echo yes || echo no)"
+          echo "DERP reachable: $(echo "$NC" | grep -qE '^[[:space:]]+- [a-z]{3}:[[:space:]]+[0-9.]+ms' && echo yes || echo no)"
 
-          echo "===== netcheck (DERP reachability / NAT) ====="
-          tailscale netcheck || true
+          echo "===== peer path to honeypot ====="
+          PING=$(tailscale ping --timeout=5s --c 5 "$HONEYPOT_HOST" 2>&1)
+          if   echo "$PING" | grep -q 'via DERP'; then echo "RESULT: reachable (via DERP)"
+          elif echo "$PING" | grep -q 'direct';   then echo "RESULT: reachable (direct)"
+          else echo "RESULT: NO tailnet path - ping got no reply"; fi
 
-          echo "===== tailscale ping (peer path: direct vs DERP vs no peer) ====="
-          tailscale ping --timeout=5s --c 5 "$HONEYPOT_HOST" || true
+          echo "===== L4 to :2022 ====="
+          timeout 12 bash -c "cat </dev/null >/dev/tcp/$HONEYPOT_HOST/2022" 2>/dev/null \
+            && echo "RESULT: TCP 2022 OPEN" \
+            || echo "RESULT: TCP 2022 unreachable (timeout or refused)"
 
-          echo "===== L4 reachability to :2022 (ACL drop => timeout; no sshd => refused) ====="
-          timeout 12 bash -c "cat < /dev/null > /dev/tcp/$HONEYPOT_HOST/2022" \
-            && echo "TCP 2022 OPEN" || echo "TCP 2022 NOT reachable (timeout/refused)"
-
-          echo "===== verbose ssh handshake (-v, no command run) ====="
-          timeout 30 ssh -vvv -o BatchMode=yes -o StrictHostKeyChecking=no \
-            -o ConnectTimeout=15 -p 2022 "probe@$HONEYPOT_HOST" true 2>&1 | tail -40 || true
+          echo "===== ssh handshake (verdict only) ====="
+          SSH_OUT=$(timeout 30 ssh -o BatchMode=yes -o StrictHostKeyChecking=no \
+            -o ConnectTimeout=15 -p 2022 "probe@$HONEYPOT_HOST" true 2>&1)
+          if   echo "$SSH_OUT" | grep -qiE 'timed out';            then echo "RESULT: connect timed out (no path / dropped)"
+          elif echo "$SSH_OUT" | grep -qiE 'connection refused';   then echo "RESULT: refused (reached host, no listener)"
+          elif echo "$SSH_OUT" | grep -qiE 'permission denied';    then echo "RESULT: TCP+SSH OK (auth rejected as expected for probe user)"
+          elif echo "$SSH_OUT" | grep -qiE 'verification failed';  then echo "RESULT: TCP+SSH OK (host key check)"
+          elif echo "$SSH_OUT" | grep -qiE 'no route';             then echo "RESULT: no route to host"
+          else echo "RESULT: see masked detail (handshake reached an unclassified state)"; fi
