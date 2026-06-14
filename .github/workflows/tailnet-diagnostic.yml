@@ -1,14 +1,7 @@
 name: Tailnet diagnostic
 
-# Manual-only. Reproduces the release rollout's tailnet context (same TS_AUTHKEY
-# => same tag:cicd) and probes the honeypot path WITHOUT running a full release.
+# Manual-only. Reproduces the release rollout's tailnet context.
 #
-# REDACTED BY DESIGN: this is a public repo, so the step prints only verdicts
-# (reachable / timeout / refused, UDP yes/no). It never echoes raw `tailscale
-# status`/`netcheck` output, peer names, the tailnet topology, resolved IPs, or
-# the honeypot hostname -- every sensitive token is captured into a var and
-# registered with ::add-mask:: before anything is printed. Safe: read-only
-# probes, no deploy.
 on:
   workflow_dispatch: {}
 
