@@ -36,10 +36,10 @@ jobs:
       run:
         working-directory: ${{ matrix.component }}
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -94,7 +94,7 @@ jobs:
   spec-lint:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
       # Only lint the spec when it (or the generated client / ruleset) actually
@@ -112,7 +112,7 @@ jobs:
           else
             echo "spec=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: stoplightio/spectral-action@6764380955704e0e4de894ee69fdfc0705d6037c # v0.8.9
+      - uses: stoplightio/spectral-action@6416fd018ae38e60136775066eb3e98172143141 # v0.8.13
         if: steps.changed.outputs.spec == 'true'
         with:
           file_glob: 'api/openapi.json'
@@ -122,7 +122,7 @@ jobs:
     runs-on: ubuntu-latest
     if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'breaking')
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           fetch-depth: 0
       - name: Resolve base spec
@@ -138,7 +138,7 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "::notice::api/openapi.json unchanged - skipping oasdiff."
           fi
-      - uses: oasdiff/oasdiff-action/breaking@f30668f65075c93440bd59ce2de73ce9e78751f4 # v0.0.51
+      - uses: oasdiff/oasdiff-action/breaking@3530478ec30f84adedbfeb28f0d9527a290f50a9 # v0.0.57
         if: steps.base.outputs.run == 'true'
         with:
           base: origin/${{ github.base_ref }}:api/openapi.json
@@ -151,7 +151,7 @@ jobs:
       run:
         working-directory: dashboard
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up pnpm
         uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
@@ -197,7 +197,7 @@ jobs:
       matrix:
         component: [api, ingestor, dashboard]
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@d7f5e7f509e45cec5c76c4d5afdd7de93d0b3df5 # v4.1.0
