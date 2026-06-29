@@ -39,7 +39,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Install uv
-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        uses: astral-sh/setup-uv@fac544c07dec837d0ccb6301d7b5580bf5edae39 # v8.2.0
 
       - name: Set up Python
         uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -65,7 +65,7 @@ jobs:
 
       - name: Set up pnpm
         if: matrix.component == 'api'
-        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: dashboard/package.json
 
@@ -112,7 +112,7 @@ jobs:
           else
             echo "spec=false" >> "$GITHUB_OUTPUT"
           fi
-      - uses: stoplightio/spectral-action@6764380955704e0e4de894ee69fdfc0705d6037c # v0.8.9
+      - uses: stoplightio/spectral-action@6416fd018ae38e60136775066eb3e98172143141 # v0.8.13
         if: steps.changed.outputs.spec == 'true'
         with:
           file_glob: 'api/openapi.json'
@@ -138,7 +138,7 @@ jobs:
             echo "run=false" >> "$GITHUB_OUTPUT"
             echo "::notice::api/openapi.json unchanged - skipping oasdiff."
           fi
-      - uses: oasdiff/oasdiff-action/breaking@f30668f65075c93440bd59ce2de73ce9e78751f4 # v0.0.51
+      - uses: oasdiff/oasdiff-action/breaking@ccc2442df0d99f8c419ed73e3de88641c91b3bc6 # v0.1.3
         if: steps.base.outputs.run == 'true'
         with:
           base: origin/${{ github.base_ref }}:api/openapi.json
@@ -154,7 +154,7 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 
       - name: Set up pnpm
-        uses: pnpm/action-setup@0e279bb959325dab635dd2c09392533439d90093 # v6.0.8
+        uses: pnpm/action-setup@0ebf47130e4866e96fce0953f49152a61190b271 # v6.0.9
         with:
           package_json_file: dashboard/package.json
 
