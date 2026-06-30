@@ -14,7 +14,6 @@ env:
 
 permissions:
   contents: read
-  packages: write
 
 jobs:
   verify-tag:
@@ -33,7 +32,7 @@ jobs:
           if git branch -r --contains "$TAG_COMMIT" | grep -q "origin/master"; then
             echo "Tag is on master"
           else
-            echo "Tag is NOT on master"
+            echo "::error::tag is not on master"
             exit 1
           fi
 
@@ -94,7 +93,7 @@ jobs:
         run: |
           set -euo pipefail
           if [ -z "${DIGEST:-}" ]; then
-            echo "::error::build-push-action did not produce a digest output"
+            echo "::error::build produced no digest"
             exit 1
           fi
           mkdir -p digests
@@ -120,8 +119,6 @@ jobs:
       attestations: write
       id-token: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Download digest artifact
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
@@ -135,7 +132,7 @@ jobs:
           DIGEST=$(cat "digests/${{ matrix.component }}.txt")
           case "$DIGEST" in
             sha256:*) ;;
-            *) echo "::error::Invalid digest format: $DIGEST"; exit 1 ;;
+            *) echo "::error::invalid digest format: $DIGEST"; exit 1 ;;
           esac
           echo "value=$DIGEST" >> "$GITHUB_OUTPUT"
 
@@ -187,7 +184,7 @@ jobs:
           HONEYPOT_SSH_HOST_KEY: ${{ secrets.HONEYPOT_SSH_HOST_KEY }}
         run: |
           if [ -z "${HONEYPOT_SSH_HOST_KEY:-}" ]; then
-            echo "::error::HONEYPOT_SSH_HOST_KEY must be set for releases" >&2
+            echo "::error::HONEYPOT_SSH_HOST_KEY not set"
             exit 1
           fi
 
@@ -282,9 +279,8 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-
       - name: Create GitHub Release
         run: gh release create ${{ github.ref_name }} --generate-notes
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
