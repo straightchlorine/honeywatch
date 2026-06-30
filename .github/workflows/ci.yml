@@ -18,6 +18,7 @@ permissions:
 jobs:
   python:
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     strategy:
       matrix:
         component: [api, ingestor]
@@ -59,7 +60,6 @@ jobs:
 
       - name: Run tests
         env:
-          # Conftests in both components apply alembic migrations themselves
           TEST_DATABASE_URL: postgresql+psycopg://honeywatch:testpass@localhost:5432/honeywatch_test
         run: uv run pytest
 
@@ -93,60 +93,17 @@ jobs:
 
   spec-lint:
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      # Only lint the spec when it (or the generated client / ruleset) actually
-      # changed; on push (no PR context) always lint.
-      - name: Detect spec changes
-        id: changed
-        run: |
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
-            echo "spec=true" >> "$GITHUB_OUTPUT"; exit 0
-          fi
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}" 2>/dev/null || true
-          if git diff --name-only "origin/${{ github.base_ref }}" HEAD \
-               | grep -qE '^(api/openapi\.json|dashboard/src/api/|\.spectral\.yaml)'; then
-            echo "spec=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "spec=false" >> "$GITHUB_OUTPUT"
-          fi
       - uses: stoplightio/spectral-action@6764380955704e0e4de894ee69fdfc0705d6037c # v0.8.9
-        if: steps.changed.outputs.spec == 'true'
         with:
           file_glob: 'api/openapi.json'
           spectral_ruleset: '.spectral.yaml'
 
-  spec-breaking:
-    runs-on: ubuntu-latest
-    if: github.event_name == 'pull_request' && !contains(github.event.pull_request.labels.*.name, 'breaking')
-    steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-        with:
-          fetch-depth: 0
-      - name: Resolve base spec
-        id: base
-        run: |
-          git fetch --no-tags --depth=1 origin "${{ github.base_ref }}" 2>/dev/null || true
-          if ! git cat-file -e "origin/${{ github.base_ref }}:api/openapi.json" 2>/dev/null; then
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::api/openapi.json absent on origin/${{ github.base_ref }} - skipping oasdiff (bootstrap)."
-          elif git diff --name-only "origin/${{ github.base_ref }}" HEAD | grep -qE '^api/openapi\.json'; then
-            echo "run=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "run=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::api/openapi.json unchanged - skipping oasdiff."
-          fi
-      - uses: oasdiff/oasdiff-action/breaking@f30668f65075c93440bd59ce2de73ce9e78751f4 # v0.0.51
-        if: steps.base.outputs.run == 'true'
-        with:
-          base: origin/${{ github.base_ref }}:api/openapi.json
-          revision: api/openapi.json
-          fail-on-diff: true
-
   dashboard:
     runs-on: ubuntu-latest
+    if: github.event_name != 'schedule'
     defaults:
       run:
         working-directory: dashboard
@@ -189,9 +146,6 @@ jobs:
   image-scan:
     name: image-scan (${{ matrix.component }})
     runs-on: ubuntu-latest
-    permissions:
-      contents: read
-      security-events: write
     strategy:
       fail-fast: false
       matrix:

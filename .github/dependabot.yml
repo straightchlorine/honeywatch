@@ -2,7 +2,7 @@ version: 2
 
 updates:
   - package-ecosystem: pip
-    directory: /api
+    directories: ["/api", "/ingestor"]
     schedule:
       interval: weekly
       day: monday
@@ -11,17 +11,12 @@ updates:
     labels:
       - dependencies
     open-pull-requests-limit: 5
-
-  - package-ecosystem: pip
-    directory: /ingestor
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 7
-    labels:
-      - dependencies
-    open-pull-requests-limit: 5
+    groups:
+      python-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: npm
     directory: /dashboard
@@ -32,7 +27,13 @@ updates:
       default-days: 7
     labels:
       - dependencies
-    open-pull-requests-limit: 10
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        patterns: ["*"]
+        update-types:
+          - minor
+          - patch
 
   - package-ecosystem: github-actions
     directory: /
@@ -44,47 +45,26 @@ updates:
     labels:
       - ci
     open-pull-requests-limit: 5
-    target-branch: master
     groups:
-      safe-updates:
-        dependency-type: production
+      actions-minor-patch:
+        patterns: ["*"]
         update-types:
-          - patch
           - minor
-      major-breaking:
-        dependency-type: production
+          - patch
+
+  - package-ecosystem: docker
+    directories: ["/api", "/ingestor", "/dashboard"]
+    schedule:
+      interval: weekly
+      day: monday
+    cooldown:
+      default-days: 7
+    labels:
+      - docker
+    open-pull-requests-limit: 5
+    groups:
+      docker-minor-patch:
+        patterns: ["*"]
         update-types:
-          - major
-
-  - package-ecosystem: docker
-    directory: /api
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 7
-    labels:
-      - docker
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: docker
-    directory: /ingestor
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 7
-    labels:
-      - docker
-    open-pull-requests-limit: 5
-
-  - package-ecosystem: docker
-    directory: /dashboard
-    schedule:
-      interval: weekly
-      day: monday
-    cooldown:
-      default-days: 7
-    labels:
-      - docker
-    open-pull-requests-limit: 5
+          - minor
+          - patch
