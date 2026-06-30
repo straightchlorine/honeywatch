@@ -60,11 +60,19 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Log into Docker Hub
+        uses: docker/login-action@650006c6eb7dba73a995cc03b0b2d7f5ca915bee # v4.2.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
       - name: Extract metadata
         id: meta
         uses: docker/metadata-action@80c7e94dd9b9319bd5eb7a0e0fe9291e23a2a2e9 # v6.1.0
         with:
-          images: ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}
+          images: |
+            ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}
+            docker.io/${{ secrets.DOCKERHUB_USERNAME }}/honeywatch-${{ matrix.component }}
           tags: |
             type=semver,pattern={{version}}
             type=raw,value=latest
@@ -179,7 +187,7 @@ jobs:
           HONEYPOT_SSH_HOST_KEY: ${{ secrets.HONEYPOT_SSH_HOST_KEY }}
         run: |
           if [ -z "${HONEYPOT_SSH_HOST_KEY:-}" ]; then
-            echo "::error::HONEYPOT_SSH_HOST_KEY must be set for production releases (no TOFU fallback)" >&2
+            echo "::error::HONEYPOT_SSH_HOST_KEY must be set for releases" >&2
             exit 1
           fi
 
