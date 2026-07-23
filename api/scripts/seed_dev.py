@@ -1,12 +1,8 @@
 """Seed the dev database with synthetic honeypot data.
 
-Spreads sessions across the trend windows so the dashboard's "Trend (7d)" card
-shows a large delta.
+By default it WIPES every table first and then inserts data
 
-By default it WIPES every table first (TRUNCATE CASCADE) for a clean,
-prod-shaped slate, then inserts the synthetic data.
-
-    just seed                 # default: wipe all, big trend (+1822.8%)
+    just seed                 # default: wipe all, big trend
     just seed --no-wipe       # append on top of existing data instead
     just seed --current 2000 --previous 1500   # a calmer trend
 
@@ -20,7 +16,8 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import create_engine, insert, text
+from sqlalchemy import create_engine, func, insert, select, text
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Session as DbSession
 
@@ -194,26 +191,15 @@ def child_rows(
 
 
 def bulk_insert(
-    db: DbSession,
-    model: type[DeclarativeBase],
-    rows: list[dict[str, Any]],
-    size: int = 5000,
+    db: DbSession, model: type[DeclarativeBase], rows: list[dict[str, Any]]
 ) -> None:
-    """Insert dict rows in chunks via 2.0-style executemany."""
-    for i in range(0, len(rows), size):
-        db.execute(insert(model), rows[i : i + size])
+    if rows:  # executemany rejects an empty parameter list
+        db.execute(insert(model), rows)
 
 
 def wipe_all(db: DbSession) -> None:
-    """Truncate every honeypot table for a clean, prod-shaped slate.
-
-    TRUNCATE ... CASCADE on ``sessions`` clears every child table that
-    references it (auth_attempts, commands, downloads, ssh_clients,
-    client_fingerprints, direct_tcpip_requests); ``geo_locations`` has no FK
-    so it is named explicitly. RESTART IDENTITY resets the serial PKs so reruns
-    start from id 1. This deletes ALL data, real and seeded -- a dev convenience
-    only, never run against production.
-    """
+    """Truncate ALL tables, real data included (CASCADE from sessions reaches
+    every child table; geo_locations has no FK). Dev convenience only."""
     db.execute(text("TRUNCATE TABLE sessions, geo_locations RESTART IDENTITY CASCADE"))
     db.commit()
 
@@ -270,16 +256,32 @@ def main() -> None:
     prev_start = cur_start - period
 
     ips = build_ip_pool(rng, args.unique_ips)
-    sessions = session_rows(rng, ips, args.current, cur_start, period, 0)
-    sessions += session_rows(rng, ips, args.previous, prev_start, period, args.current)
-    auth, cmds = child_rows(rng, sessions)
     geos = geo_rows(rng, ips)
 
     engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
     with DbSession(engine) as db:
         if args.wipe:
             wipe_all(db)
-        bulk_insert(db, GeoLocation, geos)
+            start = 0
+        else:
+            # Continue after the highest existing seed id so --no-wipe reruns
+            # don't collide (ids are zero-padded, so string max == numeric max).
+            last = db.execute(
+                select(func.max(Session.id)).where(Session.sensor == SEED_SENSOR)
+            ).scalar()
+            start = int(last.removeprefix("seed-")) + 1 if last else 0
+
+        sessions = session_rows(rng, ips, args.current, cur_start, period, start)
+        sessions += session_rows(
+            rng, ips, args.previous, prev_start, period, start + args.current
+        )
+        auth, cmds = child_rows(rng, sessions)
+        if geos:
+            # --no-wipe: an IP seen before (seeded or real) keeps its geo row.
+            db.execute(
+                pg_insert(GeoLocation).on_conflict_do_nothing(index_elements=["ip"]),
+                geos,
+            )
         bulk_insert(db, Session, sessions)
         bulk_insert(db, AuthAttempt, auth)
         bulk_insert(db, Command, cmds)
