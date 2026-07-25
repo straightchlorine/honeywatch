@@ -1,11 +1,11 @@
-"""Gunicorn configuration for the honeywatch API.
+"""Gunicorn configuration for the API.
 
-``workers * threads`` stays <= the DB pool capacity so a
-fully-saturated worker pool cannot exhaust the connection pool.
+``workers * threads`` stays <= the DB pool: fully saturated worker pool cannot
+exhaust the connection pool.
 """
 
 from __future__ import annotations
-
+from src.logging_config import build_logging_config
 import os
 
 bind = "0.0.0.0:5000"
@@ -26,18 +26,8 @@ worker_tmp_dir = "/dev/shm"
 accesslog = "-"
 errorlog = "-"
 
-# Drop %(h)s (the remote address) from the access log. Behind ProxyFix(x_for=1)
-# %(h)s resolves to the real attacker IP, which would otherwise reach the shared
-# stdout sink on every request -- contradicting the src_ip-suppression policy
-# (see tests/test_no_src_ip_on_all_endpoints.py). Keep the request line, status,
-# byte length, latency (%(L)s) and the propagated request id so traces stay
-# correlatable without ever logging the source IP.
+# Dropping the %(h)s - that would reveal attackers ip.
 access_log_format = '"%(r)s" %(s)s %(b)s %(L)s req=%({x-request-id}i)s'
 
-# Route gunicorn's own access/error records through the app's dictConfig so the
-# gunicorn.access / gunicorn.error loggers emit the same JSON stream as the
-# Flask app (see src.logging_config). Without this gunicorn installs its own
-# plaintext handlers and prod logs become two mismatched formats.
-from src.logging_config import build_logging_config  # noqa: E402
-
+# Ensure gunicorn's own logs follow the pattern set by the application.
 logconfig_dict = build_logging_config()
