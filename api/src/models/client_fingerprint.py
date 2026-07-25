@@ -15,9 +15,10 @@ if TYPE_CHECKING:
 class ClientFingerprint(Base):
     """A public-key offered during authentication (``cowrie.client.fingerprint``).
 
-    Bots that spray a fixed SSH key across many targets are trivially linked by
-    their key fingerprint even when IP and username vary. Multiple rows per
-    session are expected (one per key offered).
+    Bots that spray a fixed SSH key across many targets are linked by their key
+    fingerprint even when IP and username vary.
+
+    Multiple rows per session are expected.
     """
 
     __tablename__ = "client_fingerprints"

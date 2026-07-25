@@ -15,14 +15,11 @@ if TYPE_CHECKING:
 class SshClient(Base):
     """Per-session SSH client identity.
 
-    Populated from cowrie's ``cowrie.client.version`` (the client banner) and
-    ``cowrie.client.kex`` (the HASSH fingerprint + offered algorithms). One row
-    per session; the two events arrive separately and each upserts its columns.
-    The HASSH is the highest-value signal for clustering bot families that
-    otherwise rotate IPs and usernames.
+    Based on Cowrie's `cowrie.client.version` and ``cowrie.client.kex``.
+    One row per session.
 
-    ``first_seen`` (rather than the sibling tables' ``timestamp``) reflects the
-    upsert semantics: it is stamped once when the first of the two events lands.
+    Two events arriving separately upsetr it's columns. `first_seen` stamped
+    once the first of the two events lands.
     """
 
     __tablename__ = "ssh_clients"

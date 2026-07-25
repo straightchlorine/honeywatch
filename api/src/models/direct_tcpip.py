@@ -13,12 +13,12 @@ if TYPE_CHECKING:
 
 
 class DirectTcpipRequest(Base):
-    """An attempted port-forward through the honeypot (``cowrie.direct-tcpip.request``).
+    """An attempted port-forward through the honeypot (`cowrie.direct-tcpip.request`).
 
-    A direct-tcpip channel is an attacker trying to use the box as a relay
-    (proxy/scan pivot, SMTP spam, reaching internal hosts). The requested
-    destination reveals intent even though the egress sidecar blocks the
-    forward. ``dst`` may be a hostname, so it is stored as text rather than INET.
+    A direct-tcpip channel is an attacker trying to use the box as a relay.
+    The requested destination reveals intent. Egress sidecar blocks the forward.
+
+    `dst` may be a hostname, so it is stored as text rather than INET.
     """
 
     __tablename__ = "direct_tcpip_requests"
