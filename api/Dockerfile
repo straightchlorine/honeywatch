@@ -12,6 +12,9 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY . .
 RUN uv sync --frozen --no-dev
 
+# Keeping Rust uv deps out of scans
+RUN rm -f /bin/uv /bin/uvx && rm -rf /root/.cache/uv
+
 COPY entrypoint.sh /entrypoint.sh
 RUN chmod +x /entrypoint.sh
 
@@ -19,8 +22,7 @@ RUN chown -R honeywatch:honeywatch /app
 
 USER honeywatch
 
-# Use the prebuilt venv directly at runtime. No `uv run` needed, which
-# avoids uv trying to init a cache dir at startup.
+# Use the prebuilt venv directly at runtime; avoids uv cache init at start.
 ENV PATH="/app/.venv/bin:$PATH"
 
 EXPOSE 5000
