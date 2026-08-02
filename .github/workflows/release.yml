@@ -40,6 +40,7 @@ jobs:
   build-and-push:
     needs: [verify-tag]
     runs-on: ubuntu-latest
+    environment: production
     permissions:
       contents: read
       packages: write
