@@ -10,6 +10,10 @@ RUN uv sync --frozen --no-dev --no-install-project
 COPY src/ src/
 RUN uv sync --frozen --no-dev
 
+# uv is build-only; runtime uses /app/.venv/bin directly. Dropping it keeps the
+# Rust deps vendored in the uv binary (quinn-proto et al) out of image scans.
+RUN rm -f /bin/uv /bin/uvx && rm -rf /root/.cache/uv
+
 ENV GEOIP_DATA_DIR=/data/geoip
 
 RUN useradd --create-home --shell /bin/bash ingestor \
