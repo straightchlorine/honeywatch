@@ -6,6 +6,7 @@ from src.schemas.common import (
     BaseSchema,
     country_filter_field,
     country_or_unknown_field,
+    top_n_field,
 )
 from src.services.stats import (
     PASSWORD_LENGTH_CAP,
@@ -151,9 +152,8 @@ class CountriesResponse(BaseSchema):
         allow_none=True,
         metadata={
             "description": (
-                "Share of sessions with geolocation resolved (null when there are "
-                "no sessions). Geo enrichment lags ingestion, so the remainder is "
-                "bucketed under Unknown -- surfaced so counts are not read as totals."
+                "Percent of sessions with resolved geolocation (null if no "
+                "sessions); the rest falls under the Unknown bucket."
             ),
             "example": 81.3,
         },
@@ -256,14 +256,7 @@ class HeatmapPointResponse(BaseSchema):
 class TopNQuery(BaseSchema):
     """Shared query args for the top-N leaderboards (passwords, countries)."""
 
-    top_n = fields.Int(
-        load_default=10,
-        validate=validate.Range(min=1, max=100),
-        metadata={
-            "description": "Number of top entries to return (max 100).",
-            "example": 10,
-        },
-    )
+    top_n = top_n_field(10)
 
 
 class PasswordsByLengthQuery(BaseSchema):
@@ -280,14 +273,7 @@ class PasswordsByLengthQuery(BaseSchema):
             "example": 6,
         },
     )
-    top_n = fields.Int(
-        load_default=10,
-        validate=validate.Range(min=1, max=100),
-        metadata={
-            "description": "Number of top entries to return (max 100).",
-            "example": 10,
-        },
-    )
+    top_n = top_n_field(10)
 
 
 class TopCredentialResponse(BaseSchema):
@@ -316,9 +302,8 @@ class TopCredentialResponse(BaseSchema):
         allow_none=True,
         metadata={
             "description": (
-                "Distinct source addresses that tried this credential; only "
-                "populated for the ip_fanout metric (null otherwise). A high "
-                "value signals a distributed botnet sharing one credential."
+                "Distinct source IPs that tried this credential (ip_fanout "
+                "metric only, null otherwise); high values suggest a botnet."
             ),
             "example": 42,
         },
@@ -453,14 +438,7 @@ class TopCredentialsQuery(BaseSchema):
         },
     )
     country = country_or_unknown_field()
-    top_n = fields.Int(
-        load_default=10,
-        validate=validate.Range(min=1, max=100),
-        metadata={
-            "description": "Number of top entries to return (max 100).",
-            "example": 10,
-        },
-    )
+    top_n = top_n_field(10)
 
 
 class CountriesQuery(BaseSchema):
@@ -477,28 +455,14 @@ class CountriesQuery(BaseSchema):
             "example": "sessions",
         },
     )
-    top_n = fields.Int(
-        load_default=50,
-        validate=validate.Range(min=1, max=100),
-        metadata={
-            "description": "Number of countries to return (max 100).",
-            "example": 50,
-        },
-    )
+    top_n = top_n_field(50, "Number of countries to return")
 
 
 class AsnQuery(BaseSchema):
     """Query args for the source-network (ASN) breakdown."""
 
     country = country_or_unknown_field()
-    top_n = fields.Int(
-        load_default=10,
-        validate=validate.Range(min=1, max=100),
-        metadata={
-            "description": "Number of networks to return (max 100).",
-            "example": 10,
-        },
-    )
+    top_n = top_n_field(10, "Number of networks to return")
 
 
 class ActivityQuery(BaseSchema):

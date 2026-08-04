@@ -1,13 +1,16 @@
 from __future__ import annotations
 
-# Canonical session classification, shared by the SQL filter (services/sessions),
-# the marshmallow `category` validation/response field (schemas/sessions) and the
-# serializer. The dashboard consumes the emitted `category` and only maps it to a
-# label, so this module is the single source of truth for the partition.
+# Session classification.
 #
 # The classes are mutually exclusive and evaluated in priority order: a session
 # that ran commands is "active" even if it also logged in, and so on.
 SESSION_CATEGORIES: tuple[str, ...] = ("active", "login", "failed", "probe")
+
+CATEGORY_DESCRIPTION = (
+    "Session class (mutually exclusive): 'active' ran a command, 'login' "
+    "logged in without running one, 'failed' tried to log in but never "
+    "succeeded, 'probe' never attempted a login."
+)
 
 
 def classify_category(
@@ -23,9 +26,9 @@ def classify_category(
         auth_attempt_count: Number of authentication attempts in the session.
 
     Returns:
-        One of :data:`SESSION_CATEGORIES`: ``"active"`` (ran commands),
-        ``"login"`` (login accepted, no commands), ``"failed"`` (attempts made,
-        none accepted), or ``"probe"`` (no login attempts).
+        One of :data:`SESSION_CATEGORIES`: `"active"` (ran commands),
+        `"login"` (login accepted, no commands), `"failed"` (attempts made,
+        none accepted), or `"probe"` (no login attempts).
     """
     if command_count > 0:
         return "active"

@@ -11,6 +11,7 @@ from src.services.types import (
     AuthAttemptDict,
     CommandDict,
     DownloadDict,
+    SessionBaseDict,
     SessionDetailDict,
     SessionSummaryDict,
 )
@@ -19,12 +20,25 @@ from src.services.types import (
 class SessionSerializer:
     """Convert :class:`Session` ORM rows to API response dicts.
 
-    ``src_ip`` is deliberately omitted from every external shape. The IP is
-    retained on the DB column for internal joins (``geo_locations``) only.
+    `src_ip` is deliberately omitted from every external shape. The IP is
+    retained on the DB column for internal joins (`geo_locations`) only.
 
-    Datetime fields are emitted as native ``datetime`` objects; the marshmallow
-    response schemas format them with ``DateTime(format="iso")`` exactly once.
+    Datetime fields are emitted as native `datetime` objects; the marshmallow
+    response schemas format them with `DateTime(format="iso")` exactly once.
     """
+
+    @staticmethod
+    def _base(s: Session, geo: GeoLocation | None) -> SessionBaseDict:
+        return {
+            "id": s.id,
+            "src_port": s.src_port,
+            "dst_port": s.dst_port,
+            "protocol": s.protocol,
+            "country_code": geo.country_code if geo else None,
+            "country": geo.country if geo else None,
+            "started_at": s.started_at,
+            "ended_at": s.ended_at,
+        }
 
     @staticmethod
     def summary(
@@ -39,18 +53,11 @@ class SessionSerializer:
 
         The per-session counters are aggregated in SQL by the list query (see
         :func:`src.services.sessions.get_sessions_paginated`) rather than by
-        materializing the ``commands``/``auth_attempts`` collections, so they are
+        materializing the `commands`/`auth_attempts` collections, so they are
         passed in instead of read off the ORM relationships.
         """
         return {
-            "id": s.id,
-            "src_port": s.src_port,
-            "dst_port": s.dst_port,
-            "protocol": s.protocol,
-            "country_code": geo.country_code if geo else None,
-            "country": geo.country if geo else None,
-            "started_at": s.started_at,
-            "ended_at": s.ended_at,
+            **SessionSerializer._base(s, geo),
             "auth_attempt_count": auth_attempt_count,
             "command_count": command_count,
             "has_successful_login": login_success,
@@ -62,54 +69,38 @@ class SessionSerializer:
     @staticmethod
     def detail(s: Session, geo: GeoLocation | None) -> SessionDetailDict:
         return {
-            "id": s.id,
-            "src_port": s.src_port,
-            "dst_port": s.dst_port,
-            "protocol": s.protocol,
-            "country_code": geo.country_code if geo else None,
-            "country": geo.country if geo else None,
-            "started_at": s.started_at,
-            "ended_at": s.ended_at,
-            "sensor": s.sensor if s.sensor else None,
-            "auth_attempts": [AuthAttemptSerializer.dump(a) for a in s.auth_attempts],
-            "commands": [CommandSerializer.dump(c) for c in s.commands],
-            "downloads": [DownloadSerializer.dump(d) for d in s.downloads],
+            **SessionSerializer._base(s, geo),
+            "sensor": s.sensor or None,
+            "auth_attempts": [_dump_auth_attempt(a) for a in s.auth_attempts],
+            "commands": [_dump_command(c) for c in s.commands],
+            "downloads": [_dump_download(d) for d in s.downloads],
         }
 
 
-class AuthAttemptSerializer:
-    @staticmethod
-    def dump(a: AuthAttempt) -> AuthAttemptDict:
-        return {
-            "id": a.id,
-            "username": a.username,
-            "password": a.password,
-            "success": a.success,
-            "timestamp": a.timestamp,
-        }
+def _dump_auth_attempt(a: AuthAttempt) -> AuthAttemptDict:
+    return {
+        "id": a.id,
+        "username": a.username,
+        "password": a.password,
+        "success": a.success,
+        "timestamp": a.timestamp,
+    }
 
 
-class CommandSerializer:
-    @staticmethod
-    def dump(c: Command) -> CommandDict:
-        return {
-            "id": c.id,
-            # Blot any C2 / payload IP the attacker typed (e.g. wget <ip>) before
-            # it leaves the process -- the raw IP never reaches the API response.
-            "input": redact_ips(c.input) or "",
-            "success": c.success,
-            "timestamp": c.timestamp,
-        }
+def _dump_command(c: Command) -> CommandDict:
+    return {
+        "id": c.id,
+        "input": redact_ips(c.input) or "",  # see redact.py
+        "success": c.success,
+        "timestamp": c.timestamp,
+    }
 
 
-class DownloadSerializer:
-    @staticmethod
-    def dump(d: Download) -> DownloadDict:
-        return {
-            "id": d.id,
-            # Blot IP-literal hosts in the captured fetch URL (the common C2 form).
-            "url": redact_ips(d.url),
-            "outfile": d.outfile,
-            "sha256": d.sha256,
-            "timestamp": d.timestamp,
-        }
+def _dump_download(d: Download) -> DownloadDict:
+    return {
+        "id": d.id,
+        "url": redact_ips(d.url),  # see redact.py
+        "outfile": d.outfile,
+        "sha256": d.sha256,
+        "timestamp": d.timestamp,
+    }

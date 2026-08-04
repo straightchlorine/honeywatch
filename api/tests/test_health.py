@@ -23,10 +23,10 @@ def test_ready_returns_ok_when_db_up(client: Any) -> None:
 class _ExplodingSession:
     """Stand-in for an SQLAlchemy Session whose connection is unreachable.
 
-    A real Postgres outage manifests when the route calls ``db.execute(...)``
+    A real Postgres outage manifests when the route calls `db.execute(...)`
     (pool tries to acquire a connection and the driver raises
-    ``OperationalError``). Patching ``get_session_factory`` itself does not
-    reproduce that path -- ``get_session_factory`` only raises on an
+    `OperationalError`). Patching `get_session_factory` itself does not
+    reproduce that path -- `get_session_factory` only raises on an
     uninitialised Flask app, never on a DB outage.
     """
 
@@ -54,7 +54,7 @@ def test_ready_returns_503_when_db_down(
 
     Swaps the app-level session factory (the same seam used by the `client`
     fixture in conftest) so the route exercises the realistic failure path:
-    factory call returns, context manager enters, ``execute`` raises.
+    factory call returns, context manager enters, `execute` raises.
     """
     original = app.extensions.get("db_session_factory")
     app.extensions["db_session_factory"] = _ExplodingFactory()

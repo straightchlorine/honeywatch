@@ -9,11 +9,7 @@ from marshmallow import Schema, fields, validate
 class CountryCodeField(fields.String):
     """Country-code string that upper-cases on load.
 
-    MaxMind stores alpha-2 codes upper-case, but the validator accepts either
-    case; without this a lowercase ``?country=us`` would pass validation and
-    then silently match nothing. Upper-casing during deserialization (before
-    the regex validator runs) makes the filter case-insensitive. The ``"??"``
-    Unknown sentinel is unaffected (``"??".upper() == "??"``).
+    MaxMind stores alpha-2 codes upper-case. Validator accepts either.
     """
 
     def _deserialize(
@@ -23,8 +19,6 @@ class CountryCodeField(fields.String):
         data: Mapping[str, Any] | None,
         **kwargs: Any,
     ) -> str:
-        # None is handled by Field.deserialize before _deserialize runs, so the
-        # parent always returns a str here.
         return super()._deserialize(value, attr, data, **kwargs).upper()
 
 
@@ -46,12 +40,23 @@ def country_filter_field() -> fields.Str:
     )
 
 
+def top_n_field(
+    default: int, description: str = "Number of top entries to return"
+) -> fields.Int:
+    """Fresh top-N limit field, see :func:`country_filter_field` for why fresh."""
+    return fields.Int(
+        load_default=default,
+        validate=validate.Range(min=1, max=100),
+        metadata={"description": f"{description} (max 100).", "example": default},
+    )
+
+
 def country_or_unknown_field() -> fields.Str:
-    """Country filter that also accepts ``"??"`` -- the geo-less bucket.
+    """Country filter that also accepts `"??"` -- the geo-less bucket.
 
     Same as :func:`country_filter_field`, but the credential/ASN leaderboards
     let the Countries page drill into the "Unknown" row (sessions whose source
-    IP has no resolved country), addressed by the ``"??"`` sentinel.
+    IP has no resolved country), addressed by the `"??"` sentinel.
     """
     return CountryCodeField(
         load_default=None,
@@ -68,12 +73,10 @@ def country_or_unknown_field() -> fields.Str:
 
 
 class BaseSchema(Schema):
-    """Project-wide base schema.
+    """Shared base for every schema.
 
     Marshmallow 4 preserves field declaration order natively, so OpenAPI
-    properties stay in a stable order across regenerations without any ``Meta``
-    config (the old ``ordered = True`` is a no-op on MM4). Kept as the shared
-    base for future cross-cutting schema config.
+    properties stay stable across regenerations with no `Meta` config needed.
     """
 
 

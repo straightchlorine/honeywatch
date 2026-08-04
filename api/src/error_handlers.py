@@ -1,10 +1,10 @@
-"""JSON error handlers matching the flask-smorest ``Error`` envelope.
+"""JSON error handlers matching the flask-smorest `Error` envelope.
 
-* Return the same JSON shape on every layer (``{code, status, message, errors}``).
-* Log 5xx with ``exc_info`` plus request method + path.
+* Return the same JSON shape on every layer (`{code, status, message, errors}`).
+* Log 5xx with `exc_info` plus request method + path.
 * Log 4xx at INFO with method + path so we can see scanning / bad clients.
 
-The client IP (``request.remote_addr``) is intentionally omitted from every log
+The client IP (`request.remote_addr`) is intentionally omitted from every log
 line here.
 """
 
@@ -33,9 +33,9 @@ def init_error_handlers(app: Flask) -> None:
         message = exc.description or status
         body = getattr(exc, "data", None) or {}
         # flask-smorest stuffs marshmallow validation messages under
-        # ``exc.data['errors']``; preserve that shape.
+        # `exc.data['errors']`; preserve that shape.
         errors = body.get("errors") if isinstance(body, dict) else None
-        # smorest also passes its own ``message`` field via ``exc.data``.
+        # smorest also passes its own `message` field via `exc.data`.
         if isinstance(body, dict) and isinstance(body.get("message"), str):
             message = body["message"]
 

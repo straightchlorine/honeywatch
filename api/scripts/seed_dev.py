@@ -16,8 +16,7 @@ import random
 from datetime import datetime, timedelta, timezone
 from typing import Any
 
-from sqlalchemy import create_engine, func, insert, select, text
-from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy import create_engine, insert, text
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.orm import Session as DbSession
 
@@ -30,8 +29,8 @@ SEED_SENSOR = "seed"
 
 HONEYPOT_IP = "10.0.0.1"
 
-# (country_code, name, lat, lon, relative weight). Weights skew toward the
-# usual SSH-scanner heavyweights so the Countries / Map pages look plausible.
+# (country_code, name, lat, lon, relative weight)
+# Weights skew toward the usual suspects.
 COUNTRIES: list[tuple[str, str, float, float, int]] = [
     ("CN", "China", 35.0, 105.0, 30),
     ("US", "United States", 38.0, -97.0, 20),
@@ -163,7 +162,7 @@ def child_rows(
     for s in sessions:
         sid = s["id"]
         started = s["started_at"]
-        # ~1 attempt per session (matches prod's auth ≈ sessions ratio): mostly
+        # ~1 attempt per session (matches prod's auth ~ sessions ratio): mostly
         # one, a few with none, a rare double. Avg ~0.98.
         roll = rng.random()
         n_auth = 0 if roll < 0.04 else 2 if roll > 0.98 else 1
@@ -191,15 +190,26 @@ def child_rows(
 
 
 def bulk_insert(
-    db: DbSession, model: type[DeclarativeBase], rows: list[dict[str, Any]]
+    db: DbSession,
+    model: type[DeclarativeBase],
+    rows: list[dict[str, Any]],
+    size: int = 5000,
 ) -> None:
-    if rows:  # executemany rejects an empty parameter list
-        db.execute(insert(model), rows)
+    """Insert dict rows in chunks via 2.0-style executemany."""
+    for i in range(0, len(rows), size):
+        db.execute(insert(model), rows[i : i + size])
 
 
 def wipe_all(db: DbSession) -> None:
-    """Truncate ALL tables, real data included (CASCADE from sessions reaches
-    every child table; geo_locations has no FK). Dev convenience only."""
+    """Truncate every honeypot table for a clean, prod-shaped slate.
+
+    TRUNCATE ... CASCADE on `sessions` clears every child table that
+    references it (auth_attempts, commands, downloads, ssh_clients,
+    client_fingerprints, direct_tcpip_requests); `geo_locations` has no FK
+    so it is named explicitly. RESTART IDENTITY resets the serial PKs so reruns
+    start from id 1. This deletes ALL data, real and seeded - a dev convenience
+    only, never run against production.
+    """
     db.execute(text("TRUNCATE TABLE sessions, geo_locations RESTART IDENTITY CASCADE"))
     db.commit()
 
@@ -256,32 +266,16 @@ def main() -> None:
     prev_start = cur_start - period
 
     ips = build_ip_pool(rng, args.unique_ips)
+    sessions = session_rows(rng, ips, args.current, cur_start, period, 0)
+    sessions += session_rows(rng, ips, args.previous, prev_start, period, args.current)
+    auth, cmds = child_rows(rng, sessions)
     geos = geo_rows(rng, ips)
 
     engine = create_engine(Config.SQLALCHEMY_DATABASE_URI)
     with DbSession(engine) as db:
         if args.wipe:
             wipe_all(db)
-            start = 0
-        else:
-            # Continue after the highest existing seed id so --no-wipe reruns
-            # don't collide (ids are zero-padded, so string max == numeric max).
-            last = db.execute(
-                select(func.max(Session.id)).where(Session.sensor == SEED_SENSOR)
-            ).scalar()
-            start = int(last.removeprefix("seed-")) + 1 if last else 0
-
-        sessions = session_rows(rng, ips, args.current, cur_start, period, start)
-        sessions += session_rows(
-            rng, ips, args.previous, prev_start, period, start + args.current
-        )
-        auth, cmds = child_rows(rng, sessions)
-        if geos:
-            # --no-wipe: an IP seen before (seeded or real) keeps its geo row.
-            db.execute(
-                pg_insert(GeoLocation).on_conflict_do_nothing(index_elements=["ip"]),
-                geos,
-            )
+        bulk_insert(db, GeoLocation, geos)
         bulk_insert(db, Session, sessions)
         bulk_insert(db, AuthAttempt, auth)
         bulk_insert(db, Command, cmds)

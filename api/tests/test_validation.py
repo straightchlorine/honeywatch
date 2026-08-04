@@ -1,7 +1,7 @@
 """Lower-bound / upper-bound / type 422 paths for every query schema.
 
 Marshmallow validators run at the boundary; these tests ensure a regression
-that loosens any bound (e.g. ``min=1`` -> ``min=0``) fails fast in CI.
+that loosens any bound (e.g. `min=1` -> `min=0`) fails fast in CI.
 """
 
 from __future__ import annotations

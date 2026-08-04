@@ -30,7 +30,6 @@ def test_dump_spec_strips_servers_and_sorts_keys(tmp_path: pathlib.Path) -> None
     loaded = json.loads(text)
     assert "servers" not in loaded
     assert loaded["paths"] == {"/a": {}, "/b": {}}
-    # Top-level keys are sorted.
     assert list(loaded.keys()) == sorted(loaded.keys())
 
 

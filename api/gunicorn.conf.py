@@ -1,12 +1,15 @@
 """Gunicorn configuration for the API.
 
-``workers * threads`` stays <= the DB pool: fully saturated worker pool cannot
-exhaust the connection pool.
+Keep `workers * threads` <= the DB pool size (`src/extensions.py`) so a
+fully saturated worker pool cannot exhaust the connection pool. Not enforced
+in code - if you bump the env vars below, bump the pool size too.
 """
 
 from __future__ import annotations
-from src.logging_config import build_logging_config
+
 import os
+
+from src.logging_config import build_logging_config
 
 bind = "0.0.0.0:5000"
 
@@ -26,7 +29,7 @@ worker_tmp_dir = "/dev/shm"
 accesslog = "-"
 errorlog = "-"
 
-# Dropping the %(h)s - that would reveal attackers ip.
+# %(h)s (client IP) is intentionally omitted so attacker IPs never hit the log.
 access_log_format = '"%(r)s" %(s)s %(b)s %(L)s req=%({x-request-id}i)s'
 
 # Ensure gunicorn's own logs follow the pattern set by the application.

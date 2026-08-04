@@ -33,12 +33,12 @@ def get_sessions_paginated(
         page: 1-indexed page number.
         per_page: Page size; the caller is responsible for clamping.
         country: ISO 3166-1 alpha-2 code to filter the source country, or None.
-        category: Mutually exclusive session class to keep -- ``"active"`` (ran
-            commands), ``"login"`` (login accepted, no commands), ``"failed"``
-            (attempts made, none accepted), ``"probe"`` (no login attempts), or
+        category: Mutually exclusive session class to keep -- `"active"` (ran
+            commands), `"login"` (login accepted, no commands), `"failed"`
+            (attempts made, none accepted), `"probe"` (no login attempts), or
             None for no class filter. Mirrors the dashboard's classification.
-        sort: ``"recent"`` (newest first), ``"country"`` (source country A-Z),
-            or ``"active"`` (most commands first).
+        sort: `"recent"` (newest first), `"country"` (source country A-Z),
+            or `"active"` (most commands first).
 
     Returns:
         A :class:`SessionsPageDict` with the session summaries plus pagination
@@ -51,10 +51,7 @@ def get_sessions_paginated(
     )
     auth_exists = exists().where(AuthAttempt.session_id == Session.id)
     commands_exists = exists().where(Command.session_id == Session.id)
-    # Per-row counters aggregated in SQL so we never materialize the commands /
-    # auth_attempts collections just to count them (a brute-force session can
-    # hold thousands of auth rows). Selected as columns and passed to the
-    # serializer; the list query carries no `selectinload`.
+
     command_count = (
         select(func.count())
         .select_from(Command)
@@ -80,8 +77,9 @@ def get_sessions_paginated(
     conditions: list[Any] = []
     if country:
         conditions.append(GeoLocation.country_code == country)
-    # Classification filter -- the same partition the dashboard badges use, so
-    # exactly one class matches any session (commands > login > failed > probe).
+
+    # Classification filter - the same as the dashboard badges use.
+    # commands > login > failed > probe
     if category == "active":
         conditions.append(commands_exists)
     elif category == "login":
@@ -100,27 +98,61 @@ def get_sessions_paginated(
         count_stmt = count_stmt.where(cond)
     total = db.execute(count_stmt).scalar_one()
 
+    # Two-phase page fetch:
+    # 1. Find the page's 25 session ids with only the sort keys in scope
+    # 2. Enrichment of just those rows with the correlated counters.
+    inner_cols: list[Any] = [Session.id.label("sid")]
+    inner = select(*inner_cols).outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
     if sort == "country":
-        order_by: list[Any] = [
+        inner_order: list[Any] = [
             nulls_last(asc(GeoLocation.country)),
             Session.started_at.desc(),
             Session.id.desc(),
         ]
     elif sort == "active":
-        order_by = [command_count.desc(), Session.started_at.desc(), Session.id.desc()]
+        cmd_agg = (
+            select(Command.session_id, func.count().label("n"))
+            .group_by(Command.session_id)
+            .subquery()
+        )
+        sort_n = func.coalesce(cmd_agg.c.n, 0)
+        inner = inner.add_columns(sort_n.label("sort_n")).outerjoin(
+            cmd_agg, cmd_agg.c.session_id == Session.id
+        )
+        inner_order = [sort_n.desc(), Session.started_at.desc(), Session.id.desc()]
     else:  # recent
-        order_by = [Session.started_at.desc(), Session.id.desc()]
-
-    stmt = select(
-        Session,
-        GeoLocation,
-        command_count.label("command_count"),
-        auth_attempt_count.label("auth_attempt_count"),
-        login_success.label("login_success"),
-    ).outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+        inner_order = [Session.started_at.desc(), Session.id.desc()]
     for cond in conditions:
-        stmt = stmt.where(cond)
-    stmt = stmt.order_by(*order_by).offset(offset).limit(per_page)
+        inner = inner.where(cond)
+    page_ids = inner.order_by(*inner_order).offset(offset).limit(per_page).subquery()
+
+    if sort == "country":
+        outer_order: list[Any] = [
+            nulls_last(asc(GeoLocation.country)),
+            Session.started_at.desc(),
+            Session.id.desc(),
+        ]
+    elif sort == "active":
+        outer_order = [
+            page_ids.c.sort_n.desc(),
+            Session.started_at.desc(),
+            Session.id.desc(),
+        ]
+    else:
+        outer_order = [Session.started_at.desc(), Session.id.desc()]
+
+    stmt = (
+        select(
+            Session,
+            GeoLocation,
+            command_count.label("command_count"),
+            auth_attempt_count.label("auth_attempt_count"),
+            login_success.label("login_success"),
+        )
+        .join(page_ids, page_ids.c.sid == Session.id)
+        .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+        .order_by(*outer_order)
+    )
     rows = db.execute(stmt).all()
 
     return {
@@ -142,7 +174,7 @@ def get_sessions_paginated(
 
 
 def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | None:
-    """Return the full detail for a single session, or ``None`` if missing.
+    """Return the full detail for a single session, or `None` if missing.
 
     Args:
         db: Active SQLAlchemy session.
@@ -150,7 +182,7 @@ def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | No
 
     Returns:
         A :class:`SessionDetailDict` with auth attempts, commands, downloads
-        and joined geolocation, or ``None`` when no session matches.
+        and joined geolocation, or `None` when no session matches.
     """
     stmt = (
         select(Session, GeoLocation)

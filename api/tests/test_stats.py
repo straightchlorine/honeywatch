@@ -85,7 +85,7 @@ def test_trend_default(client: Any, seed_data: Any) -> None:
 
 
 def test_trend_zero_previous_returns_null_pct(client: Any, db_session: Any) -> None:
-    """``pct_change`` is ``None`` when the prior window has no sessions."""
+    """`pct_change` is `None` when the prior window has no sessions."""
     now = datetime.now(timezone.utc)
     db_session.add(
         HoneypotSession(
@@ -191,7 +191,7 @@ def test_top_credentials_pairs_default(client: Any, seed_data: Any) -> None:
     }
     counts = [r["count"] for r in data]
     assert counts == sorted(counts, reverse=True)
-    # distinct_ips is null for the (default) attempts metric -- no sessions join.
+    # distinct_ips is null for the (default) attempts metric - no sessions join.
     assert all(r["distinct_ips"] is None for r in data)
 
 
@@ -216,7 +216,7 @@ def test_top_credentials_by_password(client: Any, seed_data: Any) -> None:
     assert response.status_code == 200
     data = response.get_json()
     assert all(r["username"] is None for r in data)
-    # seed passwords: password123, admin, toor -- each tried once.
+    # seed passwords: password123, admin, toor - each tried once.
     assert {r["password"] for r in data} == {"password123", "admin", "toor"}
 
 
@@ -485,8 +485,8 @@ def _add_session(
 ) -> None:
     """Seed a session (+ optional geo row + N auth attempts) for edge-case tests.
 
-    ``country_code=None`` with an ``asn`` models the MaxMind ASN-hit-without-city
-    case; ``attempts=0`` models a country with sessions but no auth attempts.
+    `country_code=None` with an `asn` models the MaxMind ASN-hit-without-city
+    case; `attempts=0` models a country with sessions but no auth attempts.
     """
     now = datetime.now(timezone.utc)
     db_session.add(
@@ -530,7 +530,7 @@ def test_asns_unknown_bucket_includes_null_country_with_asn(
 ) -> None:
     """country=?? surfaces a geo row that carries an ASN but no country_code.
 
-    The MaxMind ASN-hit-without-city case: ``country_code`` NULL but ``asn`` set.
+    The MaxMind ASN-hit-without-city case: `country_code` NULL but `asn` set.
     It must appear in the ?? bucket (and the global list) yet stay out of any
     resolved-country scope.
     """
@@ -554,7 +554,7 @@ def test_countries_total_countries_independent_of_top_n(
     """total_countries counts every distinct country, not just the returned page.
 
     Three resolved countries seeded; ?top_n=1 returns one row but the header
-    still reports 3 -- proving the count is not derived from the truncated list.
+    still reports 3 - proving the count is not derived from the truncated list.
     """
     for i, cc in enumerate(("US", "CN", "DE")):
         _add_session(
@@ -641,12 +641,9 @@ def test_password_composition(client: Any, seed_data: Any) -> None:
 def test_password_composition_charset_classes_cover_every_branch(
     client: Any, charset_seed: Any
 ) -> None:
-    """Every branch of the server-side charset CASE is exercised and prioritized.
-
-    The classifier (stats.py: empty -> symbol -> digits -> lower -> upper ->
-    alnum) is order-sensitive: 'p@ss!' contains digits/letters but must land in
-    'symbol' because that branch comes first, etc. Lock the whole priority chain.
-    """
+    """Every branch of the charset CASE is exercised and prioritized (see
+    conftest.py's charset_seed for the ordering rationale): 'p@ss!' contains
+    digits/letters but must land in 'symbol' because that branch comes first."""
     del charset_seed
     response = client.get("/api/v1/stats/password-composition")
     assert response.status_code == 200
@@ -689,9 +686,9 @@ def test_passwords_by_length_cap_is_inclusive_tail(
 ) -> None:
     """At the cap (>= branch) the query lists every password that length or longer.
 
-    ``charset_seed`` includes an 18-char password (> the cap of 16). Querying
-    ``length=16`` must return it via the ``length_col >= cap`` tail branch, while
-    a sub-cap exact query (``length=11``) must NOT -- the 18-char row only
+    `charset_seed` includes an 18-char password (> the cap of 16). Querying
+    `length=16` must return it via the `length_col >= cap` tail branch, while
+    a sub-cap exact query (`length=11`) must NOT - the 18-char row only
     matches the inclusive tail, not an exact-length lookup.
     """
     del charset_seed

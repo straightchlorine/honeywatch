@@ -15,8 +15,8 @@ def init_db(app: Flask, database_url: str) -> None:
         database_url: SQLAlchemy-style connection URL.
 
     Returns:
-        None. Sets ``app.extensions['db_engine']`` and
-        ``app.extensions['db_session_factory']``.
+        None. Sets `app.extensions['db_engine']` and
+        `app.extensions['db_session_factory']`.
     """
     engine = create_engine(
         database_url,
@@ -41,7 +41,7 @@ def get_session_factory() -> sessionmaker[Session]:
     """Return the session factory bound to the current Flask app.
 
     Returns:
-        The ``sessionmaker`` stored on ``current_app.extensions``.
+        The `sessionmaker` stored on `current_app.extensions`.
 
     Raises:
         RuntimeError: If the DB was not initialized on this app.
@@ -56,11 +56,11 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Session:
-    """Return the request-scoped SQLAlchemy session, created lazily on ``g``.
+    """Return the request-scoped SQLAlchemy session, created lazily on `g`.
 
     One read-only session per request, closed automatically at app-context
     teardown (registered in :func:`init_db`). Centralizes the per-request
-    session so route handlers don't each manage a ``with`` block.
+    session so route handlers don't each manage a `with` block.
     """
     db: Session | None = getattr(g, "_db", None)
     if db is None:

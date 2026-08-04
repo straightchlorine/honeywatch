@@ -27,7 +27,7 @@ class DownloadDict(TypedDict):
     timestamp: datetime | None
 
 
-class SessionSummaryDict(TypedDict):
+class SessionBaseDict(TypedDict):
     id: str
     src_port: int
     dst_port: int
@@ -36,21 +36,16 @@ class SessionSummaryDict(TypedDict):
     country: str | None
     started_at: datetime | None
     ended_at: datetime | None
+
+
+class SessionSummaryDict(SessionBaseDict):
     auth_attempt_count: int
     command_count: int
     has_successful_login: bool
     category: str
 
 
-class SessionDetailDict(TypedDict):
-    id: str
-    src_port: int
-    dst_port: int
-    protocol: str
-    country_code: str | None
-    country: str | None
-    started_at: datetime | None
-    ended_at: datetime | None
+class SessionDetailDict(SessionBaseDict):
     sensor: str | None
     auth_attempts: list[AuthAttemptDict]
     commands: list[CommandDict]
@@ -102,11 +97,8 @@ class TotalsDict(TypedDict):
 
 class TopCredentialDict(TypedDict):
     username: str | None
-    # None when grouping by username alone; the attempted password otherwise.
     password: str | None
     count: int
-    # Distinct source IPs that tried this credential; only populated for the
-    # ip_fanout metric (None otherwise so the attempts view skips the join).
     distinct_ips: int | None
 
 

@@ -13,6 +13,7 @@ from src.schemas.sessions import (
     SessionsListResponse,
 )
 from src.services.sessions import get_session_detail, get_sessions_paginated
+from src.services.types import SessionDetailDict
 
 sessions_bp = Blueprint(
     "sessions",
@@ -56,10 +57,10 @@ def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
 @sessions_bp.alt_response(404, "NotFound")
 @sessions_bp.alt_response(422, "UnprocessableEntity")
 @sessions_bp.alt_response(500, "InternalServerError")
-def session_detail(_path_args: dict[str, Any], session_id: str) -> dict[str, Any]:
+def session_detail(_path_args: dict[str, Any], session_id: str) -> SessionDetailDict:
     """Return full detail for a single session."""
     result = get_session_detail(get_db(), session_id)
     if result is None:
         current_app.logger.info("session not found id=%r", session_id)
         abort(404, message="Session not found")
-    return dict(result)  # type: ignore[arg-type]
+    return result

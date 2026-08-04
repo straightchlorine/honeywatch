@@ -13,13 +13,10 @@ if TYPE_CHECKING:
 
 
 class SshClient(Base):
-    """Per-session SSH client identity.
+    """Per-session SSH client identity (Cowrie's `client.version` + `client.kex`).
 
-    Based on Cowrie's `cowrie.client.version` and ``cowrie.client.kex``.
-    One row per session.
-
-    Two events arriving separately upsetr it's columns. `first_seen` stamped
-    once the first of the two events lands.
+    One row per session; the two events fill in separately, `first_seen` is
+    stamped by whichever lands first.
     """
 
     __tablename__ = "ssh_clients"
@@ -40,6 +37,3 @@ class SshClient(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="ssh_client", uselist=False)
-
-
-__all__ = ["SshClient"]

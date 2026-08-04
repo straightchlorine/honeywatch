@@ -4,10 +4,12 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-
-# Imported for the side effect: registers every table on Base.metadata.
-from src import models  # noqa: F401
 from src.extensions import Base
+from src.models import AuthAttempt, Command, Download, GeoLocation, Session
+
+# Registering each model with Base.metadata.
+for _model in (AuthAttempt, Command, Download, GeoLocation, Session):
+    assert _model.__tablename__ in Base.metadata.tables, _model
 
 config = context.config
 if config.config_file_name is not None:
@@ -15,8 +17,6 @@ if config.config_file_name is not None:
 
 target_metadata = Base.metadata
 
-# Read at migration time, not via src.config.Config: Config binds POSTGRES_* at
-# import, and conftest re-points those vars at the test DB after that import.
 pg_user = os.environ.get("POSTGRES_USER", "honeywatch")
 pg_pass = os.environ.get("POSTGRES_PASSWORD", "testpass")
 pg_host = os.environ.get("POSTGRES_HOST", "localhost")
@@ -25,6 +25,18 @@ pg_db = os.environ.get("POSTGRES_DB", "honeywatch")
 
 database_url = f"postgresql+psycopg://{pg_user}:{pg_pass}@{pg_host}:{pg_port}/{pg_db}"
 config.set_main_option("sqlalchemy.url", database_url)
+
+
+def run_migrations_offline() -> None:
+    url = config.get_main_option("sqlalchemy.url")
+    context.configure(
+        url=url,
+        target_metadata=target_metadata,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+    )
+    with context.begin_transaction():
+        context.run_migrations()
 
 
 def run_migrations_online() -> None:
@@ -40,5 +52,6 @@ def run_migrations_online() -> None:
 
 
 if context.is_offline_mode():
-    raise SystemExit("offline (--sql) mode is not used in this project")
-run_migrations_online()
+    run_migrations_offline()
+else:
+    run_migrations_online()

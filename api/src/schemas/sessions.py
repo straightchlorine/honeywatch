@@ -3,7 +3,7 @@ from __future__ import annotations
 from marshmallow import fields, validate
 
 from src.schemas.common import BaseSchema, PaginationMeta, country_filter_field
-from src.services.categories import SESSION_CATEGORIES
+from src.services.categories import CATEGORY_DESCRIPTION, SESSION_CATEGORIES
 
 
 class AuthAttemptResponse(BaseSchema):
@@ -116,8 +116,8 @@ class DownloadResponse(BaseSchema):
     )
 
 
-class SessionSummaryResponse(BaseSchema):
-    """List-endpoint shape. src_ip deliberately omitted (privacy gate)."""
+class _SessionResponseBase(BaseSchema):
+    """Fields shared by the list and detail session shapes."""
 
     id = fields.Str(
         required=True,
@@ -175,6 +175,11 @@ class SessionSummaryResponse(BaseSchema):
             "example": "2026-05-28T12:40:00Z",
         },
     )
+
+
+class SessionSummaryResponse(_SessionResponseBase):
+    """List-endpoint shape. src_ip deliberately omitted (privacy gate)."""
+
     auth_attempt_count = fields.Int(
         required=True,
         metadata={
@@ -201,78 +206,14 @@ class SessionSummaryResponse(BaseSchema):
     category = fields.Str(
         required=True,
         validate=validate.OneOf(list(SESSION_CATEGORIES)),
-        metadata={
-            "description": (
-                "Session classification (mutually exclusive): 'active' = ran at "
-                "least one command; 'login' = login accepted but no commands; "
-                "'failed' = login attempts made, none accepted; 'probe' = "
-                "connection only, no login attempts."
-            ),
-            "example": "active",
-        },
+        metadata={"description": CATEGORY_DESCRIPTION, "example": "active"},
     )
 
 
-class SessionDetailResponse(BaseSchema):
+class SessionDetailResponse(_SessionResponseBase):
     """Detail-endpoint shape. src_ip and dst_ip deliberately omitted: no IP
     address (attacker source nor honeypot destination) crosses the API."""
 
-    id = fields.Str(
-        required=True,
-        metadata={"description": "Honeypot session identifier.", "example": "abc123"},
-    )
-    src_port = fields.Int(
-        required=True,
-        metadata={
-            "description": "Source TCP port of the attacker connection.",
-            "example": 51234,
-        },
-    )
-    dst_port = fields.Int(
-        required=True,
-        metadata={
-            "description": "Destination TCP port that received the connection.",
-            "example": 22,
-        },
-    )
-    protocol = fields.Str(
-        required=True,
-        metadata={"description": "Application protocol observed.", "example": "ssh"},
-    )
-    country_code = fields.Str(
-        required=True,
-        allow_none=True,
-        metadata={
-            "description": "ISO 3166-1 alpha-2 country code of the source IP.",
-            "example": "US",
-        },
-    )
-    country = fields.Str(
-        required=True,
-        allow_none=True,
-        metadata={
-            "description": "Human-readable country name of the source IP.",
-            "example": "United States",
-        },
-    )
-    started_at = fields.DateTime(
-        required=True,
-        allow_none=True,
-        format="iso",
-        metadata={
-            "description": "ISO 8601 UTC timestamp when the session began.",
-            "example": "2026-05-28T12:34:00Z",
-        },
-    )
-    ended_at = fields.DateTime(
-        required=True,
-        allow_none=True,
-        format="iso",
-        metadata={
-            "description": "ISO 8601 UTC timestamp when the session ended.",
-            "example": "2026-05-28T12:40:00Z",
-        },
-    )
     sensor = fields.Str(
         required=True,
         allow_none=True,
@@ -329,15 +270,7 @@ class SessionsListQuery(BaseSchema):
         load_default=None,
         allow_none=True,
         validate=validate.OneOf(list(SESSION_CATEGORIES)),
-        metadata={
-            "description": (
-                "Filter by session classification (mutually exclusive): "
-                "'active' = ran at least one command; 'login' = login accepted "
-                "but no commands; 'failed' = login attempts made, none accepted; "
-                "'probe' = connection only, no login attempts."
-            ),
-            "example": "active",
-        },
+        metadata={"description": CATEGORY_DESCRIPTION, "example": "active"},
     )
     sort = fields.Str(
         load_default="recent",

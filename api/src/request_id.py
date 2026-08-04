@@ -1,8 +1,8 @@
 """Request correlation id middleware.
 
-Reads inbound ``X-Request-Id`` (caps length, strips non-alnum-dash to defeat
-header smuggling and log-injection), mints a fresh UUID4 when missing,
-exposes on ``flask.g.request_id``, and echoes on the response.
+Reads inbound `X-Request-Id` (caps length, strips non-alnum-dash),
+mints a fresh UUID4 when missing, exposes on `flask.g.request_id`,
+and echoes on the response.
 """
 
 from __future__ import annotations
