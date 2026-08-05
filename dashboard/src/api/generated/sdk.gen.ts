@@ -95,5 +95,8 @@ export const healthLive = <ThrowOnError extends boolean = false>(options?: Optio
 
 /**
  * Return 200 when the DB is reachable, 503 otherwise.
+ *
+ * Unlike /health this touches the database, so gate traffic on this probe
+ * and keep restarts on /health - a DB blip is not a dead process.
  */
 export const healthReady = <ThrowOnError extends boolean = false>(options?: Options<HealthReadyData, ThrowOnError>): RequestResult<HealthReadyResponses, HealthReadyErrors, ThrowOnError> => (options?.client ?? client).get<HealthReadyResponses, HealthReadyErrors, ThrowOnError>({ url: '/health/ready', ...options });

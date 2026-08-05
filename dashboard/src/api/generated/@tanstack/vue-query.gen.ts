@@ -369,6 +369,9 @@ export const healthReadyQueryKey = (options?: Options<HealthReadyData>) => creat
 
 /**
  * Return 200 when the DB is reachable, 503 otherwise.
+ *
+ * Unlike /health this touches the database, so gate traffic on this probe
+ * and keep restarts on /health - a DB blip is not a dead process.
  */
 export const healthReadyOptions = (options?: Options<HealthReadyData>) => queryOptions<HealthReadyResponse, HealthReadyError, HealthReadyResponse, ReturnType<typeof healthReadyQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

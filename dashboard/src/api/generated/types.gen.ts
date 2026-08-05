@@ -120,7 +120,7 @@ export type CountriesResponse = {
      */
     countries: Array<CountryRowResponse>;
     /**
-     * Share of sessions with geolocation resolved (null when there are no sessions). Geo enrichment lags ingestion, so the remainder is bucketed under Unknown -- surfaced so counts are not read as totals.
+     * Percent of sessions with resolved geolocation (null if no sessions); the rest falls under the Unknown bucket.
      */
     geo_resolved_pct: number | null;
     /**
@@ -378,7 +378,7 @@ export type SessionSummaryResponse = {
      */
     auth_attempt_count: number;
     /**
-     * Session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.
+     * Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.
      */
     category: 'active' | 'login' | 'failed' | 'probe';
     /**
@@ -455,7 +455,7 @@ export type TopCredentialResponse = {
      */
     count: number;
     /**
-     * Distinct source addresses that tried this credential; only populated for the ip_fanout metric (null otherwise). A high value signals a distributed botnet sharing one credential.
+     * Distinct source IPs that tried this credential (ip_fanout metric only, null otherwise); high values suggest a botnet.
      */
     distinct_ips: number | null;
     /**
@@ -541,7 +541,7 @@ export type ListSessionsData = {
          */
         country?: string | null;
         /**
-         * Filter by session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.
+         * Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.
          */
         category?: 'active' | 'login' | 'failed' | 'probe' | null;
         /**
