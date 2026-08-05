@@ -15,9 +15,6 @@ RUN uv sync --frozen --no-dev
 # Keeping Rust uv deps out of scans
 RUN rm -f /bin/uv /bin/uvx && rm -rf /root/.cache/uv
 
-COPY entrypoint.sh /entrypoint.sh
-RUN chmod +x /entrypoint.sh
-
 RUN chown -R honeywatch:honeywatch /app
 
 USER honeywatch
