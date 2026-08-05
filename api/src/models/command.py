@@ -28,6 +28,3 @@ class Command(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="commands")
-
-
-__all__ = ["Command"]

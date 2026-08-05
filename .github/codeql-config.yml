@@ -17,7 +17,6 @@ paths-ignore:
   - "**/test_*.py"
   - "**/tests/"
   - "**/node_modules/"
-  - "grafana/"
   - "cowrie/"
   - "db/"
   - "**/alembic/"

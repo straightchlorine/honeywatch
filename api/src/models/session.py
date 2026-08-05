@@ -55,6 +55,3 @@ class Session(Base):
     direct_tcpip_requests: Mapped[list[DirectTcpipRequest]] = relationship(
         back_populates="session", cascade="all, delete-orphan"
     )
-
-
-__all__ = ["Session"]

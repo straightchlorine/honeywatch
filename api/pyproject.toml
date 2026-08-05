@@ -4,14 +4,13 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "honeywatch-api"
-version = "0.1.0"
+version = "v0.6.0"
 description = "REST API for the honeywatch honeypot monitoring system"
 requires-python = ">=3.13"
 dependencies = [
     "flask>=3.1",
     "flask-smorest>=0.47,<0.48",
     "marshmallow>=4,<5",
-    "apispec[marshmallow]>=6,<7",
     "sqlalchemy>=2.0",
     "psycopg[binary]>=3.2",
     "alembic>=1.14",
@@ -35,6 +34,8 @@ select = ["E", "F", "I", "W"]
 
 [tool.pyright]
 include = ["src"]
+venvPath = "."
+venv = ".venv"
 typeCheckingMode = "strict"
 pythonVersion = "3.13"
 reportUndefinedVariable = "warning"

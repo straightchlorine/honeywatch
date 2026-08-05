@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "honeywatch-ingestor"
-version = "0.1.0"
+version = "v0.6.0"
 requires-python = ">=3.13"
 dependencies = [
     "psycopg[binary]>=3.3.4,<4",
@@ -29,6 +29,8 @@ target-version = "py313"
 select = ["E", "F", "I"]
 
 [tool.pyright]
+venvPath = "."
+venv = ".venv"
 pythonVersion = "3.13"
 typeCheckingMode = "basic"
 exclude = ["build", "**/__pycache__", ".venv"]

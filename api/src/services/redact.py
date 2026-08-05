@@ -1,15 +1,8 @@
-"""Server-side IP redaction for attacker-controlled free text.
+"""Blot IP literals out of attacker-controlled free text.
 
-Honeywatch's privacy posture is that no IP address ever crosses the API -- not
-the attacker source, not the honeypot destination, and not the C2 / payload
-hosts an attacker types inside captured command input or download URLs (e.g.
-``wget https://34.11.136.102/x``). Connection IPs are dropped by the serializers;
-this module blots IP literals embedded *within* the free-text fields so they are
-gone before the JSON leaves the process -- the API response, ``/redoc`` and
-``/swagger`` all see only the blot token.
-
-This is the Python mirror of ``dashboard/src/utils/redactIps.ts``; keep the two
-in sync. The frontend redaction remains as defense-in-depth + blot styling.
+Commands and download URLs are whatever the attacker typed, so they can carry
+third-party IPs that must not reach a client. Mirrors
+dashboard/src/utils/redactIps.ts - keep the two in sync.
 """
 
 from __future__ import annotations
@@ -23,11 +16,7 @@ _IPV4 = (
     r"(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
 )
 
-# IPv6, canonical matcher. The first three branches cover the legacy
-# IPv4-in-IPv6 forms so a trailing dotted-quad is consumed as part of the literal
-# (never left in cleartext after the v6 prefix is blotted). Every branch is 8
-# groups or contains a ``::`` run, so a decimal clock string like ``13:41:49``
-# can never match.
+# IPv6, canonical matcher.
 _IPV6_CORE = "|".join(
     [
         r"(?:[0-9A-Fa-f]{1,4}:){6}" + _IPV4,
@@ -47,14 +36,13 @@ _IPV6_CORE = "|".join(
 _IPV6 = r"(?<![0-9A-Fa-f:])(?:" + _IPV6_CORE + r")(?:%[0-9A-Za-z]+)?(?![0-9A-Fa-f:])"
 
 # Standalone dotted-quad. The lookbehind/lookahead reject a 5th adjacent octet so
-# version strings like ``lib.so.1.2.3.4.5`` are not partially blotted, while a
+# version strings like `lib.so.1.2.3.4.5` are not partially blotted, while a
 # real IP at a sentence end still matches.
 _IPV4_STANDALONE = r"(?<!\d\.)\b" + _IPV4 + r"\b(?!\.\d)"
 
 # Alternate-encoding hosts only carry meaning right after a URL scheme: decimal
-# (``http://2130706433/``), hex (``http://0x7f000001/``), octal, or dotted-hex
-# (``http://0x7f.1/``). The negative lookahead stops the host rule swallowing the
-# leading group of an unbracketed IPv6 literal.
+# (`http://2130706433/`), hex (`http://0x7f000001/`), octal, or dotted-hex
+# (`http://0x7f.1/`).
 _NUMERIC_HOST = (
     r"(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d{1,10})"
     r"(?:\.(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d{1,10})){0,3}"
@@ -88,11 +76,10 @@ def _replace(m: re.Match[str]) -> str:
 
 
 def redact_ips(text: str | None) -> str | None:
-    """Return ``text`` with every IP literal replaced by :data:`IP_BLOT`.
+    """Return `text` with every IP literal replaced by IP_BLOT.
 
-    Handles IPv4, IPv6 (including embedded-v4 and bracketed/userinfo URL forms),
-    and alternate-encoding numeric URL hosts. ``None`` passes through unchanged.
-    Idempotent: text that is already blotted is returned unchanged.
+    Covers IPv4, IPv6 (including embedded-v4 and URL forms) and numeric URL
+    hosts. None passes through, and already-blotted text is unchanged.
     """
     if text is None:
         return None

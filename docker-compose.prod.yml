@@ -1,8 +1,10 @@
-# VPS 1 (honeypot) -- production deployment
-# Usage: docker compose -f docker-compose.prod.yml up -d
+# VPS 1 (production honeypot)
+# Usage: API_VERSION="$TAG" INGESTOR_VERSION="$TAG" \
+#        docker compose -f docker-compose.prod.yml up -d
+# $TAG such that it contains the release number for example $TAG="v0.5.7"
 
 services:
-  # -- Honeypot (isolated network - no access to backend services) --
+  # -- Honeypot (isolated) --
   cowrie:
     image: cowrie/cowrie:sha-cd0770d@sha256:bf371c37638bf8b49efed87b66f5d0bf48432a499c6b3fa3c44c03ebf02cc13a
     container_name: honeywatch-cowrie
@@ -69,13 +71,11 @@ services:
     cap_drop:
       - ALL
     cap_add:
-      # NET_ADMIN: iptables rule installation in start.sh (filter
-      #            table + state/limit/owner matchers). NET_RAW is
-      #            intentionally NOT granted - tinyproxy uses regular
-      #            sockets and our iptables operations don't need it.
-      # SETGID + SETUID: setpriv drops to tinyproxy:tinyproxy
-      # SETPCAP:        setpriv clears the capability bounding set
-      # After setpriv exec, the running tinyproxy has no caps in any set.
+      # NET_ADMIN: iptables rule installation (start.sh) NET_RAW omitted;
+      #            uses regular sockets - iptable operations don't need it
+      # SETGID:    setpriv drops to tinyproxy:tinyproxy
+      # SETUID:    ^
+      # SETPCAP:   setpriv clears the capability bounding set
       - NET_ADMIN
       - SETGID
       - SETUID
@@ -94,7 +94,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # -- Reverse proxy (binds only to the Headscale tailnet interface) --
+  # -- Reverse proxy (binds only to the tailnet) --
   proxy:
     image: nginx:1.29-alpine-slim@sha256:c9366b8c560169b101ca0e5422ed063b20779e6454c2326b9c9704225c9b0c08
     container_name: honeywatch-proxy
@@ -102,17 +102,11 @@ services:
     depends_on:
       api:
         condition: service_healthy
-      grafana:
-        condition: service_healthy
     ports:
       - "${TS_IP:?TS_IP must be set to the honeypot's Headscale tailnet IP}:5000:5000"
-      - "${TS_IP:?TS_IP must be set to the honeypot's Headscale tailnet IP}:3000:3000"
       - "127.0.0.1:5000:5000"
-      - "127.0.0.1:3000:3000"
     volumes:
-      # `:Z` private label - nginx is the only consumer (see cowrie block).
       - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro,Z
-      # Shared security-header snippet
       - ./proxy/security-headers.conf:/etc/nginx/security-headers.conf:ro,Z
     networks:
       - backend
@@ -143,7 +137,7 @@ services:
         max-size: "10m"
         max-file: "3"
 
-  # -- Backend services (internal only - no internet access) --
+  # -- Backend services (internal only) --
   postgres:
     image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
     container_name: honeywatch-db
@@ -193,16 +187,9 @@ services:
       timeout: 3s
       retries: 5
 
-  # One-shot: runs Alembic migrations as the Postgres bootstrap user
-  #
-  # Tables are created by the role whose ALTER DEFAULT PRIVILEGES
-  # init.sql configured (honeywatch_ingestor gets INSERT/SELECT,
-  # honeywatch_api gets SELECT).
-  #
-  # Exits 0 on success; api and ingestor wait for
-  # service_completed_successfully.
+  # - Migration runner -
   api-migrate:
-    image: ghcr.io/straightchlorine/honeywatch/api:${API_VERSION:?API_VERSION must be set to the released API image tag}
+    image: ghcr.io/straightchlorine/honeywatch/api:${API_VERSION:?API_VERSION must be set}
     container_name: honeywatch-api-migrate
     restart: "no"
     depends_on:
@@ -237,8 +224,9 @@ services:
         max-file: "3"
     entrypoint: ["alembic", "upgrade", "head"]
 
+  # - Ingestor service -
   ingestor:
-    image: ghcr.io/straightchlorine/honeywatch/ingestor:${INGESTOR_VERSION:?INGESTOR_VERSION must be set to the released ingestor image tag}
+    image: ghcr.io/straightchlorine/honeywatch/ingestor:${INGESTOR_VERSION:?INGESTOR_VERSION must be set}
     container_name: honeywatch-ingestor
     restart: unless-stopped
     depends_on:
@@ -277,8 +265,9 @@ services:
         max-size: "10m"
         max-file: "3"
 
+  # - API service -
   api:
-    image: ghcr.io/straightchlorine/honeywatch/api:${API_VERSION:?API_VERSION must be set to the released API image tag}
+    image: ghcr.io/straightchlorine/honeywatch/api:${API_VERSION:?API_VERSION must be set}
     container_name: honeywatch-api
     restart: unless-stopped
     depends_on:
@@ -320,61 +309,21 @@ services:
       timeout: 3s
       retries: 3
 
-  grafana:
-    image: grafana/grafana:11.5.2@sha256:8b37a2f028f164ce7b9889e1765b9d6ee23fec80f871d156fbf436d6198d32b7
-    container_name: honeywatch-grafana
-    restart: unless-stopped
-    environment:
-      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
-      GF_AUTH_ANONYMOUS_ENABLED: "false"
-      GF_USERS_ALLOW_SIGN_UP: "false"
-    volumes:
-      - grafana-data:/var/lib/grafana
-      - ./grafana/dashboards:/etc/grafana/provisioning/dashboards:ro,Z
-      - ./grafana/datasources:/etc/grafana/provisioning/datasources:ro,Z
-    networks:
-      - backend
-    read_only: true
-    tmpfs:
-      - /tmp
-    cap_drop:
-      - ALL
-    security_opt:
-      - no-new-privileges:true
-    deploy:
-      resources:
-        limits:
-          memory: 256M
-          cpus: "0.5"
-          pids: 100
-    logging:
-      driver: json-file
-      options:
-        max-size: "10m"
-        max-file: "3"
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://127.0.0.1:3000/api/health || exit 1"]
-      interval: 10s
-      timeout: 3s
-      retries: 3
-
 volumes:
   cowrie-logs:
   cowrie-state:
   postgres-data:
-  grafana-data:
   geoip-data:
 
 networks:
   honeypot:
     driver: bridge
-    # Cowrie has no direct internet access; all egress must traverse
-    # the egress-proxy sidecar which is dual-homed on `egress`.
+    # Cowrie has no direct internet access; all egress traverses through the
+    # egress-proxy.
     internal: true
   egress:
     driver: bridge
-    # Only the egress-proxy sits on this bridge; it is the tinyproxy
-    # container's one path to the internet.
+    # Only the egress-proxy sits on this bridge; only path to the internet.
     internal: false
   backend:
     driver: bridge
@@ -384,10 +333,8 @@ networks:
     internal: false
   cowrie-ingress:
     # Cowrie's only non-internal interface.
-    # Docker installs the DNAT chain so `:22` ingress reaches `cowrie:2222`.
     #
-    # Masquerade is disabled - any outbound cowrie initiates leaves with an
-    # RFC1918 source and dies upstream (firewalld)
+    # Masquerade disabled: any outbound cowrie initiates leaves with an RFC1918 source and dies upstream (firewalld)
     driver: bridge
     internal: false
     driver_opts:

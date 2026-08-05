@@ -24,10 +24,11 @@ def health_check() -> dict[str, str]:
 @health_bp.response(200, ReadyResponse)
 @health_bp.alt_response(503, schema=UnavailableResponse)
 def health_ready() -> Any:
-    """Return 200 when the DB is reachable, 503 otherwise."""
-    # NOTE (not in spec): kept distinct from /health so a transient DB blip
-    # does not cascade through docker compose service_healthy dependencies.
-    # Probe bound at 500ms so pool exhaustion fails fast.
+    """Return 200 when the DB is reachable, 503 otherwise.
+
+    Unlike /health this touches the database, so gate traffic on this probe
+    and keep restarts on /health - a DB blip is not a dead process.
+    """
     try:
         session_factory = get_session_factory()
         with session_factory() as db:
@@ -39,7 +40,5 @@ def health_ready() -> Any:
             type(exc).__name__,
             str(exc)[:200],
         )
-        # jsonify (not bare dict) so flask-smorest's @response(200, ReadyResponse)
-        # does not reshape the 503 body through the success schema.
         return jsonify({"status": "unavailable", "reason": "db"}), 503
     return {"status": "ready"}

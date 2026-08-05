@@ -7,7 +7,7 @@ Create Date: 2026-06-01 22:30:00.000000
 The Credentials page "credentials that worked" leaderboard runs
 `SELECT username, password, count(*) FROM auth_attempts WHERE success
 GROUP BY username, password ORDER BY count(*) DESC LIMIT N`
-(StatsService.top_credentials(outcome="success")).
+(stats.credentials.top_credentials(outcome="success")).
 
 Accepted attempts are a tiny fraction of the table, so a *partial* index over
 just the `success = true` rows keeps that subset cheap to scan as the table grows.

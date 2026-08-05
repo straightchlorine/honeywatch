@@ -1,7 +1,7 @@
-"""Top-level openapi-dump helpers.
+"""Helpers behind the `flask openapi-dump` command.
 
-Extracted from ``app.py`` so the dump contract (sort_keys=True, trailing
-newline, ``servers`` stripped) is unit-testable without booting Flask.
+Kept out of app.py so the dump contract (sorted keys, trailing newline, no
+`servers` block) can be tested without booting Flask.
 """
 
 from __future__ import annotations
@@ -18,9 +18,9 @@ from flask_smorest import Api
 def build_spec_dict(smorest_api: Api) -> dict[str, Any]:
     """Materialize the flask-smorest spec to a plain dict.
 
-    Single extraction point shared by the runtime cache (``app.py``) and the
-    dump CLI, so the served spec and the committed snapshot can never diverge in
-    how the spec is built. Raises ``RuntimeError`` if the spec is uninitialised.
+    Shared by the runtime cache in app.py and the dump CLI so the served spec
+    and the committed snapshot are built the same way. Raises RuntimeError if
+    the spec is uninitialised.
     """
     spec_obj = smorest_api.spec
     if spec_obj is None:
@@ -29,10 +29,10 @@ def build_spec_dict(smorest_api: Api) -> dict[str, Any]:
 
 
 def dump_spec(spec: dict[str, Any], output: pathlib.Path) -> int:
-    """Write ``spec`` to ``output`` with the deterministic dump contract.
+    """Write `spec` to `output` deterministically; returns bytes written.
 
-    Returns the number of bytes written. Raises ``OSError`` on disk errors
-    (callers should map to ``click.ClickException`` for CI-friendly errors).
+    `servers` is stripped because it holds the host the spec was dumped from,
+    which would make the committed snapshot environment-dependent.
     """
     body = json.dumps(_strip_servers(spec), indent=2, sort_keys=True) + "\n"
     output.write_text(body, encoding="utf-8")

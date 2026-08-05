@@ -1,5 +1,11 @@
 import json
+from datetime import datetime, timezone
 from typing import Any
+
+from src.models.command import Command
+from src.models.download import Download
+from src.models.geo_location import GeoLocation
+from src.models.session import Session as HoneypotSession
 
 
 def test_list_sessions(client: Any, seed_data: Any) -> None:
@@ -13,7 +19,7 @@ def test_list_sessions(client: Any, seed_data: Any) -> None:
 
 
 def test_list_sessions_no_src_ip_leak(client: Any, seed_data: Any) -> None:
-    """Privacy contract: ``src_ip`` must never appear in list responses."""
+    """Privacy contract: `src_ip` must never appear in list responses."""
     response = client.get("/api/v1/sessions/")
     assert response.status_code == 200
     assert b"src_ip" not in response.data
@@ -44,50 +50,11 @@ def test_list_sessions_summary_classification_fields(
 
 
 def test_category_field_agrees_with_filter(
-    client: Any, seed_data: Any, db_session: Any
+    client: Any, seed_data: Any, failed_and_probe_seed: Any
 ) -> None:
     """The serialized `category` must match the SQL `?category=` filter for every
-    class -- guards the two from drifting (they encode the same partition)."""
-    del seed_data
-    from datetime import datetime, timezone
-
-    from src.models.auth_attempt import AuthAttempt
-    from src.models.session import Session as HoneypotSession
-
-    now = datetime.now(timezone.utc)
-    # Seed adds active + login; add a failed and a probe so all four are present.
-    db_session.add(
-        HoneypotSession(
-            id="failsess001",
-            src_ip="203.0.113.9",
-            src_port=1,
-            dst_port=22,
-            protocol="ssh",
-            started_at=now,
-        )
-    )
-    db_session.add(
-        HoneypotSession(
-            id="probesess01",
-            src_ip="203.0.113.10",
-            src_port=2,
-            dst_port=22,
-            protocol="ssh",
-            started_at=now,
-        )
-    )
-    db_session.flush()
-    db_session.add(
-        AuthAttempt(
-            session_id="failsess001",
-            username="root",
-            password="x",
-            success=False,
-            timestamp=now,
-        )
-    )
-    db_session.flush()
-
+    class - guards the two from drifting (they encode the same partition)."""
+    del seed_data, failed_and_probe_seed
     for cat in ("active", "login", "failed", "probe"):
         items = client.get(f"/api/v1/sessions/?category={cat}").get_json()["items"]
         assert items, f"expected at least one {cat} session"
@@ -113,52 +80,11 @@ def test_list_sessions_category_login(client: Any, seed_data: Any) -> None:
 
 
 def test_list_sessions_category_failed_and_probe(
-    client: Any, seed_data: Any, db_session: Any
+    client: Any, seed_data: Any, failed_and_probe_seed: Any
 ) -> None:
-    """The seed has no failed/probe session; insert one of each inline.
-
-    'failed' = login attempts made, none accepted, no commands.
-    'probe'  = a bare connection with no auth attempts at all.
-    """
-    del seed_data
-    from datetime import datetime, timezone
-
-    from src.models.auth_attempt import AuthAttempt
-    from src.models.session import Session as HoneypotSession
-
-    now = datetime.now(timezone.utc)
-    db_session.add(
-        HoneypotSession(
-            id="failsess001",
-            src_ip="203.0.113.9",
-            src_port=1,
-            dst_port=22,
-            protocol="ssh",
-            started_at=now,
-        )
-    )
-    db_session.add(
-        HoneypotSession(
-            id="probesess01",
-            src_ip="203.0.113.10",
-            src_port=2,
-            dst_port=22,
-            protocol="ssh",
-            started_at=now,
-        )
-    )
-    db_session.flush()
-    db_session.add(
-        AuthAttempt(
-            session_id="failsess001",
-            username="root",
-            password="x",
-            success=False,
-            timestamp=now,
-        )
-    )
-    db_session.flush()
-
+    """'failed' = login attempts made, none accepted, no commands.
+    'probe'  = a bare connection with no auth attempts at all."""
+    del seed_data, failed_and_probe_seed
     failed = client.get("/api/v1/sessions/?category=failed").get_json()
     assert [s["id"] for s in failed["items"]] == ["failsess001"]
     probe = client.get("/api/v1/sessions/?category=probe").get_json()
@@ -191,11 +117,6 @@ def test_list_sessions_sort_country_alphabetical_two_countries(
     """Two geo-enriched countries exercise the A-Z primary ordering (the seed
     only has US-vs-NULL, so a reversed sort would still pass without this)."""
     del seed_data
-    from datetime import datetime, timezone
-
-    from src.models.geo_location import GeoLocation
-    from src.models.session import Session as HoneypotSession
-
     now = datetime.now(timezone.utc)
     db_session.add(
         HoneypotSession(
@@ -263,12 +184,6 @@ def test_session_detail_redacts_ips_in_commands_and_downloads(
 ) -> None:
     """C2 / payload IPs an attacker typed must be blotted server-side, so the raw
     IP never reaches the API response (nor /redoc, /swagger, or a direct curl)."""
-    from datetime import datetime, timezone
-
-    from src.models.command import Command
-    from src.models.download import Download
-    from src.models.session import Session as HoneypotSession
-
     now = datetime.now(timezone.utc)
     db_session.add(
         HoneypotSession(
@@ -335,15 +250,11 @@ def test_get_session_malformed_id(client: Any) -> None:
 def test_session_detail_no_src_ip_leak(
     client: Any, seed_data: Any, db_session: Any
 ) -> None:
-    """Privacy contract: ``src_ip`` must never appear in detail responses.
+    """Privacy contract: `src_ip` must never appear in detail responses.
 
     Seeded ids contain hyphens (rejected by the route's regex), so we insert a
     matching-pattern session for this assertion.
     """
-    from datetime import datetime, timezone
-
-    from src.models.session import Session as HoneypotSession
-
     db_session.add(
         HoneypotSession(
             id="sessAAA001",

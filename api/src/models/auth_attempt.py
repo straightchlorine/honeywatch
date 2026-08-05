@@ -29,6 +29,3 @@ class AuthAttempt(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="auth_attempts")
-
-
-__all__ = ["AuthAttempt"]

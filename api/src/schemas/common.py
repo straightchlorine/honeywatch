@@ -9,11 +9,7 @@ from marshmallow import Schema, fields, validate
 class CountryCodeField(fields.String):
     """Country-code string that upper-cases on load.
 
-    MaxMind stores alpha-2 codes upper-case, but the validator accepts either
-    case; without this a lowercase ``?country=us`` would pass validation and
-    then silently match nothing. Upper-casing during deserialization (before
-    the regex validator runs) makes the filter case-insensitive. The ``"??"``
-    Unknown sentinel is unaffected (``"??".upper() == "??"``).
+    MaxMind stores alpha-2 codes upper-case. Validator accepts either.
     """
 
     def _deserialize(
@@ -23,17 +19,14 @@ class CountryCodeField(fields.String):
         data: Mapping[str, Any] | None,
         **kwargs: Any,
     ) -> str:
-        # None is handled by Field.deserialize before _deserialize runs, so the
-        # parent always returns a str here.
         return super()._deserialize(value, attr, data, **kwargs).upper()
 
 
 def country_filter_field() -> fields.Str:
-    """Fresh optional alpha-2 country filter field (one instance per schema).
+    """Optional alpha-2 country filter.
 
-    Marshmallow fields are bound to their owning schema, so each query schema
-    needs its own instance; this factory keeps the regex and metadata defined
-    in exactly one place.
+    A factory, not a shared instance: marshmallow binds a field to its owning
+    schema, so reusing one across schemas breaks.
     """
     return CountryCodeField(
         load_default=None,
@@ -46,12 +39,22 @@ def country_filter_field() -> fields.Str:
     )
 
 
-def country_or_unknown_field() -> fields.Str:
-    """Country filter that also accepts ``"??"`` -- the geo-less bucket.
+def top_n_field(
+    default: int, description: str = "Number of top entries to return"
+) -> fields.Int:
+    """Top-N limit field; a factory for the same reason as above."""
+    return fields.Int(
+        load_default=default,
+        validate=validate.Range(min=1, max=100),
+        metadata={"description": f"{description} (max 100).", "example": default},
+    )
 
-    Same as :func:`country_filter_field`, but the credential/ASN leaderboards
-    let the Countries page drill into the "Unknown" row (sessions whose source
-    IP has no resolved country), addressed by the ``"??"`` sentinel.
+
+def country_or_unknown_field() -> fields.Str:
+    """Country filter that also accepts "??".
+
+    The credential and ASN leaderboards are reachable by clicking a row on the
+    Countries page, including its Unknown row - "??" addresses that bucket.
     """
     return CountryCodeField(
         load_default=None,
@@ -68,12 +71,10 @@ def country_or_unknown_field() -> fields.Str:
 
 
 class BaseSchema(Schema):
-    """Project-wide base schema.
+    """Shared base for every schema.
 
-    Marshmallow 4 preserves field declaration order natively, so OpenAPI
-    properties stay in a stable order across regenerations without any ``Meta``
-    config (the old ``ordered = True`` is a no-op on MM4). Kept as the shared
-    base for future cross-cutting schema config.
+    Empty on purpose: marshmallow 4 keeps field declaration order, so the
+    generated OpenAPI is stable without any Meta config.
     """
 
 

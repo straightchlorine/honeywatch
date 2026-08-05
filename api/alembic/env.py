@@ -7,12 +7,11 @@ from alembic import context
 from src.extensions import Base
 from src.models import AuthAttempt, Command, Download, GeoLocation, Session
 
-# Touch each mapped class so its mapper is registered with Base.metadata.
+# Registering each model with Base.metadata.
 for _model in (AuthAttempt, Command, Download, GeoLocation, Session):
     assert _model.__tablename__ in Base.metadata.tables, _model
 
 config = context.config
-
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 

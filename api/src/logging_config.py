@@ -12,11 +12,10 @@ from flask import g, has_request_context
 
 
 class RequestIdFilter(logging.Filter):
-    """Inject ``%(request_id)s`` into log records.
+    """Make `%(request_id)s` usable in every format string.
 
-    Reads ``flask.g.request_id`` when a request is in flight (see
-    :mod:`src.request_id`); otherwise emits ``-`` so the format string never
-    raises on background / CLI log lines.
+    Falls back to "-" outside a request so CLI and boot-time records do not
+    blow up on the missing field.
     """
 
     def filter(self, record: logging.LogRecord) -> bool:
@@ -28,8 +27,7 @@ class RequestIdFilter(logging.Filter):
 
 
 class JsonFormatter(logging.Formatter):
-    """Emit one JSON object per record so a log pipeline (Loki/ELK) can index
-    ``request_id``, ``level``, ``logger`` and ``message`` without regex."""
+    """One JSON object per record, so a log pipeline indexes fields directly."""
 
     def format(self, record: logging.LogRecord) -> str:
         payload: dict[str, Any] = {
@@ -44,18 +42,16 @@ class JsonFormatter(logging.Formatter):
         return json.dumps(payload, default=str)
 
 
-def build_logging_config(level: str | None = None) -> dict[str, Any]:
-    """Build the ``dictConfig`` dict for the API's structured logging.
+def build_logging_config() -> dict[str, Any]:
+    """Build the dictConfig for the API's logging.
 
-    Returned (not applied) so gunicorn can hand it to its own
-    ``logconfig_dict`` and route ``gunicorn.access`` / ``gunicorn.error``
-    through the same JSON handler as the Flask app (see ``gunicorn.conf.py``),
-    giving prod one structured log stream instead of two mismatched formats.
+    Returned rather than applied so gunicorn.conf.py can pass the same dict to
+    logconfig_dict and route its access/error logs through this handler.
 
-    ``LOG_LEVEL`` env var overrides the default (INFO); ``LOG_FORMAT`` /
-    ``ENVIRONMENT`` choose json vs text.
+    LOG_LEVEL sets the level (default INFO); LOG_FORMAT picks json or text,
+    defaulting to json in production.
     """
-    resolved = (level or os.environ.get("LOG_LEVEL", "INFO")).upper()
+    resolved = os.environ.get("LOG_LEVEL", "INFO").upper()
     env = os.environ.get("ENVIRONMENT", "production").strip().lower()
     log_format = (
         os.environ.get("LOG_FORMAT") or ("json" if env == "production" else "text")
@@ -105,11 +101,10 @@ def build_logging_config(level: str | None = None) -> dict[str, Any]:
     }
 
 
-def configure_logging(level: str | None = None) -> None:
-    """Configure root + ``app`` + key library loggers via ``dictConfig``.
+def configure_logging() -> None:
+    """Apply the logging config.
 
-    Idempotent: ``dictConfig`` replaces (not appends) the root handler list, so
-    calling this from create_app, tests, and CLI never doubles handlers.
-    ``LOG_LEVEL`` env var overrides the default (INFO).
+    Safe to call more than once: dictConfig replaces the handler list instead
+    of appending, so create_app, tests and the CLI cannot double up handlers.
     """
-    logging.config.dictConfig(build_logging_config(level))
+    logging.config.dictConfig(build_logging_config())

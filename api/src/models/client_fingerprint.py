@@ -13,11 +13,10 @@ if TYPE_CHECKING:
 
 
 class ClientFingerprint(Base):
-    """A public-key offered during authentication (``cowrie.client.fingerprint``).
+    """A public key offered during authentication.
 
-    Bots that spray a fixed SSH key across many targets are trivially linked by
-    their key fingerprint even when IP and username vary. Multiple rows per
-    session are expected (one per key offered).
+    From `cowrie.client.fingerprint`, several rows per session. Ties together
+    bots that spray one fixed key even as their IP and username change.
     """
 
     __tablename__ = "client_fingerprints"
@@ -34,6 +33,3 @@ class ClientFingerprint(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="client_fingerprints")
-
-
-__all__ = ["ClientFingerprint"]

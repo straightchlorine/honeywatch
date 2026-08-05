@@ -15,14 +15,9 @@ if TYPE_CHECKING:
 class SshClient(Base):
     """Per-session SSH client identity.
 
-    Populated from cowrie's ``cowrie.client.version`` (the client banner) and
-    ``cowrie.client.kex`` (the HASSH fingerprint + offered algorithms). One row
-    per session; the two events arrive separately and each upserts its columns.
-    The HASSH is the highest-value signal for clustering bot families that
-    otherwise rotate IPs and usernames.
-
-    ``first_seen`` (rather than the sibling tables' ``timestamp``) reflects the
-    upsert semantics: it is stamped once when the first of the two events lands.
+    One row per session, filled in by two separate cowrie events (`client.version`
+    and `client.kex`); `first_seen` is stamped by whichever lands first, so columns
+    from the other event may be null.
     """
 
     __tablename__ = "ssh_clients"
@@ -43,6 +38,3 @@ class SshClient(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="ssh_client", uselist=False)
-
-
-__all__ = ["SshClient"]

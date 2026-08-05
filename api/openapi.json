@@ -1,16 +1,6 @@
 {
   "components": {
     "responses": {
-      "BadRequest": {
-        "content": {
-          "application/json": {
-            "schema": {
-              "$ref": "#/components/schemas/Error"
-            }
-          }
-        },
-        "description": "Bad request: malformed input."
-      },
       "DEFAULT_ERROR": {
         "content": {
           "application/json": {
@@ -270,7 +260,7 @@
             "type": "array"
           },
           "geo_resolved_pct": {
-            "description": "Share of sessions with geolocation resolved (null when there are no sessions). Geo enrichment lags ingestion, so the remainder is bucketed under Unknown -- surfaced so counts are not read as totals.",
+            "description": "Percent of sessions with resolved geolocation (null if no sessions); the rest falls under the Unknown bucket.",
             "example": 81.3,
             "type": [
               "number",
@@ -723,7 +713,7 @@
             "type": "integer"
           },
           "category": {
-            "description": "Session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.",
+            "description": "Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.",
             "enum": [
               "active",
               "login",
@@ -876,7 +866,7 @@
             "type": "integer"
           },
           "distinct_ips": {
-            "description": "Distinct source addresses that tried this credential; only populated for the ip_fanout metric (null otherwise). A high value signals a distributed botnet sharing one credential.",
+            "description": "Distinct source IPs that tried this credential (ip_fanout metric only, null otherwise); high values suggest a botnet.",
             "example": 42,
             "type": [
               "integer",
@@ -1066,7 +1056,7 @@
             }
           },
           {
-            "description": "Filter by session classification (mutually exclusive): 'active' = ran at least one command; 'login' = login accepted but no commands; 'failed' = login attempts made, none accepted; 'probe' = connection only, no login attempts.",
+            "description": "Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.",
             "in": "query",
             "name": "category",
             "required": false,
@@ -1861,6 +1851,7 @@
     },
     "/health/ready": {
       "get": {
+        "description": "Unlike /health this touches the database, so gate traffic on this probe\nand keep restarts on /health - a DB blip is not a dead process.",
         "operationId": "healthReady",
         "responses": {
           "200": {

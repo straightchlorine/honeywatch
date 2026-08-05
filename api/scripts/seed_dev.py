@@ -1,12 +1,8 @@
 """Seed the dev database with synthetic honeypot data.
 
-Spreads sessions across the trend windows so the dashboard's "Trend (7d)" card
-shows a large delta.
+By default it WIPES every table first and then inserts data
 
-By default it WIPES every table first (TRUNCATE CASCADE) for a clean,
-prod-shaped slate, then inserts the synthetic data.
-
-    just seed                 # default: wipe all, big trend (+1822.8%)
+    just seed                 # default: wipe all, big trend
     just seed --no-wipe       # append on top of existing data instead
     just seed --current 2000 --previous 1500   # a calmer trend
 
@@ -33,8 +29,8 @@ SEED_SENSOR = "seed"
 
 HONEYPOT_IP = "10.0.0.1"
 
-# (country_code, name, lat, lon, relative weight). Weights skew toward the
-# usual SSH-scanner heavyweights so the Countries / Map pages look plausible.
+# (country_code, name, lat, lon, relative weight)
+# Weights skew toward the usual suspects.
 COUNTRIES: list[tuple[str, str, float, float, int]] = [
     ("CN", "China", 35.0, 105.0, 30),
     ("US", "United States", 38.0, -97.0, 20),
@@ -166,7 +162,7 @@ def child_rows(
     for s in sessions:
         sid = s["id"]
         started = s["started_at"]
-        # ~1 attempt per session (matches prod's auth ≈ sessions ratio): mostly
+        # ~1 attempt per session (matches prod's auth ~ sessions ratio): mostly
         # one, a few with none, a rare double. Avg ~0.98.
         roll = rng.random()
         n_auth = 0 if roll < 0.04 else 2 if roll > 0.98 else 1
@@ -207,11 +203,11 @@ def bulk_insert(
 def wipe_all(db: DbSession) -> None:
     """Truncate every honeypot table for a clean, prod-shaped slate.
 
-    TRUNCATE ... CASCADE on ``sessions`` clears every child table that
+    TRUNCATE ... CASCADE on `sessions` clears every child table that
     references it (auth_attempts, commands, downloads, ssh_clients,
-    client_fingerprints, direct_tcpip_requests); ``geo_locations`` has no FK
+    client_fingerprints, direct_tcpip_requests); `geo_locations` has no FK
     so it is named explicitly. RESTART IDENTITY resets the serial PKs so reruns
-    start from id 1. This deletes ALL data, real and seeded -- a dev convenience
+    start from id 1. This deletes ALL data, real and seeded - a dev convenience
     only, never run against production.
     """
     db.execute(text("TRUNCATE TABLE sessions, geo_locations RESTART IDENTITY CASCADE"))

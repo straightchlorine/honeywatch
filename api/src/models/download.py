@@ -29,6 +29,3 @@ class Download(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="downloads")
-
-
-__all__ = ["Download"]

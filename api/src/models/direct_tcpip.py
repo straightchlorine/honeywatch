@@ -13,12 +13,11 @@ if TYPE_CHECKING:
 
 
 class DirectTcpipRequest(Base):
-    """An attempted port-forward through the honeypot (``cowrie.direct-tcpip.request``).
+    """An attempted port-forward through the honeypot.
 
-    A direct-tcpip channel is an attacker trying to use the box as a relay
-    (proxy/scan pivot, SMTP spam, reaching internal hosts). The requested
-    destination reveals intent even though the egress sidecar blocks the
-    forward. ``dst`` may be a hostname, so it is stored as text rather than INET.
+    From `cowrie.direct-tcpip.request` - an attacker probing the box as a
+    relay. The egress sidecar blocks the forward; this only records the
+    intent. `dst_ip` is text, not INET, because it may be a hostname.
     """
 
     __tablename__ = "direct_tcpip_requests"
@@ -36,6 +35,3 @@ class DirectTcpipRequest(Base):
     )
 
     session: Mapped[Session] = relationship(back_populates="direct_tcpip_requests")
-
-
-__all__ = ["DirectTcpipRequest"]
