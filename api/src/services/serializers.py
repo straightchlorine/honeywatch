@@ -18,13 +18,11 @@ from src.services.types import (
 
 
 class SessionSerializer:
-    """Convert :class:`Session` ORM rows to API response dicts.
+    """Convert Session ORM rows to API response dicts.
 
-    `src_ip` is deliberately omitted from every external shape. The IP is
-    retained on the DB column for internal joins (`geo_locations`) only.
-
-    Datetime fields are emitted as native `datetime` objects; the marshmallow
-    response schemas format them with `DateTime(format="iso")` exactly once.
+    No IP address is ever emitted: src_ip exists on the model only to join
+    geo_locations. Datetimes stay native here - the marshmallow response
+    schemas do the ISO formatting.
     """
 
     @staticmethod
@@ -49,12 +47,11 @@ class SessionSerializer:
         auth_attempt_count: int,
         login_success: bool,
     ) -> SessionSummaryDict:
-        """Build a list-row summary from a session plus precomputed counters.
+        """Build a list-row summary.
 
-        The per-session counters are aggregated in SQL by the list query (see
-        :func:`src.services.sessions.get_sessions_paginated`) rather than by
-        materializing the `commands`/`auth_attempts` collections, so they are
-        passed in instead of read off the ORM relationships.
+        The counters are passed in because get_sessions_paginated aggregates
+        them in SQL; reading them off the ORM relationships would load every
+        command and auth attempt on the page.
         """
         return {
             **SessionSerializer._base(s, geo),

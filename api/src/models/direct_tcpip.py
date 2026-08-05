@@ -13,11 +13,11 @@ if TYPE_CHECKING:
 
 
 class DirectTcpipRequest(Base):
-    """An attempted port-forward through the honeypot (`cowrie.direct-tcpip.request`).
-    Attacker trying to use it as a relay; the egress sidecar blocks the forward,
-    this just records the intent.
+    """An attempted port-forward through the honeypot.
 
-    `dst_ip` may be a hostname, so it's text rather than INET.
+    From `cowrie.direct-tcpip.request` - an attacker probing the box as a
+    relay. The egress sidecar blocks the forward; this only records the
+    intent. `dst_ip` is text, not INET, because it may be a hostname.
     """
 
     __tablename__ = "direct_tcpip_requests"

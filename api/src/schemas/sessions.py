@@ -178,7 +178,7 @@ class _SessionResponseBase(BaseSchema):
 
 
 class SessionSummaryResponse(_SessionResponseBase):
-    """List-endpoint shape. src_ip deliberately omitted (privacy gate)."""
+    """List-endpoint shape; src_ip omitted like everywhere else in the API."""
 
     auth_attempt_count = fields.Int(
         required=True,
@@ -211,8 +211,11 @@ class SessionSummaryResponse(_SessionResponseBase):
 
 
 class SessionDetailResponse(_SessionResponseBase):
-    """Detail-endpoint shape. src_ip and dst_ip deliberately omitted: no IP
-    address (attacker source nor honeypot destination) crosses the API."""
+    """Detail-endpoint shape.
+
+    src_ip and dst_ip are both omitted on purpose: neither the attacker's
+    address nor the honeypot's own crosses the API.
+    """
 
     sensor = fields.Str(
         required=True,

@@ -23,26 +23,11 @@ def get_sessions_paginated(
     category: str | None = None,
     sort: str = "recent",
 ) -> SessionsPageDict:
-    """Return a filtered, sorted page of session summaries.
+    """One page of session summaries, filtered and sorted in SQL.
 
-    Filters and ordering are applied in SQL so pagination metadata stays
-    consistent with the rendered page.
-
-    Args:
-        db: Active SQLAlchemy session.
-        page: 1-indexed page number.
-        per_page: Page size; the caller is responsible for clamping.
-        country: ISO 3166-1 alpha-2 code to filter the source country, or None.
-        category: Mutually exclusive session class to keep -- `"active"` (ran
-            commands), `"login"` (login accepted, no commands), `"failed"`
-            (attempts made, none accepted), `"probe"` (no login attempts), or
-            None for no class filter. Mirrors the dashboard's classification.
-        sort: `"recent"` (newest first), `"country"` (source country A-Z),
-            or `"active"` (most commands first).
-
-    Returns:
-        A :class:`SessionsPageDict` with the session summaries plus pagination
-        metadata.
+    `page` is 1-indexed and `per_page` is used as given - clamp it in the
+    schema, not here. `category` keeps one session class (see
+    SESSION_CATEGORIES); `sort` is "recent", "country" or "active".
     """
     offset = (page - 1) * per_page
 
@@ -78,8 +63,8 @@ def get_sessions_paginated(
     if country:
         conditions.append(GeoLocation.country_code == country)
 
-    # Classification filter - the same as the dashboard badges use.
-    # commands > login > failed > probe
+    # Same priority order as classify_category: commands > login > failed >
+    # probe. Expressed as predicates here so the filter and the count agree.
     if category == "active":
         conditions.append(commands_exists)
     elif category == "login":
@@ -98,9 +83,9 @@ def get_sessions_paginated(
         count_stmt = count_stmt.where(cond)
     total = db.execute(count_stmt).scalar_one()
 
-    # Two-phase page fetch:
-    # 1. Find the page's 25 session ids with only the sort keys in scope
-    # 2. Enrichment of just those rows with the correlated counters.
+    # Two-phase page fetch: pick the page's ids using only the sort keys, then
+    # run the correlated counters over those rows alone. Counting first would
+    # aggregate the whole table just to throw all but per_page rows away.
     inner_cols: list[Any] = [Session.id.label("sid")]
     inner = select(*inner_cols).outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
     if sort == "country":
@@ -174,16 +159,7 @@ def get_sessions_paginated(
 
 
 def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | None:
-    """Return the full detail for a single session, or `None` if missing.
-
-    Args:
-        db: Active SQLAlchemy session.
-        session_id: Cowrie session identifier.
-
-    Returns:
-        A :class:`SessionDetailDict` with auth attempts, commands, downloads
-        and joined geolocation, or `None` when no session matches.
-    """
+    """Full detail for one session, or None when no session matches."""
     stmt = (
         select(Session, GeoLocation)
         .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)

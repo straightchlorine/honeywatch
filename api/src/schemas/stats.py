@@ -8,10 +8,10 @@ from src.schemas.common import (
     country_or_unknown_field,
     top_n_field,
 )
-from src.services.stats import (
+from src.services.stats.activity import VALID_BUCKETS
+from src.services.stats.countries import VALID_COUNTRY_SORTS
+from src.services.stats.credentials import (
     PASSWORD_LENGTH_CAP,
-    VALID_BUCKETS,
-    VALID_COUNTRY_SORTS,
     VALID_CRED_GROUPINGS,
     VALID_CRED_METRICS,
     VALID_CRED_OUTCOMES,

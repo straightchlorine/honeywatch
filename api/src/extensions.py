@@ -8,15 +8,9 @@ class Base(DeclarativeBase):
 
 
 def init_db(app: Flask, database_url: str) -> None:
-    """Attach a SQLAlchemy engine and session factory to a Flask app.
+    """Set up `db_engine` and `db_session_factory` on `app.extensions`.
 
-    Args:
-        app: The Flask application to attach the DB machinery to.
-        database_url: SQLAlchemy-style connection URL.
-
-    Returns:
-        None. Sets `app.extensions['db_engine']` and
-        `app.extensions['db_session_factory']`.
+    Also registers the teardown that closes the request-scoped session.
     """
     engine = create_engine(
         database_url,
@@ -38,14 +32,7 @@ def init_db(app: Flask, database_url: str) -> None:
 
 
 def get_session_factory() -> sessionmaker[Session]:
-    """Return the session factory bound to the current Flask app.
-
-    Returns:
-        The `sessionmaker` stored on `current_app.extensions`.
-
-    Raises:
-        RuntimeError: If the DB was not initialized on this app.
-    """
+    """Session factory for the current app; raises if init_db never ran."""
     factory = current_app.extensions.get("db_session_factory")
     if factory is None:
         raise RuntimeError(
@@ -56,11 +43,10 @@ def get_session_factory() -> sessionmaker[Session]:
 
 
 def get_db() -> Session:
-    """Return the request-scoped SQLAlchemy session, created lazily on `g`.
+    """The request's SQLAlchemy session, opened on first use.
 
-    One read-only session per request, closed automatically at app-context
-    teardown (registered in :func:`init_db`). Centralizes the per-request
-    session so route handlers don't each manage a `with` block.
+    One session per request, closed at app-context teardown, so handlers do not
+    need their own `with` block.
     """
     db: Session | None = getattr(g, "_db", None)
     if db is None:

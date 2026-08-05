@@ -4,11 +4,10 @@ VALID_ENVS = ("development", "production")
 
 
 def current_env() -> str:
-    """Return the active deployment environment.
+    """Active deployment environment from `ENVIRONMENT`.
 
-    Reads `ENVIRONMENT`; defaults to `production` so an unset deployment
-    fails closed (e.g. forces a real `FLASK_SECRET_KEY`). Unrecognised
-    values raise `RuntimeError`.
+    Defaults to production so an unset deployment fails closed - that is what
+    forces a real secret key. Unrecognised values raise RuntimeError.
     """
     value = os.environ.get("ENVIRONMENT", "production").strip().lower()
     if value not in VALID_ENVS:
@@ -20,8 +19,10 @@ def current_env() -> str:
 
 
 def _require_secret(env_var: str, dev_fallback: str) -> str:
-    """Read `env_var`, falling back to a known-insecure value in development
-    only; anywhere else, an unset value raises rather than booting insecurely."""
+    """Read `env_var`; fall back to the insecure default in development only.
+
+    Anywhere else an unset value raises rather than booting insecurely.
+    """
     value = os.environ.get(env_var)
     if value:
         return value
@@ -44,12 +45,10 @@ def require_db_password() -> str:
 
 
 class Config:
-    """Base application configuration.
+    """Base configuration, also used as-is in production.
 
-    `FLASK_SECRET_KEY` must be set in the environment for any non-dev
-    deployment; see :func:`require_secret_key`. The key is resolved when
-    `create_app` calls :func:`require_secret_key` so importing this
-    module never fails on a missing env var.
+    The secret key is not a class attribute on purpose: create_app resolves it
+    via require_secret_key, so importing this module never needs the env var.
     """
 
     DEBUG = False
@@ -69,22 +68,14 @@ class Config:
 
 
 class DevelopmentConfig(Config):
-    """Development configuration.
-
-    `DEBUG` is intentionally NOT set in code (per Flask docs:
-    https://flask.palletsprojects.com/en/stable/config/#DEBUG — setting
-    it in code "may behave inconsistently"). Use `flask run --debug`
-    or `FLASK_DEBUG=1` for the dev server.
-    """
+    """Development configuration."""
 
 
 class TestingConfig(Config):
-    """Testing configuration (opt-in via `create_app(TestingConfig)`).
+    """Opt-in via create_app(TestingConfig); never selected by ENVIRONMENT.
 
-    Not selected by `ENVIRONMENT`. Flask's `TESTING` flag is set so
-    :attr:`flask.Flask.testing` is `True` and error handlers propagate
-    exceptions. The database URI points at `TEST_DATABASE_URL` (or a
-    localhost default).
+    Points at TEST_DATABASE_URL, and TESTING lets error handlers propagate
+    exceptions instead of swallowing them into a 500.
     """
 
     TESTING = True
@@ -101,5 +92,5 @@ _CONFIG_BY_ENV: dict[str, type[Config]] = {
 
 
 def select_config() -> type[Config]:
-    """Pick the config class matching the current :func:`current_env`."""
+    """Config class for the current environment."""
     return _CONFIG_BY_ENV[current_env()]

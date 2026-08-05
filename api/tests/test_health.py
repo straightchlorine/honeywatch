@@ -79,7 +79,7 @@ def test_attack_data_indexes_present(db_session: Any) -> None:
 
     Includes `ix_auth_attempts_worked_creds`, the partial
     `(username, password) WHERE success` index that backs the worked-credentials
-    leaderboard (StatsService.top_credentials(outcome="success")).
+    leaderboard (stats.credentials.top_credentials(outcome="success")).
     """
     rows = (
         db_session.execute(

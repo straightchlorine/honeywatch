@@ -26,7 +26,7 @@ from src.schemas.stats import (
     TrendQuery,
     TrendResponse,
 )
-from src.services.stats import StatsService
+from src.services.stats import activity, countries, credentials
 from src.services.types import (
     ActivityBucketDict,
     AuthOutcomesDict,
@@ -55,7 +55,7 @@ stats_bp = Blueprint(
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_totals() -> TotalsDict:
     """Return headline totals (sessions, auth attempts, unique IPs)."""
-    return StatsService(get_db()).totals()
+    return activity.totals(get_db())
 
 
 @stats_bp.route("/top-passwords")
@@ -66,8 +66,7 @@ def stats_totals() -> TotalsDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_passwords(query_args: dict[str, Any]) -> list[TopPasswordDict]:
     """Return the top-N attempted passwords ranked by count."""
-    service = StatsService(get_db(), top_n=query_args["top_n"])
-    return service.top_passwords()
+    return credentials.top_passwords(get_db(), top_n=query_args["top_n"])
 
 
 @stats_bp.route("/top-countries")
@@ -78,8 +77,7 @@ def stats_top_passwords(query_args: dict[str, Any]) -> list[TopPasswordDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_countries(query_args: dict[str, Any]) -> list[TopCountryDict]:
     """Return the top-N attacking countries ranked by session count."""
-    service = StatsService(get_db(), top_n=query_args["top_n"])
-    return service.top_countries()
+    return countries.top_countries(get_db(), top_n=query_args["top_n"])
 
 
 @stats_bp.route("/top-credentials")
@@ -90,12 +88,13 @@ def stats_top_countries(query_args: dict[str, Any]) -> list[TopCountryDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_credentials(query_args: dict[str, Any]) -> list[TopCredentialDict]:
     """Return the top-N attempted credentials ranked by the chosen metric."""
-    service = StatsService(get_db(), top_n=query_args["top_n"])
-    return service.top_credentials(
+    return credentials.top_credentials(
+        get_db(),
         by=query_args["by"],
         metric=query_args["metric"],
         outcome=query_args["outcome"],
         country=query_args.get("country"),
+        top_n=query_args["top_n"],
     )
 
 
@@ -107,8 +106,9 @@ def stats_top_credentials(query_args: dict[str, Any]) -> list[TopCredentialDict]
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_countries(query_args: dict[str, Any]) -> CountriesDict:
     """Return the per-country attack leaderboard ranked by the chosen sort."""
-    service = StatsService(get_db(), top_n=query_args["top_n"])
-    return service.country_breakdown(sort=query_args["sort"])
+    return countries.country_breakdown(
+        get_db(), sort=query_args["sort"], top_n=query_args["top_n"]
+    )
 
 
 @stats_bp.route("/asns")
@@ -119,8 +119,9 @@ def stats_countries(query_args: dict[str, Any]) -> CountriesDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_asns(query_args: dict[str, Any]) -> list[CountryAsnDict]:
     """Return the top-N source networks (ASN / org) by session count."""
-    service = StatsService(get_db(), top_n=query_args["top_n"])
-    return service.country_asns(query_args.get("country"))
+    return countries.country_asns(
+        get_db(), country=query_args.get("country"), top_n=query_args["top_n"]
+    )
 
 
 @stats_bp.route("/auth-outcomes")
@@ -129,7 +130,7 @@ def stats_asns(query_args: dict[str, Any]) -> list[CountryAsnDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_auth_outcomes() -> AuthOutcomesDict:
     """Return the accept/reject split across all auth attempts."""
-    return StatsService(get_db()).auth_outcomes()
+    return credentials.auth_outcomes(get_db())
 
 
 @stats_bp.route("/password-composition")
@@ -138,7 +139,7 @@ def stats_auth_outcomes() -> AuthOutcomesDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_password_composition() -> PasswordCompositionDict:
     """Return the password length histogram + charset-class breakdown."""
-    return StatsService(get_db()).password_composition()
+    return credentials.password_composition(get_db())
 
 
 @stats_bp.route("/passwords-by-length")
@@ -149,8 +150,9 @@ def stats_password_composition() -> PasswordCompositionDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_passwords_by_length(query_args: dict[str, Any]) -> list[TopPasswordDict]:
     """Return the top-N passwords of a given length (histogram drill-down)."""
-    service = StatsService(get_db(), top_n=query_args["top_n"])
-    return service.passwords_by_length(query_args["length"])
+    return credentials.passwords_by_length(
+        get_db(), query_args["length"], top_n=query_args["top_n"]
+    )
 
 
 @stats_bp.route("/activity")
@@ -161,8 +163,7 @@ def stats_passwords_by_length(query_args: dict[str, Any]) -> list[TopPasswordDic
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_activity(query_args: dict[str, Any]) -> list[ActivityBucketDict]:
     """Return session counts grouped by bucket (hour|day|month)."""
-    service = StatsService(get_db())
-    return service.activity(query_args["bucket"], query_args.get("country"))
+    return activity.activity(get_db(), query_args["bucket"], query_args.get("country"))
 
 
 @stats_bp.route("/trend")
@@ -173,8 +174,9 @@ def stats_activity(query_args: dict[str, Any]) -> list[ActivityBucketDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_trend(query_args: dict[str, Any]) -> TrendDict:
     """Return the session-count trend over period_days vs the prior window."""
-    service = StatsService(get_db())
-    return service.trend(query_args["period_days"], query_args.get("country"))
+    return activity.trend(
+        get_db(), query_args["period_days"], query_args.get("country")
+    )
 
 
 @stats_bp.route("/heatmap")
@@ -185,5 +187,4 @@ def stats_trend(query_args: dict[str, Any]) -> TrendDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_heatmap(query_args: dict[str, Any]) -> list[HeatmapPointDict]:
     """Return session counts per (weekday, hour) cell."""
-    service = StatsService(get_db())
-    return service.heatmap(query_args.get("country"))
+    return activity.heatmap(get_db(), query_args.get("country"))

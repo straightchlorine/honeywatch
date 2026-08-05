@@ -1,8 +1,8 @@
-"""Server-side IP redaction for attacker-controlled free text.
+"""Blot IP literals out of attacker-controlled free text.
 
-IP addresses should never cross to the API.
-
-Mirrors `dashboard/src/utils/redactIps.ts`; should be kept in sync.
+Commands and download URLs are whatever the attacker typed, so they can carry
+third-party IPs that must not reach a client. Mirrors
+dashboard/src/utils/redactIps.ts - keep the two in sync.
 """
 
 from __future__ import annotations
@@ -76,11 +76,10 @@ def _replace(m: re.Match[str]) -> str:
 
 
 def redact_ips(text: str | None) -> str | None:
-    """Return `text` with every IP literal replaced by :data:`IP_BLOT`.
+    """Return `text` with every IP literal replaced by IP_BLOT.
 
-    Handles IPv4, IPv6 (including embedded-v4 and bracketed/userinfo URL forms),
-    and alternate-encoding numeric URL hosts. `None` passes through unchanged.
-    Idempotent: text that is already blotted is returned unchanged.
+    Covers IPv4, IPv6 (including embedded-v4 and URL forms) and numeric URL
+    hosts. None passes through, and already-blotted text is unchanged.
     """
     if text is None:
         return None

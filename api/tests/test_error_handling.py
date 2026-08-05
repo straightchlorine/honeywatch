@@ -10,16 +10,16 @@ from __future__ import annotations
 
 from typing import Any
 
-import src.services.stats as stats_mod
+import src.services.stats.activity as activity_mod
 
 
 def test_unhandled_exception_returns_clean_500_envelope(
     app: Any, client: Any, monkeypatch: Any
 ) -> None:
-    def boom(_self: Any) -> Any:
+    def boom(_db: Any) -> Any:
         raise RuntimeError("secret dsn=postgresql://u:p@h/db internal detail")
 
-    monkeypatch.setattr(stats_mod.StatsService, "totals", boom)
+    monkeypatch.setattr(activity_mod, "totals", boom)
     app.config["PROPAGATE_EXCEPTIONS"] = False
     try:
         response = client.get("/api/v1/stats/totals")

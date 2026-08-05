@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-# Session classification.
-#
-# The classes are mutually exclusive and evaluated in priority order: a session
-# that ran commands is "active" even if it also logged in, and so on.
+# Mutually exclusive, in priority order: a session that ran commands is
+# "active" even though it also logged in, and so on down the list.
 SESSION_CATEGORIES: tuple[str, ...] = ("active", "login", "failed", "probe")
 
 CATEGORY_DESCRIPTION = (
@@ -18,18 +16,7 @@ def classify_category(
     login_success: bool,
     auth_attempt_count: int,
 ) -> str:
-    """Return the session class for the given per-session counters.
-
-    Args:
-        command_count: Number of shell commands recorded in the session.
-        login_success: Whether any auth attempt in the session succeeded.
-        auth_attempt_count: Number of authentication attempts in the session.
-
-    Returns:
-        One of :data:`SESSION_CATEGORIES`: `"active"` (ran commands),
-        `"login"` (login accepted, no commands), `"failed"` (attempts made,
-        none accepted), or `"probe"` (no login attempts).
-    """
+    """Return the SESSION_CATEGORIES entry matching these counters."""
     if command_count > 0:
         return "active"
     if login_success:

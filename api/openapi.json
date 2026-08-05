@@ -1851,7 +1851,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Distinct from /health. Ensures transient DB blip does not cascade\nthrough the docker compose service_healthy dependencies.",
+        "description": "Unlike /health this touches the database, so gate traffic on this probe\nand keep restarts on /health - a DB blip is not a dead process.",
         "operationId": "healthReady",
         "responses": {
           "200": {

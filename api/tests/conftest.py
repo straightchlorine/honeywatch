@@ -183,7 +183,7 @@ def seed_data(db_session: Session) -> dict[str, Any]:
 
 
 # A password chosen to fall into each charset-class branch of the server-side
-# regex CASE (src.services.stats.StatsService.password_composition). The order
+# regex CASE (src.services.stats.credentials.password_composition). The order
 # pins the branch priority: empty -> symbol -> digits -> lower -> upper ->
 # alnum. `LONG_PASSWORD` (18 chars) exercises the >= PASSWORD_LENGTH_CAP tail.
 LONG_PASSWORD = "abcdefghijklmnopqr"  # 18 chars, all lowercase -> "lower" class

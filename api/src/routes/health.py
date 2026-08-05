@@ -26,8 +26,8 @@ def health_check() -> dict[str, str]:
 def health_ready() -> Any:
     """Return 200 when the DB is reachable, 503 otherwise.
 
-    Distinct from /health. Ensures transient DB blip does not cascade
-    through the docker compose service_healthy dependencies.
+    Unlike /health this touches the database, so gate traffic on this probe
+    and keep restarts on /health - a DB blip is not a dead process.
     """
     try:
         session_factory = get_session_factory()

@@ -52,10 +52,10 @@ API_SPEC_OPTIONS: dict[str, Any] = {
 
 
 def _configure_openapi(app: Flask) -> None:
-    """Set flask-smorest config keys driving the spec + bundled UIs.
+    """Set the flask-smorest config keys for the spec and the docs UIs.
 
-    Swagger UI / ReDoc assets are served from `/api/v1/static/*` so the docs
-    pages do not fetch JS from a CDN - keeps the OpenAPI surface working offline.
+    Swagger UI and ReDoc assets come from /api/v1/static/* rather than a CDN,
+    so the docs work offline.
     """
     app.config["API_TITLE"] = "Honeywatch"
     app.config["API_VERSION"] = API_VERSION
@@ -75,9 +75,8 @@ def _configure_openapi(app: Flask) -> None:
 def create_app(config: object | None = None) -> Flask:
     """Build and configure the Flask application.
 
-    Order matters: `configure_logging` runs BEFORE `Flask(__name__)` so
-    Flask's default handler is never attached and INFO-level records survive
-    under gunicorn.
+    configure_logging must run before Flask(__name__): otherwise Flask
+    attaches its own handler and INFO records are lost under gunicorn.
     """
     configure_logging()
 
@@ -86,9 +85,8 @@ def create_app(config: object | None = None) -> Flask:
         static_folder=str(STATIC_DIR),
         static_url_path=f"{API_V1_PREFIX}/static",
     )
-    # nginx terminates TLS and forwards Host
-    # x_host=1 lets url_for(_external=True)
-    # produce correct absolute URLs. x_for=1, x_proto=1 match the proxy hop.
+    # One proxy hop (nginx terminates TLS and forwards Host), so trust exactly
+    # one value of each header.
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # pyright: ignore[reportAttributeAccessIssue]
 
     if config is None:
@@ -133,11 +131,11 @@ def create_app(config: object | None = None) -> Flask:
 
 
 def _install_openapi_cache(app: Flask, smorest_api: Api) -> None:
-    """Override smorest's openapi.json view with a startup-cached body.
+    """Serve a body built once at boot instead of smorest's per-request spec.
 
-    flask-smorest rebuilds `spec.to_dict()` on every GET; for our spec that
-    is wasted CPU per request. We materialise the JSON once after blueprint
-    registration and return the cached bytes via a thin view function.
+    flask-smorest rebuilds spec.to_dict() on every GET of openapi.json. The
+    spec cannot change after blueprint registration, so build it here and
+    swap in a view that returns the cached JSON.
     """
     try:
         spec = build_spec_dict(smorest_api)
