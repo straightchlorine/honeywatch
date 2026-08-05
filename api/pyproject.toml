@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "honeywatch-api"
-version = "0.1.0"
+version = "v0.6.0"
 description = "REST API for the honeywatch honeypot monitoring system"
 requires-python = ">=3.13"
 dependencies = [
