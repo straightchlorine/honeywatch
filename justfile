@@ -69,3 +69,12 @@ openapi-regen: api-openapi
 openapi-check: openapi-regen
     git add -A -- api/openapi.json dashboard/src/api/generated
     git diff --cached --exit-code -- api/openapi.json dashboard/src/api/generated
+
+# Bump version everywhere (pyprojects, uv.locks, dashboard package.json) and commit.
+bump-version version:
+    sed -i 's/^version = ".*"/version = "{{version}}"/' api/pyproject.toml ingestor/pyproject.toml
+    sed -i 's/"version": ".*"/"version": "{{version}}"/' dashboard/package.json
+    cd api && uv lock
+    cd ingestor && uv lock
+    git add api/pyproject.toml api/uv.lock ingestor/pyproject.toml ingestor/uv.lock dashboard/package.json
+    git commit
