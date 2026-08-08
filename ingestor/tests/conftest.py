@@ -23,10 +23,10 @@ _API_DIR = Path(__file__).resolve().parents[2] / "api"
 def _resolve_test_db_components() -> dict[str, str]:
     """Resolve test-DB connection parts.
 
-    Mirrors ``api/tests/conftest.py``: ``TEST_DATABASE_URL`` wins if set
-    (CI's path), otherwise build from ``POSTGRES_USER`` / ``POSTGRES_PASSWORD``
-    / ``POSTGRES_HOST`` / ``POSTGRES_PORT`` plus ``POSTGRES_TEST_DB`` (the
-    local justfile path; avoids URL-encoding ``+``/``=`` in dev passwords).
+    Mirrors `api/tests/conftest.py`: `TEST_DATABASE_URL` wins if set
+    (CI's path), otherwise build from `POSTGRES_USER` / `POSTGRES_PASSWORD`
+    / `POSTGRES_HOST` / `POSTGRES_PORT` plus `POSTGRES_TEST_DB` (the
+    local justfile path; avoids URL-encoding `+`/`=` in dev passwords).
     """
     raw = os.environ.get("TEST_DATABASE_URL")
     if raw:
@@ -51,8 +51,8 @@ def _resolve_test_db_components() -> dict[str, str]:
 @pytest.fixture(scope="session")
 def db_url() -> str:
     c = _resolve_test_db_components()
-    # URL-encode the password so ``+`` / ``=`` characters from the project
-    # ``.env`` round-trip cleanly into a libpq DSN.
+    # URL-encode the password so `+` / `=` characters from the project
+    # `.env` round-trip cleanly into a libpq DSN.
     pw = urllib.parse.quote(c["password"], safe="")
     return f"postgresql://{c['user']}:{pw}@{c['host']}:{c['port']}/{c['db']}"
 

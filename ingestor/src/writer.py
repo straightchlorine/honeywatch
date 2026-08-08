@@ -1,3 +1,5 @@
+"""Persist cowrie events to PostgreSQL, with defensive isolation and truncation."""
+
 from __future__ import annotations
 
 import ipaddress
@@ -170,7 +172,7 @@ class EventWriter:
     """Persists the subset of cowrie events we care about to PostgreSQL.
 
     Events not matched below (e.g. `cowrie.client.size`, `cowrie.log.open`)
-    are silently dropped -- the raw line was already logged upstream so
+    are silently dropped - the raw line was already logged upstream so
     nothing is lost from an observability standpoint.
     """
 
@@ -455,7 +457,7 @@ class EventWriter:
         Without this, the writer's retry/fuse keeps replaying the same
         poison event forever, blocking the queue.
 
-        Logs the SQLSTATE only -- never ``exc_info``: the DataError message
+        Logs the SQLSTATE only - never `exc_info`: the DataError message
         echoes the rejected attacker value verbatim, which would smuggle
         unsanitized bytes (ANSI/CRLF log forgery) into the operator's log sink.
         """

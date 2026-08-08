@@ -14,28 +14,28 @@ class Config:
     postgres_port: int
     log_path: str
 
-    # Reliability knobs. Three attempts at 1/2/4s totals ~7s before declaring
-    # failure; 50 consecutive failures trips the breaker for 30s before probing.
+    # Reliability:
+    # Three attempts at 1/2/4s totals ~7s before declaring failure;
+    # 50 consecutive failures trips the breaker for 30s before probing.
     retry_attempts: int = 3
     retry_initial_backoff: float = 1.0
     fuse_threshold: int = 50
     fuse_sleep: float = 30.0
 
-    # Suppress cowrie's docker healthcheck dials in prod; dev enables them.
+    # Drop localhost connections to suppress docker healthcheck
     drop_loopback: bool = True
 
-    # Bounded producer/consumer queue. Backpressure blocks the tail; cowrie's
-    # file still holds the line so no data loss until disk fills.
+    # Bounded producer/consumer queue.
+    # Backpressure blocks the tail; cowrie's file still holds the line.
     queue_max: int = 10000
 
-    # Liveness file touched from the consumer loop iteration (not from a
-    # successful write) so DB stalls don't trigger pod restart mid-backlog.
+    # Liveness file touched from the consumer loop iteration so DB stalls
+    # don't trigger pod restart mid-backlog.
     healthcheck_path: Path = Path("/tmp/healthy")
 
-    # node_exporter conventionally takes 9100; pick the next free port.
     metrics_port: int = 9101
 
-    # Off by default; counters still populate. Flip on when a scraper is wired.
+    # Off by default; counters still populate.
     metrics_enabled: bool = False
 
     @classmethod
@@ -69,7 +69,6 @@ class Config:
 
     @property
     def conninfo(self) -> str:
-        # sslmode=disable: postgres reachable only on the internal docker bridge net.
         return (
             f"host={self.postgres_host} "
             f"port={self.postgres_port} "

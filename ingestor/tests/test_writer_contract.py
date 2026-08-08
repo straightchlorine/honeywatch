@@ -306,7 +306,7 @@ def test_consumed_event_schemas_parse() -> None:
     assert ClientSize in kinds
     assert ClientFingerprint in kinds
     assert DirectTcpipRequest in kinds
-    # Sanity-check the specific fields downstream Grafana panels read.
+    # Sanity-check the specific fields downstream consumers read.
     kex = next(e for e in parsed if isinstance(e, ClientKex))
     assert cast(str, kex.hassh) == "eeca2460550b9ded084ecf2f70a75356"
     fp = next(e for e in parsed if isinstance(e, ClientFingerprint))
