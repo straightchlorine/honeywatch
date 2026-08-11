@@ -73,6 +73,22 @@ def test_parse_session_closed(sample_session_closed: str) -> None:
     assert event.timestamp == datetime(2024, 1, 15, 10, 31, 0, tzinfo=timezone.utc)
 
 
+def test_parse_session_connect_missing_src_ip_rejected() -> None:
+    """`sessions.src_ip` is NOT NULL; a connect missing it must fail parsing.
+
+    Otherwise it would reach the writer as a valid `SessionConnect(src_ip=None)`,
+    fail the INSERT with a NotNullViolation the writer's DataError handler
+    doesn't catch, and get retried forever instead of counted as parser drift.
+    """
+    line = (
+        '{"eventid": "cowrie.session.connect", "session": "abc123",'
+        ' "dst_ip": "10.0.0.1", "dst_port": 2222, "protocol": "ssh",'
+        ' "timestamp": "2024-01-15T10:30:00.000000Z", "sensor": "honeypot-01"}'
+    )
+    event = parse_event(line)
+    assert event is None
+
+
 def test_parse_unknown_event() -> None:
     line = '{"eventid": "cowrie.unknown.event", "session": "abc123"}'
     event = parse_event(line)
@@ -94,8 +110,6 @@ def test_drift_log_sanitizes_control_chars(
     raw excerpt that lands in operator logs must be defanged.
     """
     _seen_drift.clear()
-    # Unknown eventid carrying an ANSI escape and an embedded newline that
-    # would otherwise let the attacker forge a log-line prefix.
     line = (
         '{"eventid":"cowrie.unknown.\\u001b[31mfake",'
         '"session":"X\\nINJECTED","timestamp":"2024-01-01T00:00:00Z"}'
@@ -105,17 +119,16 @@ def test_drift_log_sanitizes_control_chars(
 
     assert result is None
     msg = " ".join(r.message for r in caplog.records)
-    # Raw control chars must not appear in formatted log message.
     assert "\x1b" not in msg
     assert "\n" not in msg
-    # The escape form should be present so an operator can still see what hit.
+    # Keep escaped form for operator visibility, but defang raw bytes.
     assert "\\x1b" in msg
 
 
 def test_drift_log_rate_limited_per_eventid(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Second sighting of the same drifted eventid should drop to DEBUG."""
+    """Duplicate drift events are rate-limited to DEBUG to prevent log spam."""
     _seen_drift.clear()
     bad = '{"eventid":"cowrie.unknown.new","session":"a","timestamp":"x"}'
 
@@ -133,6 +146,5 @@ def test_drift_extracts_eventid_via_json_not_regex() -> None:
     A regex-based eventid pull breaks on `\\"` whereas json.loads handles it.
     """
     _seen_drift.clear()
-    # Valid JSON, unknown eventid containing an escaped quote.
     line = '{"eventid":"cowrie.x\\"y","session":"a","timestamp":"x"}'
-    assert parse_event(line) is None  # treated as drift, not crash
+    assert parse_event(line) is None

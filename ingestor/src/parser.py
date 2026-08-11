@@ -15,9 +15,7 @@ logger = logging.getLogger(__name__)
 
 _ADAPTER: TypeAdapter[CowrieEvent] = TypeAdapter(CowrieEvent)
 
-# Per-process rate limiter.
-# Log every unknown eventid at WARNING the first time we see it,
-# DEBUG thereafter.
+# Log unknown eventids at WARNING on first sighting, DEBUG thereafter.
 _seen_drift: set[str] = set()
 
 

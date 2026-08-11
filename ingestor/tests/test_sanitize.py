@@ -25,9 +25,8 @@ class TestTruncate:
         assert truncate("hello", 0) == ""
 
     def test_no_escape_rewriting(self) -> None:
-        # Unlike sanitize, truncate must NOT escape control chars - it's a
-        # DB-shape guard, not a log-injection guard.
-        assert truncate("a\nb", 10) == "a\nb"
+        # Storage guard (strips nul/control), not log-injection guard (doesn't escape).
+        assert truncate("a\tb", 10) == "a\tb"
 
     def test_multibyte_chars_counted_as_chars(self) -> None:
         # Postgres VARCHAR(N) and Python len() both count code points.
@@ -41,6 +40,21 @@ class TestTruncate:
 
     def test_nul_only_string_returns_empty(self) -> None:
         assert truncate("\x00\x00", 10) == ""
+
+    def test_tab_survives(self) -> None:
+        # Tab is the only control char attackers may legitimately type.
+        assert truncate("a\tb", 10) == "a\tb"
+
+    def test_crlf_stripped(self) -> None:
+        # CR/LF are log-forgery vectors with no place in a stored field.
+        assert truncate("a\r\nb", 10) == "ab"
+
+    def test_other_c0_and_del_stripped(self) -> None:
+        assert truncate("a\x01\x1f\x7fb", 10) == "ab"
+
+    def test_strip_before_cap_counts_stored_chars(self) -> None:
+        # Length cap counts stored chars, not input (stripped chars don't count).
+        assert truncate("a\x00\x00\x00b", 2) == "ab"
 
 
 class TestSanitize:

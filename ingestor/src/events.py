@@ -25,11 +25,11 @@ class _EventBase(BaseModel):
     message: str | list[Any] | None = None
     sensor: str | None = None
     uuid: str | None = None
-    # Most session-scoped events stamp these. Not strictly universal
-    # (log.open/closed omit them), so they're optional here.
-    src_ip: str | None = None
-    src_port: int | None = None
     protocol: str | None = None
+    # src_ip/src_port are NOT universal (log.open/closed omit them), so they
+    # aren't declared here. `SessionConnect` and `DirectTcpipRequest` declare
+    # their own (required vs optional, per that event's DB column). Every
+    # other event still captures them as extras via `extra="allow"`.
 
 
 # -- Session lifecycle ------------------------------------------------------
@@ -37,6 +37,11 @@ class _EventBase(BaseModel):
 
 class SessionConnect(_EventBase):
     eventid: Literal["cowrie.session.connect"] = "cowrie.session.connect"
+    # sessions.src_ip/src_port are NOT NULL, so a connect missing either must
+    # fail parsing as parser drift, rather than reach the writer and fail the
+    # INSERT with a NotNullViolation the DataError handler doesn't catch.
+    src_ip: str
+    src_port: int
     dst_ip: str
     dst_port: int
     session_id: str = Field(validation_alias="session")
@@ -73,7 +78,8 @@ class ClientKex(_EventBase):
     """SSH key exchange and supported algorithms.
 
     One of two events populating the `ssh_clients` row (paired with `ClientVersion`).
-    HASSH fingerprint ties bots across IP changes; algorithm lists detect client type/version.
+    HASSH fingerprint ties bots across IP changes; algorithm lists detect
+    client type/version.
     """
 
     eventid: Literal["cowrie.client.kex"] = "cowrie.client.kex"
@@ -120,7 +126,7 @@ class ClientFingerprint(_EventBase):
 
 
 class LoginSuccess(_EventBase):
-    """Successful authentication (attacker guessed or obtained valid credentials)."""
+    """Successful authentication event."""
 
     eventid: Literal["cowrie.login.success"] = "cowrie.login.success"
     username: str
@@ -129,7 +135,7 @@ class LoginSuccess(_EventBase):
 
 
 class LoginFailed(_EventBase):
-    """Failed authentication attempt (wrong password or non-existent user)."""
+    """Failed authentication attempt."""
 
     eventid: Literal["cowrie.login.failed"] = "cowrie.login.failed"
     username: str
@@ -164,7 +170,8 @@ class CommandFailed(_EventBase):
 class FileDownload(_EventBase):
     """File downloaded by the attacker within the session.
 
-    The `shasum` field from cowrie is stored as `sha256` (SHA-256 hash of downloaded content).
+    The `shasum` field from cowrie is stored as `sha256`
+    (SHA-256 hash of downloaded content).
     """
 
     eventid: Literal["cowrie.session.file_download"] = "cowrie.session.file_download"

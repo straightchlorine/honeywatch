@@ -21,13 +21,7 @@ _API_DIR = Path(__file__).resolve().parents[2] / "api"
 
 
 def _resolve_test_db_components() -> dict[str, str]:
-    """Resolve test-DB connection parts.
-
-    Mirrors `api/tests/conftest.py`: `TEST_DATABASE_URL` wins if set
-    (CI's path), otherwise build from `POSTGRES_USER` / `POSTGRES_PASSWORD`
-    / `POSTGRES_HOST` / `POSTGRES_PORT` plus `POSTGRES_TEST_DB` (the
-    local justfile path; avoids URL-encoding `+`/`=` in dev passwords).
-    """
+    """Return test DB connection dict from TEST_DATABASE_URL or POSTGRES_* env vars."""
     raw = os.environ.get("TEST_DATABASE_URL")
     if raw:
         raw = raw.replace("postgresql+psycopg://", "postgresql://", 1)

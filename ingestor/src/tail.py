@@ -17,10 +17,9 @@ from src import metrics
 
 logger = logging.getLogger(__name__)
 
-# 1 MiB cap;
-# Cowrie events << 64 KiB - bounds memory on attacker TTY payload.
+# 1 MiB cap; typical Cowrie events ~64 KiB, bounds memory on attacker TTY payload.
 MAX_LINE_BYTES = 1_048_576
-# Abandon drain after this many bytes per oversize line; seek to EOF instead.
+# Drain cap prevents DoS from attacker sending infinite line without newline.
 MAX_DRAIN_BYTES = 64 * 1024 * 1024
 
 
