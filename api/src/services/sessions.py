@@ -1,3 +1,5 @@
+"""Session queries: paginated lists and per-session detail."""
+
 from __future__ import annotations
 
 from typing import Any
@@ -10,7 +12,7 @@ from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
-from src.services.serializers import SessionSerializer
+from src.services.serializers import session_detail, session_summary
 from src.services.types import SessionDetailDict, SessionsPageDict
 
 
@@ -25,9 +27,16 @@ def get_sessions_paginated(
 ) -> SessionsPageDict:
     """One page of session summaries, filtered and sorted in SQL.
 
-    `page` is 1-indexed and `per_page` is used as given - clamp it in the
-    schema, not here. `category` keeps one session class (see
-    SESSION_CATEGORIES); `sort` is "recent", "country" or "active".
+    Arguments:
+      db: DbSession — database connection
+      page: int — 1-indexed page number; clamping happens in schema, not here
+      per_page: int — items per page; clamping happens in schema
+      country: str | None — filter by country code
+      category: str | None — session type: "active", "login", "failed", "probe"
+      sort: str — "recent", "country", or "active"
+
+    Returns:
+      SessionsPageDict — sessions with total count and pagination metadata
     """
     offset = (page - 1) * per_page
 
@@ -142,7 +151,7 @@ def get_sessions_paginated(
 
     return {
         "sessions": [
-            SessionSerializer.summary(
+            session_summary(
                 s,
                 g,
                 command_count=cc,
@@ -174,4 +183,4 @@ def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | No
     if row is None:
         return None
     session, geo = row
-    return SessionSerializer.detail(session, geo)
+    return session_detail(session, geo)

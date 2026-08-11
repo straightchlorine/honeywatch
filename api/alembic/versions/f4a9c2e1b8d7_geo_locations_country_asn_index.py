@@ -16,13 +16,8 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-# The Countries detail panel's ASN breakdown runs
-
-# `WHERE asn IS NOT NULL [AND country_code = :code] GROUP BY asn, as_org`.
-
-# It's scoped to one origin and polled while a country is selected. A partial
-# composite index on (country_code, asn) supports both the country scope and
-# the GROUP BY without scanning every geo row;
+# Partial composite index (country_code, asn WHERE asn IS NOT NULL) supports
+# country-scoped ASN grouping queries without full table scans.
 _INDEX_NAME = "ix_geo_locations_country_asn"
 
 

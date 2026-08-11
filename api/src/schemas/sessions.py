@@ -211,11 +211,7 @@ class SessionSummaryResponse(_SessionResponseBase):
 
 
 class SessionDetailResponse(_SessionResponseBase):
-    """Detail-endpoint shape.
-
-    src_ip and dst_ip are both omitted on purpose: neither the attacker's
-    address nor the honeypot's own crosses the API.
-    """
+    """Detail-endpoint shape; src_ip and dst_ip omitted by API design."""
 
     sensor = fields.Str(
         required=True,

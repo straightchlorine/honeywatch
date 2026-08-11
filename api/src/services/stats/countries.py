@@ -8,7 +8,12 @@ from sqlalchemy.orm import Session as DbSession
 from src.models.auth_attempt import AuthAttempt
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
-from src.services.stats.common import DEFAULT_TOP_N, UNKNOWN_COUNTRY, country_match
+from src.services.stats.common import (
+    DEFAULT_TOP_N,
+    UNKNOWN_COUNTRY,
+    country_match,
+    require_one_of,
+)
 from src.services.types import (
     CountriesDict,
     CountryAsnDict,
@@ -60,8 +65,7 @@ def country_breakdown(
     `sort` is one of VALID_COUNTRY_SORTS; anything else raises ValueError.
     Countries with no attempts sort last under "success_rate".
     """
-    if sort not in VALID_COUNTRY_SORTS:
-        raise ValueError(f"sort must be one of {sorted(VALID_COUNTRY_SORTS)}")
+    require_one_of(sort, VALID_COUNTRY_SORTS, "sort")
 
     # Pre-aggregate per src_ip first, so the geo join sees fewer rows.
     per_ip = _sessions_per_ip()

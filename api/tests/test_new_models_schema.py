@@ -1,9 +1,6 @@
-"""Schema-contract test for the three capture tables added in e7c4a1b9f2d6.
+"""Asserts ORM models and migrated schema stay in sync for ssh_clients, client_fingerprints, and direct_tcpip_requests.
 
-The ingestor writes ssh_clients / client_fingerprints / direct_tcpip_requests via
-raw SQL against the migrated schema, while the API maps them as SQLAlchemy models.
-This asserts the ORM models and the migrated DB agree on the column set and VARCHAR
-widths, so a drift between model and migration fails CI here rather than at runtime.
+Drift fails CI here rather than silently at runtime.
 """
 
 from __future__ import annotations

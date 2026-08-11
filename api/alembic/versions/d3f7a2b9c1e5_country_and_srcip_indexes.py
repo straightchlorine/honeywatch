@@ -16,13 +16,8 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-# Both columns drive the new country filter / scope added with the sessions
-# browser + activity analytics:
-#   - geo_locations.country_code: filtered on every country-scoped sessions and
-#     stats query (`WHERE country_code = :code`).
-#   - sessions.src_ip: keyed by the geo outer-join on every page and every
-#     country-scoped stat (`GeoLocation.ip == Session.src_ip`); also backs
-#     COUNT(DISTINCT src_ip). Postgres does not auto-index either column.
+# Indexes country-scoped queries: country_code (WHERE filter),
+# src_ip (geo joins + COUNT DISTINCT). Postgres doesn't auto-index.
 
 _INDEXES: tuple[tuple[str, str, str], ...] = (
     ("ix_geo_locations_country_code", "geo_locations", "country_code"),
@@ -31,8 +26,7 @@ _INDEXES: tuple[tuple[str, str, str], ...] = (
 
 
 def upgrade() -> None:
-    # CONCURRENTLY avoids blocking writes from the ingestor.
-    # Ran outside a transaction, thus one autocommit_block per index.
+    # CONCURRENTLY avoids blocking writes; requires autocommit_block per index.
     for index_name, table, column in _INDEXES:
         with op.get_context().autocommit_block():
             op.execute(

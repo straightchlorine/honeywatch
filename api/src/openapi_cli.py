@@ -18,9 +18,17 @@ from flask_smorest import Api
 def build_spec_dict(smorest_api: Api) -> dict[str, Any]:
     """Materialize the flask-smorest spec to a plain dict.
 
-    Shared by the runtime cache in app.py and the dump CLI so the served spec
-    and the committed snapshot are built the same way. Raises RuntimeError if
-    the spec is uninitialised.
+    Shared by the runtime cache and dump CLI to keep served and committed specs
+    in sync.
+
+    Arguments:
+      smorest_api: Api — the flask-smorest instance
+
+    Returns:
+      dict[str, Any] — the OpenAPI spec as a dictionary
+
+    Raises:
+      RuntimeError: if flask-smorest spec is not initialized
     """
     spec_obj = smorest_api.spec
     if spec_obj is None:
@@ -29,10 +37,17 @@ def build_spec_dict(smorest_api: Api) -> dict[str, Any]:
 
 
 def dump_spec(spec: dict[str, Any], output: pathlib.Path) -> int:
-    """Write `spec` to `output` deterministically; returns bytes written.
+    """Write OpenAPI spec to output with sorted keys and no `servers` block.
 
-    `servers` is stripped because it holds the host the spec was dumped from,
-    which would make the committed snapshot environment-dependent.
+    Arguments:
+      spec: dict[str, Any] — OpenAPI spec to write
+      output: pathlib.Path — file path to write to
+
+    Returns:
+      int — bytes written
+
+    How it works:
+      `servers` is stripped to keep the committed snapshot environment-independent.
     """
     body = json.dumps(_strip_servers(spec), indent=2, sort_keys=True) + "\n"
     output.write_text(body, encoding="utf-8")

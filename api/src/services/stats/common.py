@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Collection
 
 from sqlalchemy import ColumnElement, Select
 
@@ -10,6 +10,17 @@ from src.models.geo_location import GeoLocation
 from src.models.session import Session
 
 DEFAULT_TOP_N = 10
+
+
+def require_one_of(value: str, valid: Collection[str], name: str) -> None:
+    """Raise ValueError unless `value` is in `valid`.
+
+    Centralizes the "unrecognized query param" guard repeated across the
+    stats modules, so the message stays identical everywhere it is raised.
+    """
+    if value not in valid:
+        raise ValueError(f"{name} must be one of {sorted(valid)}")
+
 
 # Country code standing in for sessions whose source IP has no geo_locations row.
 UNKNOWN_COUNTRY = "??"

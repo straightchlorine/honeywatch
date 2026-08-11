@@ -43,13 +43,9 @@ class JsonFormatter(logging.Formatter):
 
 
 def build_logging_config() -> dict[str, Any]:
-    """Build the dictConfig for the API's logging.
+    """Build the logging dictConfig.
 
-    Returned rather than applied so gunicorn.conf.py can pass the same dict to
-    logconfig_dict and route its access/error logs through this handler.
-
-    LOG_LEVEL sets the level (default INFO); LOG_FORMAT picks json or text,
-    defaulting to json in production.
+    Returned for gunicorn reuse rather than applied here.
     """
     resolved = os.environ.get("LOG_LEVEL", "INFO").upper()
     env = os.environ.get("ENVIRONMENT", "production").strip().lower()

@@ -20,9 +20,7 @@ from src.models.session import Session as HoneypotSession
 
 
 def _resolve_test_db_url() -> str:
-    """Resolve the test database URL: `TEST_DATABASE_URL` if set, else
-    built from `POSTGRES_*` env vars.
-    """
+    """Prefer TEST_DATABASE_URL env var; fall back to POSTGRES_* vars."""
     direct = os.environ.get("TEST_DATABASE_URL")
     if direct:
         return direct
@@ -182,11 +180,9 @@ def seed_data(db_session: Session) -> dict[str, Any]:
     }
 
 
-# A password chosen to fall into each charset-class branch of the server-side
-# regex CASE (src.services.stats.credentials.password_composition). The order
-# pins the branch priority: empty -> symbol -> digits -> lower -> upper ->
-# alnum. `LONG_PASSWORD` (18 chars) exercises the >= PASSWORD_LENGTH_CAP tail.
-LONG_PASSWORD = "abcdefghijklmnopqr"  # 18 chars, all lowercase -> "lower" class
+# Passwords exercise each charset-class branch of stats.credentials
+# (empty, symbol, digits, lower, upper, alnum) plus >= PASSWORD_LENGTH_CAP.
+LONG_PASSWORD = "abcdefghijklmnopqr"
 _CHARSET_PASSWORDS: dict[str, str] = {
     "empty": "",
     "symbol": "p@ss!",
@@ -194,19 +190,15 @@ _CHARSET_PASSWORDS: dict[str, str] = {
     "lower": "secret",
     "upper": "ROOT",
     "alnum": "abc123",
-    # mixed-case-with-digits also lands in alnum; keep one extra long sample so
-    # the >= cap length-tail drill-down has a row to return.
     "long": LONG_PASSWORD,
 }
 
 
 @pytest.fixture()
 def charset_seed(db_session: Session) -> dict[str, Any]:
-    """Seed one auth attempt per charset class (plus a >= cap-length password).
+    """Seed one auth attempt per charset class plus >= cap-length sample.
 
-    Isolated from :func:`seed_data` so the exact-count assertions there stay
-    valid: this fixture stands alone and lets the charset / length-tail tests
-    assert their own totals.
+    Isolated from seed_data so exact-count assertions remain valid.
     """
     now = datetime.now(timezone.utc)
     session = HoneypotSession(
@@ -238,13 +230,9 @@ def charset_seed(db_session: Session) -> dict[str, Any]:
 
 @pytest.fixture()
 def ip_fanout_seed(db_session: Session) -> dict[str, Any]:
-    """Seed a shared credential tried from two distinct IPs + a single-IP one.
+    """Seed shared credentials from two IPs (fanout=2) and one IP (fanout=1).
 
-    Two sessions with different `src_ip` both submit the SAME
-    `(botnet, sharedpw)` pair (distinct_ips == 2 - the distributed-botnet
-    signal), while `(loner, lonelypw)` is tried from a single IP
-    (distinct_ips == 1). Isolated from :func:`seed_data` so ip_fanout ranking
-    is unambiguous.
+    Isolated from seed_data so ip_fanout ranking is unambiguous.
     """
     now = datetime.now(timezone.utc)
     sessions = [
@@ -280,7 +268,6 @@ def ip_fanout_seed(db_session: Session) -> dict[str, Any]:
     db_session.flush()
 
     attempts = [
-        # Same (username, password) from two distinct source IPs -> fanout 2.
         AuthAttempt(
             session_id="fanout-001",
             username="botnet",
@@ -295,7 +282,6 @@ def ip_fanout_seed(db_session: Session) -> dict[str, Any]:
             success=False,
             timestamp=now,
         ),
-        # A different pair tried from a single IP -> fanout 1.
         AuthAttempt(
             session_id="fanout-003",
             username="loner",
@@ -311,8 +297,7 @@ def ip_fanout_seed(db_session: Session) -> dict[str, Any]:
 
 @pytest.fixture()
 def failed_and_probe_seed(db_session: Session) -> None:
-    """Seed a 'failed' session (one rejected auth attempt, no commands) and a
-    'probe' session (no auth attempts at all), alongside :func:`seed_data`."""
+    """Seed 'failed' (one rejected auth) and 'probe' (no auth) sessions."""
     now = datetime.now(timezone.utc)
     db_session.add(
         HoneypotSession(

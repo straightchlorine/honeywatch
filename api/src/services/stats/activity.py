@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from src.models.auth_attempt import AuthAttempt
 from src.models.session import Session
-from src.services.stats.common import scope_to_country
+from src.services.stats.common import require_one_of, scope_to_country
 from src.services.types import (
     ActivityBucketDict,
     HeatmapPointDict,
@@ -75,8 +75,7 @@ def activity(
     30d for "day", 365d for "month". Empty buckets are absent.
     `bucket` must be in VALID_BUCKETS; anything else raises ValueError.
     """
-    if bucket not in VALID_BUCKETS:
-        raise ValueError(f"bucket must be one of {sorted(VALID_BUCKETS)}")
+    require_one_of(bucket, VALID_BUCKETS, "bucket")
     since = datetime.now(timezone.utc) - _BUCKET_WINDOWS[bucket]
     trunc = func.date_trunc(bucket, Session.started_at)
     stmt = select(trunc.label("bucket"), func.count().label("count")).select_from(

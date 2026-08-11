@@ -13,7 +13,6 @@ def test_health_returns_ok(client: Any) -> None:
 
 
 def test_ready_returns_ok_when_db_up(client: Any) -> None:
-    """`/health/ready` round-trips a SELECT 1 to the test database."""
     response = client.get("/health/ready")
     assert response.status_code == 200
     data = response.get_json()
@@ -50,12 +49,7 @@ class _ExplodingFactory:
 def test_ready_returns_503_when_db_down(
     app: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A failing DB session yields 503 with a reason and emits a warning.
-
-    Swaps the app-level session factory (the same seam used by the `client`
-    fixture in conftest) so the route exercises the realistic failure path:
-    factory call returns, context manager enters, `execute` raises.
-    """
+    """Mocks at the session-factory seam to reproduce realistic DB outage (factory succeeds, execute() fails)."""
     original = app.extensions.get("db_session_factory")
     app.extensions["db_session_factory"] = _ExplodingFactory()
     try:

@@ -68,7 +68,7 @@ class Config:
 
 
 class DevelopmentConfig(Config):
-    """Development configuration."""
+    pass
 
 
 class TestingConfig(Config):

