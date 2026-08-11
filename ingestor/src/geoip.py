@@ -60,7 +60,8 @@ _ReaderPair = tuple["geoip2.database.Reader | None", "geoip2.database.Reader | N
 
 
 def _open_readers() -> _ReaderPair:
-    # Open both atomically: if either fails, neither caches, avoiding mismatched (Reader, None).
+    # Open both atomically: if either fails, neither caches,
+    # avoiding mismatched (Reader, None).
     global _city_reader, _asn_reader
     with _lock:
         if _city_reader is not None and _asn_reader is not None:

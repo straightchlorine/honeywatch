@@ -326,7 +326,8 @@ class EventWriter:
                 return
             # Only recorded after a successful upsert - a failed one must
             # not suppress the retry on the next connect from this IP.
-            # Whole-dict flush at cap; upgrade to LRU if reset churn shows in geo-upsert rate.
+            # Whole-dict flush at cap;
+            # TODO: upgrade to LRU if reset churn shows in geo-upsert rate.
             if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
                 self._geo_upserted_at.clear()
             self._geo_upserted_at[event.src_ip] = now
