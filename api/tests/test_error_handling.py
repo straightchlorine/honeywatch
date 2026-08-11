@@ -24,8 +24,7 @@ def test_unhandled_exception_returns_clean_500_envelope(
     try:
         response = client.get("/api/v1/stats/totals")
     finally:
-        # Restore Flask's default (None = auto: propagate under TESTING/DEBUG)
-        # so this does not leak into other tests sharing the session app.
+        # Restore default to prevent test pollution.
         app.config["PROPAGATE_EXCEPTIONS"] = None
 
     assert response.status_code == 500

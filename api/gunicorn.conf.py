@@ -32,5 +32,4 @@ errorlog = "-"
 # %(h)s (client IP) is intentionally omitted so attacker IPs never hit the log.
 access_log_format = '"%(r)s" %(s)s %(b)s %(L)s req=%({x-request-id}i)s'
 
-# Ensure gunicorn's own logs follow the pattern set by the application.
 logconfig_dict = build_logging_config()

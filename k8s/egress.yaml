@@ -48,7 +48,7 @@ metadata:
 spec:
   replicas: 1
   strategy:
-    # Single tailnet identity -- don't run two pods racing for the same state.
+    # Single tailnet identity - don't run two pods racing for the same state.
     type: Recreate
   selector:
     matchLabels:
@@ -64,7 +64,7 @@ spec:
           image: tailscale/tailscale:v1.80.0
           imagePullPolicy: IfNotPresent
           env:
-            # Both values come from the SealedSecret in secret.yaml.
+            # From SealedSecret in secret.yaml.
             - name: TS_AUTHKEY
               valueFrom:
                 secretKeyRef:
@@ -141,16 +141,9 @@ spec:
   selector:
     app: honeywatch-egress
 ---
-# Pin egress from the tailscale sidecar. Tailscaled needs:
-#   - TCP 443+6443+8443 to any IP (DERP relays, k8s API and traefik
-#     websecure after DNAT — the headscale control plane is reached by
-#     hairpinning into this cluster's own LoadBalancer IP, so the dial
-#     to vpn.codextechnologies.org:443 is DNATed to the traefik pod's
-#     8443 before this policy is evaluated)
-#   - UDP 41641 to any public IP (direct WireGuard)
-#   - DNS (UDP/TCP 53) to the cluster resolver
-# Everything else is denied so a compromised sidecar cannot pivot into
-# the rest of the cluster or the internet at large.
+# Tailscale sidecar egress: control plane+DERP+k8s API (TCP 443/6443/8443),
+# WireGuard (UDP 41641/3478), DNS. Hairpinning: vpn.codextechnologies.org:443
+# is DNATed to traefik pod's 8443 before policy eval. Default-deny all else.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:
@@ -165,7 +158,6 @@ spec:
   policyTypes:
     - Egress
   egress:
-    # DNS to the cluster resolver (kube-dns / coredns in kube-system).
     - to:
         - namespaceSelector:
             matchLabels:
@@ -199,10 +191,7 @@ spec:
         - protocol: UDP
           port: 3478
 ---
-# kube-router applies a namespace-wide default-deny when any Egress
-# NetworkPolicy exists. This policy explicitly allows egress for every
-# pod that is NOT the locked-down tailscale sidecar, so the dashboard
-# (and any future non-egress workload) is not collateral-blocked.
+# kube-router default-deny side effect; exempt non-egress pods (dashboard).
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
 metadata:

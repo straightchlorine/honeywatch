@@ -1,11 +1,8 @@
-# ArgoCD Application for honeywatch on Hetzner k3s.
+# ArgoCD Application for honeywatch.
 #
 # Bootstrap (once per cluster):
 #   kubectl apply -f k8s/argocd-app.yaml
-# After that, ArgoCD tracks this repo directly; nothing else to wire.
-#
-# Image Updater watches the dashboard image and writes the resolved tag
-# back into k8s/kustomization.yaml via a Git commit.
+# Then ArgoCD auto-syncs from repo; Image Updater watches dashboard image, commits resolved tag to kustomization.yaml.
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:

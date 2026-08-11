@@ -1,9 +1,12 @@
+"""Persist cowrie events to PostgreSQL, with defensive isolation and truncation."""
+
 from __future__ import annotations
 
 import ipaddress
 import logging
+import time
 from types import TracebackType
-from typing import Self
+from typing import Any, LiteralString, Self
 
 import psycopg
 from psycopg_pool import ConnectionPool
@@ -49,6 +52,15 @@ _LEN_HOST = 256
 # attacker controls the pre-auth KEXINIT name-lists, so cap them defensively
 # (hassh_algorithms is separately VARCHAR(1024)-capped via _LEN_HASSH_ALGORITHMS).
 _LEN_ALGORITHMS = 4096
+
+# Geo/ASN data does not change within an hour, so a repeat connect from the
+# same IP (the dominant honeypot traffic pattern - botnets reconnect from
+# the same source repeatedly) can skip the geo upsert round trip entirely.
+# A missed refresh just means slightly stale enrichment, which is harmless.
+_GEO_UPSERT_TTL_SECONDS = 3600
+# Cap on the in-process last-upsert tracker so it can't grow unbounded
+# against a botnet with many distinct source IPs.
+_GEO_UPSERT_CACHE_CAP = 10_000
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +182,9 @@ class EventWriter:
     """Persists the subset of cowrie events we care about to PostgreSQL.
 
     Events not matched below (e.g. `cowrie.client.size`, `cowrie.log.open`)
-    are silently dropped -- the raw line was already logged upstream so
-    nothing is lost from an observability standpoint.
+    are dropped and counted via `events_dropped_total{reason="unhandled_eventid"}`
+    - they are not persisted anywhere, so that counter is the only record of
+    them.
     """
 
     def __init__(self, conninfo: str, *, drop_loopback: bool = True) -> None:
@@ -180,6 +193,9 @@ class EventWriter:
             conninfo, open=False, check=ConnectionPool.check_connection
         )
         self._drop_loopback = drop_loopback
+        # ip -> time.monotonic() of the last successful geo upsert.
+        # No lock needed: EventWriter is driven by a single consumer thread.
+        self._geo_upserted_at: dict[str, float] = {}
 
     def __enter__(self) -> Self:
         self.pool.open()
@@ -201,7 +217,9 @@ class EventWriter:
             event: The parsed cowrie event.
 
         Note:
-            Events not matched by the dispatch table are silently dropped.
+            Events not matched by the dispatch table below are counted as
+            dropped (`events_dropped_total{reason="unhandled_eventid"}`) and
+            are not persisted anywhere.
         """
         match event:
             case SessionConnect():
@@ -222,6 +240,12 @@ class EventWriter:
                 self._write_client_fingerprint(event)
             case DirectTcpipRequest():
                 self._write_direct_tcpip(event)
+            case _:
+                # Cardinality-bounded: label is a fixed string, not the
+                # eventid, so an attacker can't inflate the label set. The
+                # eventid itself goes to the log for humans debugging.
+                metrics.events_dropped_total.labels(reason="unhandled_eventid").inc()
+                logger.debug("dropping unhandled eventid=%s", event.eventid)
 
     def _write_session_connect(self, event: SessionConnect) -> None:
         # Suppress cowrie's docker-compose healthcheck dials.
@@ -250,6 +274,16 @@ class EventWriter:
                     )
             except psycopg.errors.DataError as exc:
                 self._drop_bad_event("session_connect", event.session_id, exc)
+                return
+
+            now = time.monotonic()
+            last_upserted = self._geo_upserted_at.get(event.src_ip)
+            if last_upserted is not None and (
+                now - last_upserted < _GEO_UPSERT_TTL_SECONDS
+            ):
+                # Same IP was upserted recently (repeat botnet connects are
+                # the dominant traffic pattern here) - skip the geo lookup
+                # and DB round trip entirely.
                 return
 
             try:
@@ -289,59 +323,74 @@ class EventWriter:
                     event.src_ip,
                     exc_info=True,
                 )
+                return
+            # Only recorded after a successful upsert - a failed one must
+            # not suppress the retry on the next connect from this IP.
+            # Whole-dict flush at cap;
+            # TODO: upgrade to LRU if reset churn shows in geo-upsert rate.
+            if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
+                self._geo_upserted_at.clear()
+            self._geo_upserted_at[event.src_ip] = now
+
+    def _execute(
+        self, kind: str, session_id: str, sql: LiteralString, params: dict[str, Any]
+    ) -> None:
+        """Run one INSERT/UPSERT, isolating the orphan and poison-event cases.
+
+        Shared by every `_write_*` method whose only failure modes are "no
+        parent session row yet" (FK violation) and "Postgres rejected the
+        value" (DataError). `_write_session_connect` and
+        `_write_session_closed` have their own control flow (two
+        transactions / rowcount check) and don't go through here.
+        """
+        try:
+            with self.pool.connection() as conn:
+                conn.execute(sql, params)
+        except psycopg.errors.ForeignKeyViolation:
+            self._log_orphan(kind, session_id)
+        except psycopg.errors.DataError as exc:
+            self._drop_bad_event(kind, session_id, exc)
 
     def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _INSERT_AUTH_ATTEMPT,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "username": truncate(event.username, _LEN_USERNAME),
-                        "password": truncate(event.password, _LEN_PASSWORD),
-                        "success": isinstance(event, LoginSuccess),
-                        "timestamp": event.timestamp,
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("auth", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("auth", event.session_id, exc)
+        self._execute(
+            "auth",
+            event.session_id,
+            _INSERT_AUTH_ATTEMPT,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "username": truncate(event.username, _LEN_USERNAME),
+                "password": truncate(event.password, _LEN_PASSWORD),
+                "success": isinstance(event, LoginSuccess),
+                "timestamp": event.timestamp,
+            },
+        )
 
     def _write_command(self, event: CommandInput) -> None:
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _INSERT_COMMAND,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "input": truncate(event.input, _LEN_COMMAND_INPUT),
-                        "success": True,
-                        "timestamp": event.timestamp,
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("cmd", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("cmd", event.session_id, exc)
+        self._execute(
+            "cmd",
+            event.session_id,
+            _INSERT_COMMAND,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "input": truncate(event.input, _LEN_COMMAND_INPUT),
+                "success": True,
+                "timestamp": event.timestamp,
+            },
+        )
 
     def _write_download(self, event: FileDownload) -> None:
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _INSERT_DOWNLOAD,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "url": truncate(event.url, _LEN_URL),
-                        "outfile": truncate(event.outfile, _LEN_OUTFILE),
-                        "sha256": truncate(event.sha256, _LEN_SHA256),
-                        "timestamp": event.timestamp,
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("download", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("download", event.session_id, exc)
+        self._execute(
+            "download",
+            event.session_id,
+            _INSERT_DOWNLOAD,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "url": truncate(event.url, _LEN_URL),
+                "outfile": truncate(event.outfile, _LEN_OUTFILE),
+                "sha256": truncate(event.sha256, _LEN_SHA256),
+                "timestamp": event.timestamp,
+            },
+        )
 
     def _write_session_closed(self, event: SessionClosed) -> None:
         with self.pool.connection() as conn:
@@ -360,82 +409,66 @@ class EventWriter:
                 self._log_orphan("session_closed", event.session_id)
 
     def _write_client_version(self, event: ClientVersion) -> None:
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _UPSERT_SSH_CLIENT_VERSION,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "client_version": truncate(event.version, _LEN_CLIENT_VERSION),
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("client_version", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("client_version", event.session_id, exc)
+        self._execute(
+            "client_version",
+            event.session_id,
+            _UPSERT_SSH_CLIENT_VERSION,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "client_version": truncate(event.version, _LEN_CLIENT_VERSION),
+            },
+        )
 
     def _write_client_kex(self, event: ClientKex) -> None:
         def _join(values: list[str]) -> str | None:
             return truncate(",".join(values), _LEN_ALGORITHMS) if values else None
 
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _UPSERT_SSH_CLIENT_KEX,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "hassh": truncate(event.hassh, _LEN_HASSH),
-                        "hassh_algorithms": truncate(
-                            event.hasshAlgorithms, _LEN_HASSH_ALGORITHMS
-                        ),
-                        "kex_algorithms": _join(event.kexAlgs),
-                        "key_algorithms": _join(event.keyAlgs),
-                        "encryption_algorithms": _join(event.encCS),
-                        "mac_algorithms": _join(event.macCS),
-                        "compression_algorithms": _join(event.compCS),
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("client_kex", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("client_kex", event.session_id, exc)
+        self._execute(
+            "client_kex",
+            event.session_id,
+            _UPSERT_SSH_CLIENT_KEX,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "hassh": truncate(event.hassh, _LEN_HASSH),
+                "hassh_algorithms": truncate(
+                    event.hasshAlgorithms, _LEN_HASSH_ALGORITHMS
+                ),
+                "kex_algorithms": _join(event.kexAlgs),
+                "key_algorithms": _join(event.keyAlgs),
+                "encryption_algorithms": _join(event.encCS),
+                "mac_algorithms": _join(event.macCS),
+                "compression_algorithms": _join(event.compCS),
+            },
+        )
 
     def _write_client_fingerprint(self, event: ClientFingerprint) -> None:
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _INSERT_CLIENT_FINGERPRINT,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "username": truncate(event.username, _LEN_USERNAME),
-                        "fingerprint": truncate(event.fingerprint, _LEN_FINGERPRINT),
-                        "fingerprint_type": truncate(event.type, _LEN_FINGERPRINT_TYPE),
-                        "timestamp": event.timestamp,
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("client_fingerprint", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("client_fingerprint", event.session_id, exc)
+        self._execute(
+            "client_fingerprint",
+            event.session_id,
+            _INSERT_CLIENT_FINGERPRINT,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "username": truncate(event.username, _LEN_USERNAME),
+                "fingerprint": truncate(event.fingerprint, _LEN_FINGERPRINT),
+                "fingerprint_type": truncate(event.type, _LEN_FINGERPRINT_TYPE),
+                "timestamp": event.timestamp,
+            },
+        )
 
     def _write_direct_tcpip(self, event: DirectTcpipRequest) -> None:
-        try:
-            with self.pool.connection() as conn:
-                conn.execute(
-                    _INSERT_DIRECT_TCPIP,
-                    {
-                        "session_id": truncate(event.session_id, _LEN_SESSION_ID),
-                        "dst_ip": truncate(event.dst_ip, _LEN_HOST),
-                        "dst_port": event.dst_port,
-                        "src_ip": truncate(event.src_ip, _LEN_HOST),
-                        "src_port": event.src_port,
-                        "timestamp": event.timestamp,
-                    },
-                )
-        except psycopg.errors.ForeignKeyViolation:
-            self._log_orphan("direct_tcpip", event.session_id)
-        except psycopg.errors.DataError as exc:
-            self._drop_bad_event("direct_tcpip", event.session_id, exc)
+        self._execute(
+            "direct_tcpip",
+            event.session_id,
+            _INSERT_DIRECT_TCPIP,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "dst_ip": truncate(event.dst_ip, _LEN_HOST),
+                "dst_port": event.dst_port,
+                "src_ip": truncate(event.src_ip, _LEN_HOST),
+                "src_port": event.src_port,
+                "timestamp": event.timestamp,
+            },
+        )
 
     @staticmethod
     def _log_orphan(kind: str, session_id: str) -> None:
@@ -455,7 +488,7 @@ class EventWriter:
         Without this, the writer's retry/fuse keeps replaying the same
         poison event forever, blocking the queue.
 
-        Logs the SQLSTATE only -- never ``exc_info``: the DataError message
+        Logs the SQLSTATE only - never `exc_info`: the DataError message
         echoes the rejected attacker value verbatim, which would smuggle
         unsanitized bytes (ANSI/CRLF log forgery) into the operator's log sink.
         """

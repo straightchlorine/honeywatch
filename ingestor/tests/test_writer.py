@@ -5,11 +5,13 @@ from typing import LiteralString
 from unittest.mock import patch
 
 import pytest
+from prometheus_client import REGISTRY
 
 from src import writer as writer_module
 from src.events import (
     ClientFingerprint,
     ClientKex,
+    ClientSize,
     ClientVersion,
     CommandInput,
     CowrieEvent,
@@ -305,7 +307,6 @@ def test_duplicate_session_ignored(
 ) -> None:
     event = _connect_event()
     writer.write_event(event)
-    # Writing the same session again should not raise an error
     writer.write_event(event)
 
     count = db_connection.execute(
@@ -455,9 +456,7 @@ def test_geo_failure_preserves_session(
 ) -> None:
     """Geo upsert failure must not roll back the session row.
 
-    Split-tx is load-bearing: an attack record is more valuable than its
-    enrichment. Simulates a geo write blowing up by monkeypatching the
-    geoip_lookup to return a fake hit and the geo SQL to raise.
+    Split-tx is load-bearing: an attack record is more valuable than its enrichment.
     """
     from src import writer as writer_module
     from src.geoip import GeoData
@@ -489,7 +488,6 @@ def test_geo_failure_preserves_session(
             )
             writer.write_event(event)
 
-    # Session row preserved despite geo upsert failure.
     count = db_connection.execute(
         "SELECT count(*) FROM sessions WHERE id = %s",
         ("sess-geo-fail",),
@@ -755,3 +753,108 @@ def test_client_kex_only_row(writer: EventWriter, db_connection: DbConn) -> None
     assert row is not None
     assert row[0] is None
     assert row[1] == "cafe"
+
+
+# --- Unhandled eventids are counted as dropped, not silently swallowed ---
+
+
+def _dropped(reason: str) -> float:
+    return (
+        REGISTRY.get_sample_value("ingestor_events_dropped_total", {"reason": reason})
+        or 0.0
+    )
+
+
+def test_unhandled_eventid_counted_as_dropped(writer: EventWriter) -> None:
+    """A parsed event with no `write_event` case bumps events_dropped_total.
+
+    `cowrie.client.size` parses fine (it's a modelled event) but has no
+    writer case - it must not be indistinguishable from a real write.
+    """
+    before = _dropped("unhandled_eventid")
+    writer.write_event(
+        ClientSize(session_id="sess-001", width=80, height=24, timestamp=_TS)
+    )
+    assert _dropped("unhandled_eventid") == before + 1
+
+
+# --- Geo upsert TTL gate: repeat connects from one IP skip the round trip ---
+
+
+def _fake_geo():
+    """Build a fixed GeoData stand-in for mocking."""
+    from src.geoip import GeoData
+
+    return GeoData(
+        country_code="US",
+        country="United States",
+        city="Test",
+        latitude=0.0,
+        longitude=0.0,
+        asn=0,
+        as_org="Test",
+    )
+
+
+def test_second_connect_same_ip_skips_geo_upsert(writer: EventWriter) -> None:
+    """Repeat connect from the same IP within the TTL window doesn't re-upsert."""
+    with patch.object(
+        writer_module, "geoip_lookup", return_value=_fake_geo()
+    ) as mock_lookup:
+        writer.write_event(
+            SessionConnect(
+                session_id="sess-geo-ttl-1",
+                src_ip="198.51.100.9",
+                src_port=1111,
+                dst_ip="10.0.0.1",
+                dst_port=2222,
+                protocol="ssh",
+                timestamp=_TS,
+                sensor="honeypot-01",
+            )
+        )
+        writer.write_event(
+            SessionConnect(
+                session_id="sess-geo-ttl-2",
+                src_ip="198.51.100.9",
+                src_port=2222,
+                dst_ip="10.0.0.1",
+                dst_port=2222,
+                protocol="ssh",
+                timestamp=_TS,
+                sensor="honeypot-01",
+            )
+        )
+    assert mock_lookup.call_count == 1
+
+
+def test_connect_from_different_ip_still_upserts_geo(writer: EventWriter) -> None:
+    """A different source IP is not suppressed by another IP's TTL entry."""
+    with patch.object(
+        writer_module, "geoip_lookup", return_value=_fake_geo()
+    ) as mock_lookup:
+        writer.write_event(
+            SessionConnect(
+                session_id="sess-geo-ttl-3",
+                src_ip="198.51.100.20",
+                src_port=1111,
+                dst_ip="10.0.0.1",
+                dst_port=2222,
+                protocol="ssh",
+                timestamp=_TS,
+                sensor="honeypot-01",
+            )
+        )
+        writer.write_event(
+            SessionConnect(
+                session_id="sess-geo-ttl-4",
+                src_ip="198.51.100.21",
+                src_port=2222,
+                dst_ip="10.0.0.1",
+                dst_port=2222,
+                protocol="ssh",
+                timestamp=_TS,
+                sensor="honeypot-01",
+            )
+        )
+    assert mock_lookup.call_count == 2

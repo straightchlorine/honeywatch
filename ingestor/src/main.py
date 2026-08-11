@@ -65,7 +65,7 @@ def _consumer(
     config: Config,
     stop_event: threading.Event,
 ) -> None:
-    """Drain `in_queue`, parse + persist via `writer`. Heartbeat liveness."""
+    """Drain queue, parse and persist events, heartbeat liveness file."""
     # Touching, so probes won't kill the pod during cold start.
     _touch_healthy(config)
 
@@ -82,7 +82,6 @@ def _consumer(
             break
 
         line = item if isinstance(item, str) else ""
-        logger.debug("cowrie event: %s", line)
 
         try:
             event = parse_event(line)
@@ -99,7 +98,7 @@ def _consumer(
 
 
 def _touch_healthy(config: Config) -> None:
-    """Refresh the liveness sentinel from the consumer loop.
+    """Refresh the liveness file.
 
     Not "after successful DB write" - DB stalls (which the fuse rides out)
     must not age the file out and trigger restarts that lose the backlog.
@@ -163,6 +162,10 @@ def main() -> None:
                     threshold=config.fuse_threshold,
                     sleep_seconds=config.fuse_sleep,
                     probe=_build_probe(event_writer),
+                    # Keep the liveness file fresh while the fuse rides out
+                    # a DB outage - probing can loop for as long as Postgres
+                    # is down.
+                    on_wait=lambda: _touch_healthy(config),
                 ),
             )
 

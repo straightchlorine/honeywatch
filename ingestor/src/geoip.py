@@ -25,6 +25,7 @@ from threading import Lock
 
 import geoip2.database
 import geoip2.errors
+import maxminddb
 
 logger = logging.getLogger(__name__)
 
@@ -52,20 +53,24 @@ _warned: set[str] = set()
 
 
 class _ReadersGone(Exception):
-    """Raised inside the cached path when readers became unavailable; never cached."""
+    """Raised when readers fail; not caught by lru_cache."""
 
 
 _ReaderPair = tuple["geoip2.database.Reader | None", "geoip2.database.Reader | None"]
 
 
 def _open_readers() -> _ReaderPair:
-    # Both readers are opened together below; require both to be set
-    # before so a partial init (e.g. ASN constructor raises after City
-    # succeeded) mismatched (Reader, None) pair forever.
+    # Open both atomically: if either fails, neither caches,
+    # avoiding mismatched (Reader, None).
     global _city_reader, _asn_reader
     with _lock:
         if _city_reader is not None and _asn_reader is not None:
             return _city_reader, _asn_reader
+        # A corrupt mmdb never heals within a process, and _lookup_cached's
+        # exception path isn't memoized, so without this we'd re-open and
+        # re-parse the bad file on every single event.
+        if "corrupt" in _warned:
+            return None, None
         if not _CITY_PATH.exists() or not _ASN_PATH.exists():
             if "missing" not in _warned:
                 logger.warning(
@@ -77,8 +82,24 @@ def _open_readers() -> _ReaderPair:
                 )
                 _warned.add("missing")
             return None, None
-        _city_reader = geoip2.database.Reader(str(_CITY_PATH))
-        _asn_reader = geoip2.database.Reader(str(_ASN_PATH))
+        city_reader: geoip2.database.Reader | None = None
+        try:
+            city_reader = geoip2.database.Reader(str(_CITY_PATH))
+            asn_reader = geoip2.database.Reader(str(_ASN_PATH))
+        except (maxminddb.InvalidDatabaseError, OSError):
+            if city_reader is not None:
+                city_reader.close()
+            if "corrupt" not in _warned:
+                logger.warning(
+                    "GeoIP database at %s is corrupt or unreadable; geo "
+                    "enrichment disabled",
+                    _DATA_DIR,
+                    exc_info=True,
+                )
+                _warned.add("corrupt")
+            return None, None
+        _city_reader = city_reader
+        _asn_reader = asn_reader
         logger.info("GeoIP readers opened from %s", _DATA_DIR)
         return _city_reader, _asn_reader
 

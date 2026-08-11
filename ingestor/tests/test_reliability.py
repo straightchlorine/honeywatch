@@ -119,6 +119,32 @@ def test_fuse_probe_backoff_caps() -> None:
     assert all(s == 300.0 for s in calls[1:])
 
 
+def test_fuse_on_wait_fires_once_per_probe_attempt() -> None:
+    sleep, _ = _make_recorder()
+    on_wait_calls: list[None] = []
+    probe = MagicMock(side_effect=[False, False, True])
+    fuse = Fuse(
+        threshold=1,
+        sleep_seconds=5.0,
+        probe=probe,
+        sleep=sleep,
+        on_wait=lambda: on_wait_calls.append(None),
+    )
+    fuse.record_failure()  # trip immediately
+    assert not fuse.open
+    assert probe.call_count == 3
+    assert len(on_wait_calls) == 3
+
+
+def test_fuse_without_on_wait_still_works() -> None:
+    # on_wait defaults to None for backward compatibility.
+    sleep, _ = _make_recorder()
+    probe = MagicMock(return_value=True)
+    fuse = Fuse(threshold=1, sleep_seconds=1.0, probe=probe, sleep=sleep)
+    fuse.record_failure()
+    assert not fuse.open
+
+
 def test_fuse_record_success_clears_state() -> None:
     sleep, _ = _make_recorder()
     fuse = Fuse(threshold=5, sleep_seconds=1.0, probe=lambda: True, sleep=sleep)

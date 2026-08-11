@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session as DbSession
 
 from src.models.auth_attempt import AuthAttempt
 from src.models.session import Session
-from src.services.stats.common import DEFAULT_TOP_N, scope_to_country
+from src.services.stats.common import DEFAULT_TOP_N, require_one_of, scope_to_country
 from src.services.types import (
     AuthOutcomesDict,
     CharsetClassDict,
@@ -46,25 +46,25 @@ def top_credentials(
     country: str | None = None,
     top_n: int = DEFAULT_TOP_N,
 ) -> list[TopCredentialDict]:
-    """Top-N credentials, grouped by `by` and ranked by `metric`.
+    """Top-N credentials, grouped and ranked by metric.
 
-    by:      "pair" | "username" | "password". The half not grouped on comes
-             back None.
-    metric:  "attempts" ranks on raw try count; "ip_fanout" ranks on how many
-             distinct source IPs tried the credential. `distinct_ips` is None
-             unless the metric is "ip_fanout" - the attempts path skips the
-             sessions join that would compute it.
-    outcome: "any" | "success" | "failed", on whether cowrie accepted.
-    country: alpha-2 code, or UNKNOWN_COUNTRY for the geo-less bucket.
+    Arguments:
+      by: "pair" | "username" | "password"; the ungrouped field returns None
+      metric: "attempts" (try count) or "ip_fanout" (distinct source IPs);
+        ip_fanout sets distinct_ips, attempts leaves it None
+      outcome: "any" | "success" | "failed"
+      country: alpha-2 code or UNKNOWN_COUNTRY; filters to that geo bucket
+      top_n: max results to return
 
-    Raises ValueError on an unrecognized by / metric / outcome.
+    Returns:
+      list of TopCredentialDict with username, password, count, distinct_ips (or None)
+
+    Raises:
+      ValueError: unrecognized by / metric / outcome
     """
-    if by not in VALID_CRED_GROUPINGS:
-        raise ValueError(f"by must be one of {sorted(VALID_CRED_GROUPINGS)}")
-    if metric not in VALID_CRED_METRICS:
-        raise ValueError(f"metric must be one of {sorted(VALID_CRED_METRICS)}")
-    if outcome not in VALID_CRED_OUTCOMES:
-        raise ValueError(f"outcome must be one of {sorted(VALID_CRED_OUTCOMES)}")
+    require_one_of(by, VALID_CRED_GROUPINGS, "by")
+    require_one_of(metric, VALID_CRED_METRICS, "metric")
+    require_one_of(outcome, VALID_CRED_OUTCOMES, "outcome")
 
     if by == "password":
         group_cols = [AuthAttempt.password]
@@ -163,9 +163,14 @@ def auth_outcomes(db: DbSession) -> AuthOutcomesDict:
 def password_composition(db: DbSession) -> PasswordCompositionDict:
     """Length histogram and charset-class breakdown of attempted passwords.
 
-    Both breakdowns come from one grouping-sets query, so `lengths` and
-    `classes` always cover the same attempts. Lengths are capped at
-    PASSWORD_LENGTH_CAP.
+    Both breakdowns come from one grouping-sets query (same attempt set).
+    Lengths capped at PASSWORD_LENGTH_CAP.
+
+    Arguments:
+      db: database session
+
+    Returns:
+      dict with total, capped_at, lengths (list), classes (list)
     """
     pw = (
         select(AuthAttempt.password, func.count().label("cnt"))
@@ -210,10 +215,17 @@ def password_composition(db: DbSession) -> PasswordCompositionDict:
 def passwords_by_length(
     db: DbSession, length: int, top_n: int = DEFAULT_TOP_N
 ) -> list[TopPasswordDict]:
-    """Top-N passwords of a given length (drill-down into the histogram).
+    """Top-N passwords of a given length (histogram drill-down).
 
-    At PASSWORD_LENGTH_CAP this matches every password of that length or
-    longer, the same way password_composition fills its top bucket.
+    At PASSWORD_LENGTH_CAP, matches length-or-longer to align with password_composition.
+
+    Arguments:
+      db: database session
+      length: target length; ≥PASSWORD_LENGTH_CAP includes all longer passwords
+      top_n: max results to return
+
+    Returns:
+      list of TopPasswordDict with password and count
     """
     length_col = func.char_length(AuthAttempt.password)
     predicate = (

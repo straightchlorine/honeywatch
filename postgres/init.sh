@@ -1,6 +1,5 @@
 #!/bin/sh
-# Wrapper for init.sql so we can pass per-role passwords via psql -v.
-# postgres entrypoint runs *.sh files with the postgres superuser env set.
+# Wrapper to pass per-role passwords to init.sql via psql -v.
 set -eu
 
 : "${POSTGRES_INGESTOR_PASSWORD:?POSTGRES_INGESTOR_PASSWORD must be set}"

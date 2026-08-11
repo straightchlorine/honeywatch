@@ -290,6 +290,7 @@ version = "0.6.0"
 source = { editable = "." }
 dependencies = [
     { name = "geoip2" },
+    { name = "maxminddb" },
     { name = "prometheus-client" },
     { name = "psycopg", extra = ["binary"] },
     { name = "psycopg-pool" },
@@ -306,6 +307,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "geoip2", specifier = ">=5.2.0,<6" },
+    { name = "maxminddb", specifier = ">=3.1.1,<4" },
     { name = "prometheus-client", specifier = ">=0.25.0,<1" },
     { name = "psycopg", extras = ["binary"], specifier = ">=3.3.4,<4" },
     { name = "psycopg-pool", specifier = ">=3.3.1,<4" },

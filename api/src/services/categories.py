@@ -16,7 +16,16 @@ def classify_category(
     login_success: bool,
     auth_attempt_count: int,
 ) -> str:
-    """Return the SESSION_CATEGORIES entry matching these counters."""
+    """Return the SESSION_CATEGORIES entry matching these counters.
+
+    Arguments:
+      command_count: number of commands executed
+      login_success: whether login succeeded
+      auth_attempt_count: number of login attempts
+
+    Returns:
+      str — one of SESSION_CATEGORIES
+    """
     if command_count > 0:
         return "active"
     if login_success:

@@ -93,11 +93,13 @@ class Fuse:
         sleep_seconds: float,
         probe: Callable[[], bool],
         sleep: Callable[[float], None] = time.sleep,
+        on_wait: Callable[[], None] | None = None,
     ) -> None:
         self._threshold = threshold
         self._sleep_seconds = sleep_seconds
         self._probe = probe
         self._sleep = sleep
+        self._on_wait = on_wait
         self._consecutive_failures = 0
         self._open = False
 
@@ -135,6 +137,10 @@ class Fuse:
         backoff = self._sleep_seconds
         while True:
             self._sleep(backoff)
+            # Heartbeat after each sleep so a long outage doesn't age out the
+            # liveness file and get the pod restarted mid-backlog.
+            if self._on_wait is not None:
+                self._on_wait()
             if self._probe():
                 logger.warning("fuse: probe ok, closing")
                 self._open = False

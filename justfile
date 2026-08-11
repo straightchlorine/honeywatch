@@ -28,7 +28,7 @@ cowrie-log:
 fetch-mmdb:
     ./scripts/fetch-mmdb.sh ingestor/data
 
-# Seed the dev DB with synthetic data for UI testing. WIPES all tables.
+# Seed the dev DB with synthetic data for UI testing (WIPES all tables).
 seed *args:
     cd api && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" ENVIRONMENT=development uv run python scripts/seed_dev.py {{args}}
 
@@ -70,7 +70,7 @@ openapi-check: openapi-regen
     git add -A -- api/openapi.json dashboard/src/api/generated
     git diff --cached --exit-code -- api/openapi.json dashboard/src/api/generated
 
-# Bump version everywhere (pyprojects, uv.locks, dashboard package.json) and commit.
+# Bump version everywhere and commit.
 bump-version version:
     sed -i 's/^version = ".*"/version = "{{version}}"/' api/pyproject.toml ingestor/pyproject.toml
     sed -i 's/"version": ".*"/"version": "{{version}}"/' dashboard/package.json

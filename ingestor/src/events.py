@@ -25,11 +25,11 @@ class _EventBase(BaseModel):
     message: str | list[Any] | None = None
     sensor: str | None = None
     uuid: str | None = None
-    # Most session-scoped events stamp these. Not strictly universal
-    # (log.open/closed omit them), so they're optional here.
-    src_ip: str | None = None
-    src_port: int | None = None
     protocol: str | None = None
+    # src_ip/src_port are NOT universal (log.open/closed omit them), so they
+    # aren't declared here. `SessionConnect` and `DirectTcpipRequest` declare
+    # their own (required vs optional, per that event's DB column). Every
+    # other event still captures them as extras via `extra="allow"`.
 
 
 # -- Session lifecycle ------------------------------------------------------
@@ -37,6 +37,11 @@ class _EventBase(BaseModel):
 
 class SessionConnect(_EventBase):
     eventid: Literal["cowrie.session.connect"] = "cowrie.session.connect"
+    # sessions.src_ip/src_port are NOT NULL, so a connect missing either must
+    # fail parsing as parser drift, rather than reach the writer and fail the
+    # INSERT with a NotNullViolation the DataError handler doesn't catch.
+    src_ip: str
+    src_port: int
     dst_ip: str
     dst_port: int
     session_id: str = Field(validation_alias="session")
@@ -58,12 +63,25 @@ class SessionClosed(_EventBase):
 
 
 class ClientVersion(_EventBase):
+    """SSH client version string.
+
+    One of two events populating the `ssh_clients` row (paired with `ClientKex`).
+    The row timestamp is set by whichever event arrives first.
+    """
+
     eventid: Literal["cowrie.client.version"] = "cowrie.client.version"
     version: str
     session_id: str = Field(validation_alias="session")
 
 
 class ClientKex(_EventBase):
+    """SSH key exchange and supported algorithms.
+
+    One of two events populating the `ssh_clients` row (paired with `ClientVersion`).
+    HASSH fingerprint ties bots across IP changes; algorithm lists detect
+    client type/version.
+    """
+
     eventid: Literal["cowrie.client.kex"] = "cowrie.client.kex"
     hassh: str | None = None
     hasshAlgorithms: str | None = None
@@ -91,6 +109,12 @@ class ClientVar(_EventBase):
 
 
 class ClientFingerprint(_EventBase):
+    """Public key offered during authentication.
+
+    Several per session. Ties bots that spray one fixed key even as their IP
+    and username change; useful for tracking bot campaigns.
+    """
+
     eventid: Literal["cowrie.client.fingerprint"] = "cowrie.client.fingerprint"
     username: str | None = None
     fingerprint: str
@@ -102,6 +126,8 @@ class ClientFingerprint(_EventBase):
 
 
 class LoginSuccess(_EventBase):
+    """Successful authentication event."""
+
     eventid: Literal["cowrie.login.success"] = "cowrie.login.success"
     username: str
     password: str
@@ -109,6 +135,8 @@ class LoginSuccess(_EventBase):
 
 
 class LoginFailed(_EventBase):
+    """Failed authentication attempt."""
+
     eventid: Literal["cowrie.login.failed"] = "cowrie.login.failed"
     username: str
     password: str
@@ -140,6 +168,12 @@ class CommandFailed(_EventBase):
 
 
 class FileDownload(_EventBase):
+    """File downloaded by the attacker within the session.
+
+    The `shasum` field from cowrie is stored as `sha256`
+    (SHA-256 hash of downloaded content).
+    """
+
     eventid: Literal["cowrie.session.file_download"] = "cowrie.session.file_download"
     url: str | None = None
     outfile: str | None = None
@@ -167,6 +201,12 @@ class FileUpload(_EventBase):
 
 
 class DirectTcpipRequest(_EventBase):
+    """SSH port forwarding attempt (attacker requesting remote port access).
+
+    Used to pivot from honeypot to internal/external targets; reveals attacker
+    reconnaissance and lateral-movement attempts.
+    """
+
     eventid: Literal["cowrie.direct-tcpip.request"] = "cowrie.direct-tcpip.request"
     dst_ip: str
     dst_port: int

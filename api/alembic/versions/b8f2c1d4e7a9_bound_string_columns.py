@@ -7,6 +7,10 @@ Create Date: 2026-05-28 11:00:00.000000
 Caps attacker-controlled string columns at the DB layer so any code path
 that bypasses `ingestor/src/sanitize.truncate` still cannot insert unbounded
 values. `USING substring(...)` truncates in place on populated tables.
+
+The truncation is one-way: `downgrade()` restores the original column widths
+but not the characters discarded by `upgrade()`, so this migration is not
+data-reversible.
 """
 
 import logging
@@ -23,7 +27,6 @@ depends_on: Union[str, Sequence[str], None] = None
 log = logging.getLogger("alembic.runtime.migration")
 
 
-# (table, column, target VARCHAR length)
 _BOUNDS: tuple[tuple[str, str, int], ...] = (
     ("sessions", "id", 64),
     ("sessions", "protocol", 16),

@@ -205,7 +205,6 @@ def test_top_credentials_by_username(client: Any, seed_data: Any) -> None:
     by_user = {r["username"]: r["count"] for r in data}
     # root appears in two attempts (password123 + toor); admin once.
     assert by_user == {"root": 2, "admin": 1}
-    # ranked descending, so the most-tried username is first.
     assert data[0]["username"] == "root"
 
 
@@ -363,7 +362,7 @@ def test_countries_session_grain_not_inflated_by_attempts(
 
 
 def test_countries_sort_by_success_rate(client: Any, seed_data: Any) -> None:
-    """sort=success_rate ranks the 100%-accepted Unknown above the 0% US."""
+    """The Unknown bucket (100% success) outranks US (0%) under success_rate sort."""
     del seed_data
     data = client.get("/api/v1/stats/countries?sort=success_rate").get_json()
     order = [r["country_code"] for r in data["countries"]]
@@ -634,7 +633,6 @@ def test_password_composition(client: Any, seed_data: Any) -> None:
     # charset classes: admin + toor are lowercase, password123 is alnum.
     classes = {row["name"]: row["count"] for row in data["classes"]}
     assert classes == {"lower": 2, "alnum": 1}
-    # descending by count, so the dominant class leads.
     assert data["classes"][0]["name"] == "lower"
 
 
@@ -662,7 +660,6 @@ def test_password_composition_charset_classes_cover_every_branch(
 def test_passwords_by_length_exact(client: Any, seed_data: Any) -> None:
     """An exact-length query returns only the passwords of that length."""
     del seed_data
-    # seed passwords: password123 (11), admin (5), toor (4).
     assert client.get("/api/v1/stats/passwords-by-length?length=5").get_json() == [
         {"password": "admin", "count": 1}
     ]

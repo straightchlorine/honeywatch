@@ -4,8 +4,7 @@ metadata:
   name: api-ratelimit
   namespace: honeywatch
 spec:
-  # 60 req/min per source IP, tolerating a 20-req burst. The honeypot's
-  # internal nginx keeps its own 30r/s limit as a backstop.
+  # nginx has its own 30r/s backstop; layered limit here is defense-in-depth.
   rateLimit:
     average: 60
     burst: 20
@@ -17,7 +16,6 @@ metadata:
   name: security-headers
   namespace: honeywatch
 spec:
-  # Enforced at the edge for every response (dashboard + API).
   headers:
     frameDeny: true
     contentTypeNosniff: true

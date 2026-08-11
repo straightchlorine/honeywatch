@@ -240,7 +240,7 @@ def test_tail_survives_invalid_utf8(tmp_path: Path) -> None:
 
 def test_tail_rereads_partial_line_until_complete(tmp_path: Path) -> None:
     """A line the writer hasn't finished (no trailing newline yet) must be
-    re-read once complete -- NOT mis-classified as oversize and drained, which
+    re-read once complete - NOT mis-classified as oversize and drained, which
     would drop a real event and split the next line into a JSON fragment."""
     path = tmp_path / "log.jsonl"
     path.write_text("")

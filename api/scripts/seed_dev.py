@@ -29,7 +29,6 @@ SEED_SENSOR = "seed"
 
 HONEYPOT_IP = "10.0.0.1"
 
-# (country_code, name, lat, lon, relative weight)
 # Weights skew toward the usual suspects.
 COUNTRIES: list[tuple[str, str, float, float, int]] = [
     ("CN", "China", 35.0, 105.0, 30),
@@ -201,14 +200,10 @@ def bulk_insert(
 
 
 def wipe_all(db: DbSession) -> None:
-    """Truncate every honeypot table for a clean, prod-shaped slate.
+    """Truncate all honeypot tables for a clean slate.
 
-    TRUNCATE ... CASCADE on `sessions` clears every child table that
-    references it (auth_attempts, commands, downloads, ssh_clients,
-    client_fingerprints, direct_tcpip_requests); `geo_locations` has no FK
-    so it is named explicitly. RESTART IDENTITY resets the serial PKs so reruns
-    start from id 1. This deletes ALL data, real and seeded - a dev convenience
-    only, never run against production.
+    TRUNCATE CASCADE clears child tables; RESTART IDENTITY resets PKs for reruns.
+    Dev-only—never run on production.
     """
     db.execute(text("TRUNCATE TABLE sessions, geo_locations RESTART IDENTITY CASCADE"))
     db.commit()

@@ -48,7 +48,6 @@ def init_error_handlers(app: Flask) -> None:
 
     @app.errorhandler(Exception)
     def _on_unhandled(exc: Exception) -> Any:  # pyright: ignore[reportUnusedFunction]
-        # Re-raise HTTPException so the dedicated handler above runs
         if isinstance(exc, HTTPException):
             raise exc
         current_app.logger.exception(

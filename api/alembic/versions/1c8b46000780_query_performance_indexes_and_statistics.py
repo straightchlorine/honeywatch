@@ -15,16 +15,14 @@ down_revision: Union[str, Sequence[str], None] = "f4a9c2e1b8d7"
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
-# Enables index-only scans for `COUNT(DISTINCT username/password)` in `auth_outcomes`.
-# Expression index helps with length-based classification.
+# Index-only scans for COUNT(DISTINCT); expression index forces length-based filtering.
 _INDEXES = (
     ("ix_auth_attempts_username", "ON auth_attempts (username)"),
     ("ix_auth_attempts_password", "ON auth_attempts (password)"),
     ("ix_auth_attempts_pw_len", "ON auth_attempts (char_length(password), password)"),
 )
 
-# Correcting the day of the week/hour group count estimate (168 groups), switching
-# to hash aggregate.
+# ndistinct hint corrects cardinality estimate for dow/hour; forces hash aggregate.
 _STATISTICS = (
     (
         "st_sessions_dow_hour",

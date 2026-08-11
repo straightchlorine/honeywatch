@@ -7,9 +7,7 @@ metadata:
     app: honeywatch
   annotations:
     cert-manager.io/cluster-issuer: "letsencrypt"
-    # Rate-limit only.
-    #
-    # Security headers for the api managed by the proxy/nginx.conf.
+    # Ratelimit only; security headers via nginx.conf.
     traefik.ingress.kubernetes.io/router.middlewares: honeywatch-api-ratelimit@kubernetescrd
 spec:
   ingressClassName: traefik
@@ -29,8 +27,7 @@ spec:
                 port:
                   number: 5000
 ---
-# No rate limiting for the dashboard. Fixes 429 on cold page loads - includes
-# assets and chunks.
+# No ratelimit; prevents 429 on cold loads (asset parallelism).
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:

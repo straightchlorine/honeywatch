@@ -42,7 +42,7 @@ def country_filter_field() -> fields.Str:
 def top_n_field(
     default: int, description: str = "Number of top entries to return"
 ) -> fields.Int:
-    """Top-N limit field; a factory for the same reason as above."""
+    """Top-N limit field; a factory since marshmallow binds fields to schemas."""
     return fields.Int(
         load_default=default,
         validate=validate.Range(min=1, max=100),

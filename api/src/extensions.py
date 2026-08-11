@@ -1,3 +1,5 @@
+"""SQLAlchemy engine and session management."""
+
 from flask import Flask, current_app, g
 from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
@@ -14,10 +16,10 @@ def init_db(app: Flask, database_url: str) -> None:
     """
     engine = create_engine(
         database_url,
-        pool_size=5,
-        max_overflow=5,
+        pool_size=5,  # typical request concurrency; raise if sustained >7 concurrent
+        max_overflow=5,  # additional connections for spikes before backpressure
         pool_pre_ping=True,
-        pool_recycle=1800,
+        pool_recycle=1800,  # clear idle sessions after 30min, for network flakiness
     )
     app.extensions["db_engine"] = engine
     app.extensions["db_session_factory"] = sessionmaker(

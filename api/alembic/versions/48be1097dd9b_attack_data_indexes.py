@@ -16,9 +16,8 @@ branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
 
-# Each index backs a bounded `selectinload` lookup plus FK cascade-delete:
-# selectinload emits `WHERE session_id IN (...)` on every dashboard session
-# page-load, and Postgres does not auto-index FK columns.
+# Indexes for selectinload (WHERE IN on each dashboard load) and Postgres
+# cascade-delete; Postgres doesn't auto-index FK columns.
 
 _INDEXES: tuple[tuple[str, str, str], ...] = (
     ("ix_auth_attempts_session_id", "auth_attempts", "session_id"),

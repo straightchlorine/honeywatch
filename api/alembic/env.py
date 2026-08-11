@@ -3,12 +3,13 @@ from logging.config import fileConfig
 
 from sqlalchemy import engine_from_config, pool
 
+import src.models as models
 from alembic import context
 from src.extensions import Base
-from src.models import AuthAttempt, Command, Download, GeoLocation, Session
 
-# Registering each model with Base.metadata.
-for _model in (AuthAttempt, Command, Download, GeoLocation, Session):
+# Auto-register from __all__ to catch stale imports (cf. e7c4a1b9f2d6).
+for _name in models.__all__:
+    _model = getattr(models, _name)
     assert _model.__tablename__ in Base.metadata.tables, _model
 
 config = context.config
