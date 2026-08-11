@@ -7,6 +7,11 @@
 # (fetched by scripts/fetch-mmdb.sh, baked into image at build)
 ingestor/data/*.mmdb
 
+# --- Database dumps ---
+# `just db restore honeywatch-prod-data.gz` loads a prod dump into the dev DB.
+# These carry unredacted attacker IPs and captured credentials; never stage one.
+*.gz
+
 # --- Cowrie fs.pickle build temp ---
 # build-centos-fs.sh extracts createfs here then removes it
 cowrie/fs/.createfs.py
