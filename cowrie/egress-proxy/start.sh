@@ -20,7 +20,7 @@ iptables -P INPUT  ACCEPT
 iptables -P OUTPUT DROP
 iptables -P FORWARD DROP
 
-# Block all IPv6 egress -- without these rules IPv6 bypasses all filtering.
+# Block all IPv6 egress - without these rules IPv6 bypasses all filtering.
 ip6tables -P INPUT  ACCEPT
 ip6tables -P OUTPUT DROP
 ip6tables -P FORWARD DROP
@@ -91,17 +91,8 @@ done
 iptables -A OUTPUT  -p tcp --dport 6660:6669 -j REJECT --reject-with icmp-port-unreachable
 iptables -A FORWARD -p tcp --dport 6660:6669 -j REJECT --reject-with icmp-port-unreachable
 
-# Launch tinyproxy as PID 1 with privileges fully dropped:
-#   --reuid / --regid              switch to tinyproxy:tinyproxy
-#   --clear-groups                 drop supplementary groups (root)
-#   --reset-env                    sanitise inherited env
-#   --bounding-set=-all            empty the capability bounding set
-#                                  (requires CAP_SETPCAP on the calling
-#                                   process, granted by compose cap_add)
-#   --no-new-privs                 kernel-enforced: subsequent execve()
-#                                  cannot gain caps via setuid binaries
-# Result: tinyproxy runs with no capabilities in any set; even if it
-# is exploited, an attacker cannot regain root inside this container.
+# Drop all capabilities; even if exploited, tinyproxy cannot regain root.
+# Requires CAP_SETPCAP in compose (for --bounding-set=-all).
 exec setpriv \
     --reuid tinyproxy \
     --regid tinyproxy \

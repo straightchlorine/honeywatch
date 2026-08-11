@@ -17,15 +17,13 @@ MACHINE_ID="${MACHINE_ID:-4f8b2d6c9a7e41d3b0c5e6f7a8b9c0d1}"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 OUT_NAME="centos-stream10.pickle"
 
-echo ">> extracting createfs.py from ${COWRIE_IMAGE}"
 cid="$(docker create "${COWRIE_IMAGE}")"
 trap 'docker rm -f "${cid}" >/dev/null 2>&1 || true' EXIT
 docker cp "${cid}:/cowrie/cowrie-git/src/cowrie/scripts/createfs.py" "${SCRIPT_DIR}/.createfs.py"
 
 echo ">> building CentOS Stream 10 rootfs + pickle inside ${CENTOS_IMAGE}"
-# The in-container build: install a believable server package set into a clean
-# installroot, add the cloud user, seed /proc + /sys/class/dmi nodes that our
-# honeyfs overrides attach to, then pickle the tree with createfs.
+# Install base packages, create cloud user, then seed /proc + /sys/class/dmi
+# nodes honeyfs overrides will attach to, before pickling the tree.
 docker run --rm \
     -v "${SCRIPT_DIR}:/work" \
     -e MACHINE_ID="${MACHINE_ID}" \
@@ -41,7 +39,6 @@ docker run --rm \
 
     # Cloud user (uid 1000, wheel) so /home/centos exists and matches passwd.
     chroot "$ROOT" /usr/sbin/useradd -m -u 1000 -U -G wheel -s /bin/bash centos 2>/dev/null || true
-    # Seed a couple of plausible dotfiles + an attacker-bait history.
     printf "# .bashrc\n[ -f /etc/bashrc ] \&\& . /etc/bashrc\n" > "$ROOT/home/centos/.bashrc" 2>/dev/null || true
     : > "$ROOT/root/.bash_history" 2>/dev/null || true
 
@@ -50,18 +47,14 @@ docker run --rm \
     mkdir -p "$ROOT/var/lib/dbus"
     printf "%s\n" "$MACHINE_ID" > "$ROOT/var/lib/dbus/machine-id"
 
-    # Cowrie attaches honeyfs content only to T_FILE nodes and createfs stores
-    # no file bytes, so an OS-identity file that ships as a symlink would cat
-    # EMPTY. Flatten the most-cat-ed identity files to real nodes so the matching
-    # honeyfs/etc/* override renders. (Real CentOS has os-release as a symlink;
-    # a regular file here is a negligible tell vs an empty os-release.)
+    # Flatten symlinks to real nodes; honeyfs overrides only attach to T_FILE.
+    # (CentOS ships os-release as a symlink; real file here is negligible vs empty.)
     for f in os-release redhat-release system-release; do
         rm -f "$ROOT/etc/$f"; : > "$ROOT/etc/$f"
     done
     # /etc/centos-release is already a real file from centos-stream-release.
 
-    # Nodes that installroot does not create but a running box always has, and
-    # that recon reads. Content comes from honeyfs at runtime; node must exist.
+    # Nodes that a running system has but installroot skips; honeyfs provides content.
     : > "$ROOT/etc/hostname"
     : > "$ROOT/etc/resolv.conf"
     : > "$ROOT/etc/fstab"
@@ -69,8 +62,7 @@ docker run --rm \
     # yum compat symlink (CentOS ships /usr/bin/yum -> dnf-3); makes `which yum` honest.
     ln -sf dnf-3 "$ROOT/usr/bin/yum" 2>/dev/null || true
 
-    # Seed /proc nodes our honeyfs overrides attach to (content comes from honeyfs
-    # at runtime; only the node must exist in the pickle). installroot /proc is empty.
+    # Seed /proc nodes; honeyfs provides content. installroot /proc is empty.
     mkdir -p "$ROOT/proc"
     for f in cpuinfo meminfo mounts version modules cmdline loadavg uptime stat filesystems swaps; do
         : > "$ROOT/proc/$f"
@@ -94,7 +86,7 @@ docker run --rm \
     : > "$ROOT/boot/System.map-6.12.0-116.el10.x86_64"
     : > "$ROOT/boot/config-6.12.0-116.el10.x86_64"
 
-    # Tidy: drop installroot detritus that would not exist on a running box.
+    # Drop installroot artifacts (cache, logs, docker markers) not present in a running OS.
     rm -f  "$ROOT/.dockerenv" 2>/dev/null || true
     rm -rf "$ROOT/run/secrets" 2>/dev/null || true
     rm -rf "$ROOT"/var/cache/dnf/* 2>/dev/null || true
