@@ -49,7 +49,9 @@ class _ExplodingFactory:
 def test_ready_returns_503_when_db_down(
     app: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Mocks at the session-factory seam to reproduce realistic DB outage (factory succeeds, execute() fails)."""
+    """Mocks at the session-factory seam to reproduce realistic DB outage.
+    (factory succeeds, execute() fails)
+    """
     original = app.extensions.get("db_session_factory")
     app.extensions["db_session_factory"] = _ExplodingFactory()
     try:

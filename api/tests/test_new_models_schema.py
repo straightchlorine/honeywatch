@@ -1,4 +1,5 @@
-"""Asserts ORM models and migrated schema stay in sync for ssh_clients, client_fingerprints, and direct_tcpip_requests.
+"""Asserts ORM models and migrated schema stay in sync for ssh_clients,
+client_fingerprints, and direct_tcpip_requests.
 
 Drift fails CI here rather than silently at runtime.
 """

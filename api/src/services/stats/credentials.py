@@ -50,7 +50,8 @@ def top_credentials(
 
     Arguments:
       by: "pair" | "username" | "password"; the ungrouped field returns None
-      metric: "attempts" (try count) or "ip_fanout" (distinct source IPs); ip_fanout sets distinct_ips, attempts leaves it None
+      metric: "attempts" (try count) or "ip_fanout" (distinct source IPs);
+        ip_fanout sets distinct_ips, attempts leaves it None
       outcome: "any" | "success" | "failed"
       country: alpha-2 code or UNKNOWN_COUNTRY; filters to that geo bucket
       top_n: max results to return
