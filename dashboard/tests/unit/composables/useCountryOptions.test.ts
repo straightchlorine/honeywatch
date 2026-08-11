@@ -3,9 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { useQueryClient } from '@tanstack/vue-query'
 import { mountWithProviders } from '../../helpers/mount'
 
-// Mock the generated queries barrel so useCountryOptions does not need a real
-// API client configured. The factory just needs to return a stable key/query
-// pair; useCountryOptions only reads the `data` ref from the useQuery result.
+// Mock queries; factory just needs stable key/queryFn pair.
 vi.mock('@/api/queries', () => ({
   statsTopCountriesOptions: () => ({ queryKey: ['top-countries'], queryFn: async () => [] }),
 }))
@@ -22,10 +20,7 @@ const FIXTURE = [
 
 type CountryEntry = { country_code: string | null; country: string | null; count: number }
 
-/**
- * Mount a wrapper that calls useCountryOptions(allLabel), seeds the QueryClient
- * cache with `data`, and exposes the computed ref.
- */
+// Mount composable with seeded QueryClient cache and return the result.
 function mountOptions(allLabel: string, data: CountryEntry[] = []) {
   let opts: ReturnType<typeof useCountryOptions> | undefined
   const Wrapper = defineComponent({

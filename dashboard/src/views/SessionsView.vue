@@ -331,7 +331,6 @@
     letter-spacing: 0.02em;
   }
 
-  /* Card layout is desktop-hidden; the table is the default presentation. */
   .session-cards {
     display: none;
     list-style: none;
@@ -439,7 +438,7 @@
 
     /* Keep the three filters on one row: the Dropdown's 160px min-width forced a
      2+1 wrap. Drop it to equal columns; long values (country names) ellipsize on
-     the trigger -- the open list still shows them in full. */
+     the trigger - the open list still shows them in full. */
     .filters {
       display: grid;
       grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -457,7 +456,7 @@
       min-width: 0;
       width: 100%;
     }
-    /* flex:1 + min-width:0 let the value shrink below its content width -- without
+    /* flex:1 + min-width:0 let the value shrink below its content width - without
      it the flex child keeps min-width:auto and text-overflow never fires, so a
      long country name overflows the trigger instead of ellipsizing. */
     .field :deep(.dd-value) {

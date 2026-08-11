@@ -18,7 +18,6 @@ describe('useChoropleth', () => {
       ]),
     )
     expect(c.max).toBe(1200)
-    // Data countries use the token color-mix ramp; absent ones stay land.
     expect(c.fill('156')).toContain('color-mix')
     expect(c.fill('840')).toContain('color-mix')
     expect(c.fill('999')).toBe('var(--map-land)')
@@ -27,7 +26,6 @@ describe('useChoropleth', () => {
   it('keeps the lowest data color above the no-data land color (amber floor)', () => {
     const c = useChoropleth(new Map([['004', 1]]))
     const lowest = c.fill('004')
-    // count=1 still renders a visible amber tint, never the land color.
     expect(lowest).toContain('color-mix')
     expect(lowest).not.toBe('var(--map-land)')
   })

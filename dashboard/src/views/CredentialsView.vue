@@ -1,4 +1,6 @@
 <script setup lang="ts">
+  // Display top credentials, password composition, and auth outcomes with real-time polling.
+  // Multiple queries coordinated via refetchInterval per cache policy (30s fast, 60s slow aggregates).
   import { computed, ref } from 'vue'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
   import {
@@ -25,18 +27,12 @@
     type CredMetric,
   } from '@/utils/credentials'
 
-  // Interactive cadence matches the 30s Cache-Control on these endpoints (a
-  // faster poll just re-serves the cached body), so it never fights the cache.
-  // The all-time composition + outcomes aggregates barely move and are the
-  // heaviest (double full-scan + per-row regex), so they poll on the slow loop
-  // -- mirrors ActivityView's heatmap split.
+  // Fast endpoints: 30s (matches Cache-Control). Composition/outcomes: 60s (heavy full-scans, barely change).
   const POLL_MS = 30_000
   const POLL_SLOW_MS = 60_000
   const HERO_TOP_N = 12
 
-  // The hero leaderboard is one endpoint with three "lenses". Pairs is the
-  // botnet-fingerprint view; IP fan-out swaps the ranking to distinct source IPs
-  // (distributed botnet vs lone brute-forcer); usernames collapses the password.
+  // One endpoint, four ranking lenses: pairs (botnet fingerprint), fanout (source IP distribution), usernames, passwords.
   type Mode = 'pairs' | 'fanout' | 'usernames' | 'passwords'
   const MODES = [
     { id: 'pairs', label: 'Pairs' },
@@ -184,7 +180,6 @@
     <p v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</p>
 
     <section class="stats-grid" aria-label="Credential totals">
-      <!-- Top row = credential vocabulary; bottom row = volume + outcome. -->
       <Card padding="sm">
         <Stat :value="fmtNumber(outcomes.unique_passwords)" label="Passwords" />
       </Card>
@@ -269,7 +264,6 @@
 
         <Card title="Password composition" padding="sm" class="comp-card" fill>
           <Transition name="comp-fade" mode="out-in" @after-enter="onCompEntered">
-            <!-- Default view: length histogram + charset breakdown. -->
             <div v-if="selectedLength === null" key="hist" class="comp-body">
               <div
                 class="hist"
@@ -310,8 +304,7 @@
               </div>
             </div>
 
-            <!-- Drill-down: the whole card becomes a scrollable list of the
-                 passwords at the chosen length; size is fixed so nothing reflows. -->
+            <!-- Drill-down: fixed-height list of passwords at chosen length; no reflow on swap. -->
             <div v-else key="drill" class="comp-drill">
               <div class="drill-head">
                 <button ref="backBtnRef" type="button" class="back-btn" @click="clearLength">
@@ -320,9 +313,7 @@
                 <span class="drill-title">{{ selectedLabel }} chars</span>
               </div>
               <div class="drill-scroll">
-                <!-- A failed lazy fetch must read differently from a genuinely
-                     empty bucket, otherwise "No passwords of this length" hides
-                     the error and looks like real data. -->
+                <!-- Failed fetch must show separately or error gets hidden as an empty state. -->
                 <p v-if="passwordsQ.isError.value" class="drill-error" role="status">
                   Couldn't load passwords for this length — retrying.
                 </p>
@@ -461,7 +452,7 @@
   .cred-row {
     display: grid;
     /* Value is a fixed last column (not auto) so every row's bar starts and ends
-       at the same x -- otherwise each row is its own grid and a longer value
+       at the same x - otherwise each row is its own grid and a longer value
        (e.g. "2 IPs" vs "1 IP") would stretch that row's bar out of line. */
     grid-template-columns: minmax(0, 1.3fr) minmax(60px, 1.4fr) 5rem;
     align-items: center;
@@ -493,7 +484,6 @@
     text-overflow: ellipsis;
   }
 
-  /* The password takes the ellipsis when a pair is too long to fit. */
   .cred-pass {
     flex: 0 1 auto;
     min-width: 0;
@@ -540,7 +530,7 @@
   }
 
   /* Fills the side column. Inside, the histogram is fixed (dense) and the
-     charset list spreads to take the remaining height -- so the card fills with
+     charset list spreads to take the remaining height - so the card fills with
      no empty gap, while the spiky histogram never stretches tall. */
   .comp-card {
     flex: 1 1 auto;
@@ -753,7 +743,6 @@
     height: 100%;
     display: flex;
     align-items: flex-end;
-    /* button reset */
     border: 0;
     padding: 0;
     background: transparent;
@@ -811,15 +800,10 @@
   }
 
   @media (max-width: 768px) {
-    /* The hero + two side cards can't all fit one short viewport; stack and let
-     the page scroll (same play as Overview/Activity below md). */
+    /* Cards stack on short viewports; content-height column instead of fixed grid. */
     .credentials {
       overflow-y: auto;
     }
-    /* Stack as a plain content-height flex column (not the desktop grid, whose
-       definite height + min-height:0 let the hero shrink and clip its rows).
-       Children below are flex:0 0 auto so they keep full height and the page
-       scrolls. */
     .body {
       display: flex;
       flex-direction: column;
@@ -828,23 +812,17 @@
     .side {
       flex: 0 0 auto;
     }
-    /* 2x2 grid (same play as ActivityView's 4 KPIs): two columns give each big
-       number ~half the width, so "42.6%" fits comfortably with no clipping or
-       sideways scroll. minmax(0,1fr) keeps the tracks shrinkable. */
+    /* 2x2 grid for stats so "42.6%" fits without clipping. */
     .stats-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    /* The 4-button toggle can't fit one row on a phone and a wrapping flex
-       segmented control looks broken. Lay it out as a tidy full-width 2x2 grid
-       (echoes the KPI 2x2 above). */
+    /* 4-button toggle as 2x2 grid (wrapping flex looks broken on phone). */
     .seg {
       display: grid;
       grid-template-columns: repeat(2, 1fr);
       width: 100%;
     }
-    /* Hero: content-size so the whole list is displayed (no inner scroll) and
-       the card is only as tall as its rows; the page scrolls. flex:0 0 auto
-       keeps it from shrinking/clipping inside the flex column. */
+    /* Hero: content-size (no inner scroll), card only as tall as rows. */
     .body .hero-pane {
       flex: 0 0 auto;
       height: auto;
@@ -859,10 +837,7 @@
       justify-content: flex-start;
     }
 
-    /* Composition: a fixed-height card so it stays the SAME size when you drill
-       into the password list (matches the regular view). The desktop fill/scroll
-       rules then run inside this fixed height -- charset spreads to fill, drill
-       list scrolls -- so both states are identical in size, with no overflow. */
+    /* Fixed height so drill-in/out doesn't reflow; charset spreads, drill list scrolls. */
     .side .comp-card {
       flex: 0 0 auto;
       height: clamp(420px, 60vh, 560px);

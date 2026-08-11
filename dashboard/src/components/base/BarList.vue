@@ -1,4 +1,8 @@
 <script setup lang="ts">
+  /**
+   * Horizontal bar chart leaderboard: ranked list with proportional bar widths.
+   * Pass pre-calculated `widthPct` (not raw values; BarList is presentational).
+   */
   import EmptyState from '@/components/base/EmptyState.vue'
   import Tooltip from '@/components/base/Tooltip.vue'
   import { useTooltip } from '@/components/base/useTooltip'
@@ -8,8 +12,7 @@
 
   defineProps<{ items: Row[]; label: string; emptyText?: string }>()
 
-  // Themed tooltip in place of the native title= hover (full label for truncated
-  // rows). Mouse-only sugar: the row text itself is the accessible value.
+  // Tooltip overlay for truncated labels; text itself handles screen readers.
   const tt = useTooltip()
 </script>
 

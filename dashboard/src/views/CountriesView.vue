@@ -1,4 +1,10 @@
 <script setup lang="ts">
+  /**
+   * Countries leaderboard with sortable stats (sessions, unique IPs, success rate)
+   * and per-country detail (attack timeline, ASN breakdown, top credentials).
+   * Queries are coordinated: main leaderboard and detail queries both poll at
+   * refetchInterval. See sessionClass.ts for category definitions.
+   */
   import { computed, nextTick, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
@@ -37,7 +43,7 @@
 
   // Selection + sort live in the URL so a country view is shareable/reloadable.
   // Read country directly (not useCountryFilter, which is strict alpha-2) so the
-  // '??' Unknown-bucket sentinel survives -- only this view drills into it. The
+  // '??' Unknown-bucket sentinel survives - only this view drills into it. The
   // alpha-2 check reuses isAlpha2 so the validation regex lives in one place.
   const country = computed<string>(() => {
     const c = route.query.country
@@ -102,7 +108,7 @@
   const mobileView = computed(() => (country.value ? 'detail' : 'list'))
 
   // Per-country credential dictionaries + source networks. Lazy (enabled once a
-  // country is selected) and not part of the initial suspense -- the leaderboard
+  // country is selected) and not part of the initial suspense - the leaderboard
   // paints first; keepPreviousData holds the prior country while switching.
   const detailQuery = computed(() => ({ country: selectedCode.value, top_n: 8 }))
   const passwordsQ = useQuery(
@@ -487,7 +493,6 @@
     grid-template-columns: minmax(0, 1.2fr) minmax(48px, 1.4fr) 4.5rem;
     align-items: center;
     gap: var(--space-3);
-    /* button reset */
     border: 1px solid transparent;
     background: transparent;
     text-align: left;
@@ -563,7 +568,7 @@
     gap: var(--space-3);
   }
 
-  /* Hidden on desktop (both panes visible); the mobile drill reveals it. */
+  /* Hidden on desktop; revealed on mobile drill. */
   .back-btn {
     display: none;
     flex: 0 0 auto;
@@ -629,7 +634,7 @@
     min-height: 0;
     /* Three equal slots so the section headers stay at fixed positions (top,
        one-third, two-thirds) no matter how long each list is. The panel itself
-       never scrolls -- each list scrolls inside its own slot when it overflows. */
+       never scrolls - each list scrolls inside its own slot when it overflows. */
     display: grid;
     grid-template-rows: repeat(3, minmax(0, 1fr));
     gap: var(--space-3);
@@ -670,8 +675,7 @@
 
   /* --- mobile (<=768px): drill navigation, page scrolls -------------------- */
   @media (max-width: 768px) {
-    /* Stop hard-fitting: the panes show their full content and the page scrolls
-       (the proven Credentials/Activity play). */
+    /* Page scrolls instead of viewport-fit; panes grow to content height. */
     .countries {
       overflow-y: auto;
     }
@@ -679,9 +683,7 @@
     .stats-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
-    /* Keep the selected-country KPI cards a stable height: force the delta (the
-       country name) onto its own line so a short value like "—" can't pull it
-       inline and shrink the card relative to a wide "42.6%". */
+    /* Force delta onto its own line so card height doesn't collapse on short values. */
     .stats-grid :deep(.stat-delta) {
       flex-basis: 100%;
     }
@@ -714,9 +716,7 @@
       height: auto;
       overflow: visible;
     }
-    /* No bounded panel height on mobile (the page scrolls), so the fixed-thirds
-       split is meaningless -- stack the sections at content height and let each
-       list grow, with the page handling the scroll. */
+    /* Stack sections at content height; page scrolls. */
     .dt-scroll {
       display: flex;
       flex-direction: column;
@@ -724,13 +724,11 @@
     .dt-section-body {
       overflow: visible;
     }
-    /* The 3 sort buttons as a tidy full-width row. */
     .seg {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
       width: 100%;
     }
-    /* Reveal the back affordance on the detail screen. */
     .back-btn {
       display: inline-flex;
     }

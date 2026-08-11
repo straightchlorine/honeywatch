@@ -2,9 +2,7 @@
   import { computed } from 'vue'
 
   /**
-   * Reusable prev/next pagination control. Extracted from the (deferred)
-   * SessionsView so its styling is ready to drop into any future paginated view.
-   * `v-model:page` friendly — emits the clamped target page on prev/next.
+   * Pagination control: v-model:page friendly, emits clamped page on prev/next.
    */
   const props = defineProps<{ page: number; pages: number; total?: number }>()
   const emit = defineEmits<{ 'update:page': [page: number] }>()

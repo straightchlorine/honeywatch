@@ -1,12 +1,12 @@
 <script setup lang="ts">
+  /**
+   * KPI stat tile: displays a value, label, and optional trend (up/down/neutral)
+   * with delta. Trend is caller-supplied semantics (caller decides if up = good).
+   * Commonly rendered inside a Card or grid. See overview.vue for usage.
+   */
   import { computed } from 'vue'
 
   type Trend = 'up' | 'down' | 'neutral'
-
-  /**
-   * Trend is caller-supplied semantics, not derived from delta. The caller decides
-   * whether an upward delta is "good" (up) or "bad" (down) for the metric.
-   */
   const props = defineProps<{
     value: number | string
     label: string

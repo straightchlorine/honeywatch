@@ -1,7 +1,5 @@
 <script setup lang="ts">
-  // Async wrapper: the top-level await on the TopoJSON fetch makes this a
-  // Suspense boundary (see OverviewView). Geometry loads once; `counts` flows
-  // through reactively and only the fills recolor on each poll.
+  // Top-level await creates Suspense boundary; geometry loads once, counts update reactively.
   import { loadWorldGeometry } from './useWorldGeometry'
   import WorldMapView from './WorldMapView.vue'
 
@@ -9,8 +7,7 @@
     counts: Map<string, number>
   }>()
 
-  // Forward the country drill-through up to the page (Overview navigates to
-  // /countries?country=XX).
+  // Forward country selection to page (routes to /countries?country=XX).
   const emit = defineEmits<{ select: [code: string] }>()
 
   const geometry = await loadWorldGeometry()

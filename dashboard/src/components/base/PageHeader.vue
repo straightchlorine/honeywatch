@@ -1,4 +1,7 @@
 <script setup lang="ts">
+  /**
+   * Page section header with optional subtitle.
+   */
   defineProps<{ title: string; sub?: string }>()
 </script>
 

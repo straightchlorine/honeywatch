@@ -56,7 +56,7 @@ describe('SessionTerminal', () => {
 
   it('labels the terminal region for assistive tech', () => {
     const w = mount(SessionTerminal, { props: { session: session() } })
-    // A named <section> is an implicit region landmark; assert its accessible name.
+    // Section element requires aria-label for implicit ARIA landmark.
     expect(w.find('section.terminal').attributes('aria-label')).toContain('Terminal replay')
   })
 })

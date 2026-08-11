@@ -1,7 +1,6 @@
 FROM node:26-alpine@sha256:144769ec3f32e8ee36b3cfde91e82bee25d9367b20f31a151f3f7eea3a2a8541 AS build
 
 # Node 25+ alpine no longer ships corepack.
-# Install pnpm via npm at the version pinned in package.json
 RUN npm install -g pnpm@10.33.0
 
 WORKDIR /app

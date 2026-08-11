@@ -31,14 +31,14 @@ describe('retryImport', () => {
     await vi.advanceTimersByTimeAsync(5_000)
 
     await expect(p).resolves.toBe(mod)
-    expect(loader).toHaveBeenCalledTimes(3) // initial + 2 retries
+    expect(loader).toHaveBeenCalledTimes(3)
     expect(reload).not.toHaveBeenCalled()
   })
 
   it('reloads once when retries are exhausted and the guard is clear', async () => {
     const loader = vi.fn().mockRejectedValue(new Error('boom'))
 
-    void retryImport(loader) // resolves only via reload (never settles here)
+    void retryImport(loader) // doesn't settle without a page reload
     await vi.advanceTimersByTimeAsync(5_000)
 
     expect(loader).toHaveBeenCalledTimes(3)

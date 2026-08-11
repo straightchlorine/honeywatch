@@ -31,8 +31,7 @@
     return parts.join(' · ')
   })
 
-  // Mobile renders the chrome metadata as two controlled lines (identity, then
-  // time) instead of one ellipsis-truncated string -- see the term-meta block.
+  // Mobile uses two-line metadata; desktop uses single truncated line.
   const idLine = computed(() => ['honeypot', proto.value, country.value].join(' · '))
   const timeLine = computed(() => {
     const parts: string[] = []
@@ -97,15 +96,12 @@
 </script>
 
 <template>
-  <!-- A named <section> implicitly exposes role="region" (no explicit role
-       needed); the aria-label gives assistive tech a meaningful landmark name. -->
+  <!-- aria-label provides the region landmark name. -->
   <section class="terminal" :aria-label="`Terminal replay — ${proto} session from ${country}`">
     <header class="term-bar">
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
-      <!-- Mobile-only two-line metadata; on desktop the single-line term-title
-           shows instead (each is the displayed copy at its breakpoint, so screen
-           readers only ever announce one). -->
+      <!-- Screen readers only announce the display variant for their breakpoint. -->
       <span class="term-meta">
         <span class="term-id">{{ idLine }}</span>
         <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
@@ -207,7 +203,6 @@
     white-space: nowrap;
   }
 
-  /* The two-line variant is mobile-only; desktop uses the single-line title. */
   .term-meta {
     display: none;
   }
@@ -231,7 +226,7 @@
       border-color var(--motion-fast) ease;
   }
 
-  /* Desktop keeps the text button; the icon is the mobile-only affordance. */
+  /* Icon shown on mobile only. */
   .copy-icon {
     display: none;
     width: 1rem;
@@ -287,9 +282,7 @@
     padding: 0 var(--space-3) var(--space-2);
   }
 
-  /* Desktop: the disclaimer is short enough to always show -- hide the toggle and
-   force the body open regardless of the details state. On mobile it stays a
-   real <details> (collapsed by default) so it does not eat the terminal hero. */
+  /* Desktop always shows the note; mobile keeps it collapsible to preserve space. */
   @media (min-width: 769px) {
     .term-note > summary {
       display: none;
@@ -300,9 +293,7 @@
     }
   }
 
-  /* Mobile: row 1 is the window dots + a compact copy icon (the joined title
-     won't fit beside a full text button); the two-line metadata (identity, then
-     time/duration) drops to its own full-width rows beneath. */
+  /* Row 1: dots + icon; rows 2-3: two-line metadata. */
   @media (max-width: 768px) {
     .term-bar {
       flex-wrap: wrap;

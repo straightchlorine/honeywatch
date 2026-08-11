@@ -1,7 +1,6 @@
 /**
- * Human-readable elapsed time between two ISO timestamps, e.g. "58s", "3m 12s",
- * "1h 4m". Returns the em-dash placeholder when either bound is missing or the
- * range is negative/unparseable (sessions cowrie never recorded a close for).
+ * Formats elapsed time between two ISO timestamps as "58s", "3m 12s", or "1h 4m".
+ * Returns "—" if either timestamp is missing, unparseable, or negative (cowrie omits close for some sessions).
  */
 export function humanizeDuration(start: string | null, end: string | null): string {
   if (!start || !end) return '—'

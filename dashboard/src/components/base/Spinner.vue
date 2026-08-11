@@ -1,4 +1,7 @@
 <script setup lang="ts">
+  /**
+   * Spinner. Set decorative=true to hide from screen readers (e.g., button loaders).
+   */
   import { computed } from 'vue'
 
   type Size = 'sm' | 'md' | 'lg'

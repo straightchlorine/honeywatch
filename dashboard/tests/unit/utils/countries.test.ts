@@ -50,13 +50,13 @@ describe('buildCountryLeaderboardRows', () => {
 
   it('ranks the bar by the chosen sort metric, scaled to the max', () => {
     const bySessions = buildCountryLeaderboardRows(rows, 'sessions')
-    // CN has the most sessions -> full-width bar; US is 400/1200.
+    // CN (1200) max → 100%; US (400) → 33%
     expect(bySessions[0]!.widthPct).toBe('100%')
     expect(bySessions[1]!.widthPct).toBe('33%')
     expect(bySessions[0]!.valueLabel).toBe('1,200')
 
     const byIps = buildCountryLeaderboardRows(rows, 'ips')
-    // US has the most distinct IPs (200 vs 50): its bar is full width here.
+    // US (200) max → 100%; CN (50) → 25%
     expect(byIps[1]!.widthPct).toBe('100%')
     expect(byIps[1]!.valueLabel).toBe('200')
   })

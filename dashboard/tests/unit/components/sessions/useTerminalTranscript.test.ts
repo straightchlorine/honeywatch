@@ -139,7 +139,6 @@ describe('buildTranscript', () => {
     expect(fail.kind === 'auth-fail' && fail.password).toBe('hunter2')
     expect(fail.kind === 'auth-fail' && fail.pre).toContain("root@honeypot's password:")
     expect(fail.kind === 'auth-fail' && fail.post).toContain('Permission denied')
-    // No password supplied stays empty -- the view renders the empty marker.
     const ok = lines.find((l) => l.kind === 'auth-ok')!
     expect(ok.kind === 'auth-ok' && ok.password).toBe('')
     expect(ok.kind === 'auth-ok' && ok.post).toContain('for admin.')

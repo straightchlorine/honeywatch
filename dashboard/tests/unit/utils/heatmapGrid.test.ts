@@ -12,7 +12,7 @@ describe('buildHeatmapGrid', () => {
     expect(max).toBe(5)
   })
 
-  it('treats weekday 0 as Sunday (guards the stale "0=Monday" type comment)', () => {
+  it('treats weekday 0 as Sunday', () => {
     expect(WEEKDAY_LABELS[0]).toBe('Sun')
     const { grid } = buildHeatmapGrid([{ weekday: 0, hour: 9, count: 3 }])
     expect(grid[0]![9]).toBe(3)

@@ -13,7 +13,7 @@
 export type SanitizeMode = 'escape' | 'strip'
 
 export interface SanitizeOptions {
-  /** 'escape' renders dangerous code points as \xHH; 'strip' removes them. */
+  /** 'escape': \xHH replacement; 'strip': remove. */
   mode?: SanitizeMode
   /** Keep TAB/LF/CR (default true). Set false for single-line messages. */
   allowWhitespace?: boolean
@@ -66,7 +66,6 @@ export function sanitizeAttackerText(raw: string, opts: SanitizeOptions = {}): s
       if (mode === 'escape') {
         out += '\\x' + code.toString(16).toUpperCase().padStart(2, '0')
       }
-      // strip mode: drop the character
     } else {
       out += text[i]
     }

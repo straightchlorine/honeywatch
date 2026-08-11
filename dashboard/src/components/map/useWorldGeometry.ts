@@ -10,8 +10,7 @@ export interface CountryPath {
   d: string
 }
 
-/** Everything the SVG needs, pre-projected once. Geometry is static; only
- *  fills change as attack counts poll in, so this is computed a single time. */
+/** Immutable SVG geometry; fills update as attacks poll. */
 export interface WorldGeometry {
   width: number
   height: number
@@ -30,12 +29,8 @@ const SPHERE = { type: 'Sphere' } as const
 const WIDTH = 975
 
 /**
- * Fetch the world-atlas TopoJSON and project it with Equal Earth.
- *
- * Served from `public/geo/` (HTTP-cached asset, never bundled as JS). d3-geo
- * does pure calculation here -- it never touches the DOM; Vue renders the
- * resulting path strings. Feature ids are the zero-padded numeric ISO strings
- * (e.g. "004") used as the choropleth join key.
+ * Fetch and project world-atlas TopoJSON to SVG paths. Feature ids are
+ * zero-padded ISO country codes (e.g., "004"), used as choropleth join keys.
  */
 export async function loadWorldGeometry(
   url = `${import.meta.env.BASE_URL}geo/countries-110m.json`,

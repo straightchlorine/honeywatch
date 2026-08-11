@@ -12,7 +12,6 @@
 
   const props = defineProps<{ points: HeatmapPointResponse[] }>()
 
-  // Themed tooltip replacing the native title= hover on each cell.
   const tt = useTooltip()
 
   const HOURS = Array.from({ length: 24 }, (_, h) => h)
@@ -80,6 +79,7 @@
 
           <template v-for="(row, w) in built.grid" :key="`w-${w}`">
             <span class="day-label">{{ WEEKDAY_LABELS[w] }}</span>
+            <!-- Cells are passive color blocks with offscreen SR list; mouse events show tooltips for sighted users. -->
             <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
             <span
               v-for="(n, h) in row"
@@ -90,7 +90,6 @@
               @mousemove="tt.show(cellTitle(w, h, n), $event)"
               @mouseleave="tt.hide()"
             />
-            <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
           </template>
         </div>
       </div>

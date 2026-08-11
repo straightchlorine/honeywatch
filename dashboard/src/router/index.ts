@@ -1,3 +1,9 @@
+/**
+ * Vue Router configuration: routes, lazy loading (retryImport), and SEO metadata.
+ * All routes lazy-load their components via retryImport to survive transient
+ * chunk-fetch failures and stale deploys (guarded reload). SEO metadata (title,
+ * description) is sourced from routes.json (shared with prerender script).
+ */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { retryImport, isChunkLoadError, attemptStaleChunkReload } from '@/utils/retryImport'
 import { applyRouteHead, SITE_URL } from '@/seo/head'
@@ -59,8 +65,6 @@ const routes: RouteRecordRaw[] = [
     component: () => retryImport(() => import('../views/CountriesView.vue')),
     meta: seoMeta('/countries'),
   },
-  // The IP view is still deferred until its data/UX is ready
-  // (see docs/frontend-foundation-plan.md). Unknown paths fall through below.
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',

@@ -10,7 +10,6 @@ import { useRoute } from 'vue-router'
 /** ISO 3166-1 alpha-2: exactly two ASCII letters. */
 const ALPHA2 = /^[A-Za-z]{2}$/
 
-/** True when `code` is a syntactically valid alpha-2 country code. */
 export function isAlpha2(code: string | null | undefined): boolean {
   return typeof code === 'string' && ALPHA2.test(code)
 }

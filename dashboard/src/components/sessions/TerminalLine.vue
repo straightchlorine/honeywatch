@@ -7,9 +7,7 @@
 </script>
 
 <template>
-  <!-- Command lines = attacker-typed input (bright). Everything else is a
-       honeywatch annotation (muted, wrapped in ‹ … ›) so it can never be
-       mistaken for real command output, which cowrie does not record. -->
+  <!-- Annotations (‹ … ›) mark honeywatch metadata; cowrie doesn't record raw input, so this avoids confusion. -->
   <div class="line" :class="`line-${line.kind}`">
     <span class="ts">{{ line.time }}</span>
     <span class="line-body">
@@ -46,14 +44,12 @@
     align-items: baseline;
     font-family: var(--font-mono);
     font-size: var(--type-sm);
-    /* Looser leading + a little vertical padding give the replay breathing room --
-     stacked identical brute-force lines read as cramped at 1.7 with no gap. */
+    /* Looser line-height for brute-force stacks; 1.7 felt cramped. */
     line-height: 1.85;
     padding-block: 2px;
   }
 
-  /* Capture-time gutter (HH:MM:SS UTC). Fixed mono width so every line aligns and
-     a wrapped command body hangs under the body column, not under the clock. */
+  /* Fixed width so wrapped command bodies hang under body, not clock. */
   .ts {
     flex: 0 0 auto;
     width: 8ch;
@@ -68,8 +64,7 @@
     flex: 1 1 auto;
     min-width: 0;
     white-space: pre-wrap;
-    /* anywhere (vs break-word) also breaks long unbroken tokens -- base64 blobs,
-     long URLs -- so they never force horizontal scroll inside the replay. */
+    /* Breaks long tokens to avoid horizontal scroll. */
     overflow-wrap: anywhere;
   }
 
@@ -98,9 +93,7 @@
     font-style: normal;
   }
 
-  /* The captured credential. Warning tone (not the accent ip-blot) reads as
-   real attacker data rather than a redaction; non-italic so it stands out as a
-   literal value inside the italic annotation. */
+  /* Warning tone signals real data, not redaction; non-italic stands out in italic context. */
   .cred {
     color: var(--warning);
     background: color-mix(in srgb, var(--warning) 14%, transparent);
@@ -111,8 +104,7 @@
   }
 
   .cred-empty {
-    /* --text-muted (not --text-dim) so the empty marker clears AAA contrast on the
-     terminal bg; still reads as a muted, italic placeholder. */
+    /* --text-muted for AAA contrast; stays italic to read as placeholder. */
     color: var(--text-muted);
     background: none;
     font-weight: 400;

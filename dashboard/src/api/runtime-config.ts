@@ -1,7 +1,10 @@
+/**
+ * Client base URL from VITE_API_BASE: must be "/" (same-origin) or absolute http(s) URL.
+ * Empty string coalesces to "/".
+ */
 import type { CreateClientConfig } from './generated/client.gen'
 
-// `|| '/'` (not `??`) so an explicitly empty VITE_API_BASE= also resolves to
-// same-origin, matching the documented behaviour in dashboard/.env.example.
+// || not ?? so empty VITE_API_BASE= resolves to same-origin (per .env.example).
 const rawBase = import.meta.env.VITE_API_BASE || '/'
 
 if (rawBase !== '/' && !/^https?:\/\//i.test(rawBase)) {

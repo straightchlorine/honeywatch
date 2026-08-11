@@ -150,10 +150,9 @@ describe('buildCredentialRows — attacker-text sanitization', () => {
     )
     expect(rows[0]!.label).not.toContain('‮')
     expect(rows[0]!.label).toContain('\\x202E')
-    // The IP in the password must be blotted; the scheme is preserved.
+    // Scheme preserved during IP redaction.
     expect(rows[0]!.sub).not.toContain('1.2.3.4')
     expect(rows[0]!.sub).toContain('‹ip›')
-    // The title (which composes label + sub) also must be clean.
     expect(rows[0]!.title).not.toContain('‮')
     expect(rows[0]!.title).not.toContain('1.2.3.4')
   })

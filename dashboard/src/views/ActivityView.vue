@@ -1,4 +1,7 @@
 <script setup lang="ts">
+  /**
+   * Activity dashboard with heatmap, timeline, KPIs, and country filtering.
+   */
   import { computed } from 'vue'
   import { useRouter } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
@@ -219,7 +222,7 @@
     }
     .heatmap-pane {
       /* Shorter on mobile: now the grid fits the width (no horizontal scroll), tall
-       rows made the 24 cells per row read as thin vertical bars -- a lower pane
+       rows made the 24 cells per row read as thin vertical bars - a lower pane
        keeps the cells roughly square. */
       flex: 0 0 auto;
       min-height: 180px;

@@ -18,8 +18,6 @@ export interface Choropleth {
 const LAND = 'var(--map-land)'
 
 export function useChoropleth(counts: Map<string, number>): Choropleth {
-  // The sqrt ramp + floor + legend stops are owned by useHeatScale; this module
-  // only adds the map-specific numeric-id lookup and the `--map-land` zero color.
   const scale = useHeatScale(counts.values(), { zeroColor: LAND })
   return {
     fill: (numericId) => scale.fill(counts.get(numericId) ?? 0),

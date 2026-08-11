@@ -21,7 +21,7 @@ export const COUNTRY_SORTS: { id: CountrySort; label: string }[] = [
 export const UNKNOWN_CODE = '??'
 
 // Resolve full English country names from the alpha-2 code via the built-in
-// Intl table -- the geoip enrichment leaves `country` (name) null when an IP is
+// Intl table - the geoip enrichment leaves `country` (name) null when an IP is
 // in the ASN DB but not the City DB, so the API name alone is unreliable.
 const REGION = new Intl.DisplayNames(['en'], { type: 'region' })
 

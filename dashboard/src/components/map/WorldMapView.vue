@@ -11,10 +11,8 @@
     counts: Map<string, number>
   }>()
 
-  // Drill-through: a country click/activation emits its alpha-2 code (the
-  // Overview wires this to /countries?country=XX). Mouse path clicks are an
-  // enhancement; the offscreen ranked list below is the keyboard/SR-accessible
-  // equivalent (focusable buttons), so we never make ~190 SVG paths tab stops.
+  // Country selection emits alpha-2 code for Overview drill-through. Offscreen
+  // button list handles keyboard/SR access; path clicks are mouse enhancements.
   const emit = defineEmits<{ select: [code: string] }>()
   function onSelect(numericId: string): void {
     const code = NUMERIC_TO_ALPHA2[numericId]
@@ -29,7 +27,7 @@
     return map
   })
 
-  // Attacked countries, descending -- powers the aria summary + offscreen list.
+  // Attacked countries, descending - powers the aria summary + offscreen list.
   const ranked = computed(() => {
     const rows: { id: string; name: string; count: number }[] = []
     for (const [id, count] of props.counts) {
@@ -98,13 +96,7 @@
         <path :d="geometry.sphere" fill="url(#map-ocean)" />
         <path class="graticule" :d="geometry.graticule" />
         <g>
-          <!--
-            The accessible data path is the role="img" summary above plus the
-            offscreen list of <button>s below (keyboard/SR drill-through); the
-            hover tooltip and path click are mouse-only enhancements, so the
-            mouse-without-key-events / static-interaction / click-without-key
-            rules don't apply here (the standard pattern for an SVG data-viz).
-          -->
+          <!-- SVG data-viz: hover/click without keyboard events is standard. -->
           <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
           <path
             v-for="c in geometry.countries"
@@ -186,9 +178,7 @@
     vector-effect: non-scaling-stroke;
   }
 
-  /* The offscreen drill-nav stays reachable by keyboard: visually-hidden clips
-     it, but its <button>s must still take focus so keyboard/SR users can jump to
-     a country. focus is allowed to surface a ring for that. */
+  /* Offscreen nav keyboard-accessible; visually-hidden but buttons take focus. */
   .sr-nav button {
     all: unset;
     cursor: pointer;

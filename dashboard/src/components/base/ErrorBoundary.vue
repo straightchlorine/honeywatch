@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  // Error boundary with sanitized display and retry.
   import { computed, onErrorCaptured, ref } from 'vue'
   import { useQueryClient } from '@tanstack/vue-query'
   import { sanitizeAttackerText } from '@/utils/sanitize'

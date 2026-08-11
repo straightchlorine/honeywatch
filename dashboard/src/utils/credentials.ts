@@ -13,13 +13,8 @@ export type CredMetric = 'attempts' | 'ip_fanout'
 const EMPTY = '‹empty›'
 
 /**
- * Neutralize one attacker-controlled credential string for display. Usernames
- * and passwords are captured verbatim, so they can hide a C2 host (e.g.
- * `http://1.2.3.4/x` in a password) or bidi/control code points that visually
- * spoof the credential. Compose order mirrors useTerminalTranscript: sanitize
- * first (escape control/bidi as \xHH), then blot IP literals. allowWhitespace
- * is false -- credentials are single-line tokens. Blank stays blank so callers
- * can swap in the empty-marker, which is never run through the sanitizer.
+ * Sanitize attacker credential, then redact IP literals (C2 hosts, bidi/control spoofing).
+ * Blank stays blank so callers can swap in the empty-marker without re-sanitizing.
  */
 function cleanCred(raw: string): string {
   if (raw === '') return ''
@@ -54,7 +49,6 @@ interface CredRow {
   title: string
 }
 
-/** Build the hero leaderboard rows for the chosen ranking metric. */
 export function buildCredentialRows(items: TopCredentialResponse[], metric: CredMetric): CredRow[] {
   const fanout = metric === 'ip_fanout'
   let max = 0
@@ -67,9 +61,7 @@ export function buildCredentialRows(items: TopCredentialResponse[], metric: Cred
     const hasPass = it.password !== null && it.password !== undefined
     const user = cleanCred(it.username ?? '')
     const pass = cleanCred(it.password ?? '')
-    // Primary label is the username, except in the password-only view (no
-    // username) where the password itself is the label. The ":password" sub
-    // shows only in the pair view (both present).
+    // Username primary, fallback to password if no username; pair view shows ":password" suffix.
     const label = hasUser ? user || EMPTY : pass || EMPTY
     const sub = hasUser && hasPass ? `:${pass || EMPTY}` : null
     const cred = sub ? `${label}${sub}` : label
@@ -118,11 +110,8 @@ export function buildPairBarRows(items: TopCredentialResponse[]): BarRow[] {
 }
 
 /**
- * Single-field credential rows (username-only or password-only), sanitized.
- * Used by the Countries detail panel, which scopes `/top-credentials` to one
- * country with `by=password` / `by=username`; the unused field is null. Shares
- * cleanCred so per-country creds get the same control/bidi + IP-literal scrub
- * as the Credentials page.
+ * Single-field credential rows (username-only or password-only).
+ * Shares cleanCred for consistent control/bidi + IP-literal scrubbing across pages.
  */
 export function buildCredentialFieldRows(
   items: TopCredentialResponse[],
@@ -152,7 +141,6 @@ const CHARSET_LABELS: Record<string, string> = {
   alnum: 'Letters + digits',
 }
 
-/** Map top-passwords (the length drill-down) onto display-ready bar rows. */
 export function buildPasswordRows(items: TopPasswordResponse[]): BarRow[] {
   let max = 0
   for (const it of items) if (it.count > max) max = it.count
@@ -168,7 +156,6 @@ export function buildPasswordRows(items: TopPasswordResponse[]): BarRow[] {
   })
 }
 
-/** Map the charset-class breakdown onto display-ready bar rows. */
 export function buildCharsetRows(classes: CharsetClassResponse[]): BarRow[] {
   let max = 0
   for (const c of classes) if (c.count > max) max = c.count

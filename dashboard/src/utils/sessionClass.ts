@@ -10,12 +10,7 @@ export interface SessionClass {
   glyph: string
 }
 
-/**
- * Presentation metadata for each server-assigned session category. The
- * classification itself is owned by the API (`category` field, computed once in
- * `services/categories.classify_category`); the dashboard only maps it to a
- * label, tooltip and a non-color glyph. The priority logic no longer lives here.
- */
+/** API-classified session categories mapped to presentation. */
 const CLASS_META: Record<
   SessionClassKind,
   Omit<SessionClass, 'kind' | 'title'> & { title: string }
@@ -27,10 +22,7 @@ const CLASS_META: Record<
   probe: { label: 'Probe', title: 'Connection only, no login attempts', glyph: '·' },
 }
 
-/**
- * Turn a server-classified session into badge presentation. Reads `s.category`
- * (no re-derivation) and enriches the "active" tooltip with the command count.
- */
+/** Enrich "active" tooltip with command count; category is server-assigned. */
 export function sessionClass(
   s: Pick<SessionSummaryResponse, 'category' | 'command_count'>,
 ): SessionClass {

@@ -35,7 +35,7 @@
   let typeTimer: ReturnType<typeof setTimeout> | undefined
 
   // The active option is tracked via aria-activedescendant, not DOM focus, so the
-  // scroll container won't follow it automatically -- keep it in view manually.
+  // scroll container won't follow it automatically - keep it in view manually.
   function scrollActiveIntoView(): void {
     void nextTick(() => {
       // Optional call: jsdom (unit tests) does not implement scrollIntoView.
@@ -160,10 +160,8 @@
       </svg>
     </button>
 
-    <!-- Listbox keyboard handling lives on the focused <ul> via
-         aria-activedescendant (the active option is tracked there, not focused
-         individually), and the per-option mouse handlers are pointer sugar -- so
-         the focus / static-interaction / mouse-without-key rules don't apply. -->
+    <!-- aria-activedescendant keyboard + mouse-only handlers: intentional
+         bypass of click-events/static-element/focus rules below. -->
     <!-- eslint-disable vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/interactive-supports-focus -->
     <ul
       v-if="open"

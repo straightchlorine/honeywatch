@@ -1,3 +1,8 @@
+/**
+ * App entry point: creates Vue app instance, wires router and TanStack Query.
+ * Query defaults: retry only transient errors (shouldRetry), stale-time 30s,
+ * garbage collection 5min, no refetch on window focus (live data via polling).
+ */
 import { createApp } from 'vue'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import App from './App.vue'

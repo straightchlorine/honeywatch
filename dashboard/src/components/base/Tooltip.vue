@@ -2,7 +2,7 @@
   import { nextTick, ref, watch } from 'vue'
 
   /**
-   * Themed, cursor-anchored tooltip bubble. Presentational only -- the parent owns
+   * Themed, cursor-anchored tooltip bubble. Presentational only - the parent owns
    * the state (see `useTooltip`). Teleports to <body> so it escapes any
    * `overflow: hidden` / stacking context on the chart container, and clamps
    * itself inside the viewport so it never spills off-screen near an edge.
@@ -29,7 +29,6 @@
     const h = el.offsetHeight
     const vw = window.innerWidth
     const vh = window.innerHeight
-    // Center horizontally on the cursor, clamped inside the viewport.
     let l = props.x - w / 2
     l = Math.min(Math.max(l, EDGE_MARGIN), Math.max(EDGE_MARGIN, vw - w - EDGE_MARGIN))
     // Prefer above the cursor; drop below when there isn't room up top.

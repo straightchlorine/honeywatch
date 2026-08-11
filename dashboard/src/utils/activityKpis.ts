@@ -4,9 +4,8 @@ import { WEEKDAY_LABELS } from './heatmapGrid'
 const EMPTY = '—'
 
 export interface Kpi {
-  /** Display value, or the em-dash placeholder when there is no data. */
+  /** Display value; placeholder when no data. */
   value: string
-  /** Session count backing the value (0 when empty). */
   count: number
 }
 

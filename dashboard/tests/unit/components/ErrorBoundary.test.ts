@@ -29,7 +29,7 @@ describe('ErrorBoundary', () => {
     await nextTick()
 
     expect(w.find('[role="alert"]').exists()).toBe(true)
-    // Control char stripped from the rendered message.
+    // Sanitization removes control chars.
     expect(w.text()).not.toContain('\x07')
     expect(w.text()).toContain('badmessage')
 

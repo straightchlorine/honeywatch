@@ -1,10 +1,7 @@
 import { test, expect, type Page } from '@playwright/test'
 import AxeBuilder from '@axe-core/playwright'
 
-// The dashboard talks to the API; in CI/preview there is no backend, so we
-// stub /api/v1/** with deterministic fixtures. This keeps the e2e hermetic
-// (no docker stack) while letting the data-heavy views render real content for
-// the accessibility scan.
+// Stub /api/v1/** with deterministic fixtures; keeps e2e hermetic while data-heavy views render real content for accessibility scan.
 
 async function mockApi(page: Page): Promise<void> {
   await page.route('**/api/v1/**', async (route) => {
@@ -80,7 +77,7 @@ async function mockApi(page: Page): Promise<void> {
       ])
     if (path.endsWith('/stats/heatmap'))
       return json([
-        { weekday: 0, hour: 13, count: 7 }, // Sunday cell (0=Sun)
+        { weekday: 0, hour: 13, count: 7 }, // Sunday = 0
         { weekday: 2, hour: 14, count: 12 },
       ])
     if (path.endsWith('/stats/top-credentials')) {
@@ -137,7 +134,7 @@ async function mockApi(page: Page): Promise<void> {
         { password: '123456', count: 12 },
         { password: 'qwerty', count: 4 },
       ])
-    // List has a trailing slash (/sessions/); the detail route does not.
+    // List endpoint has trailing slash; detail does not.
     if (path.endsWith('/sessions/'))
       return json({
         items: [
@@ -231,33 +228,23 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/credentials')
     await expect(page.getByRole('heading', { level: 1, name: 'Credentials' })).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: 'Top credentials' })).toBeVisible()
-    // Hero pair row (username + ":password" rendered together).
     await expect(page.getByText('root:123456')).toBeVisible()
-    // Accepted-credentials mini list from the success-filtered query.
     await expect(page.getByText('root:toor')).toBeVisible()
 
-    // Switching to the IP fan-out lens re-ranks by distinct source IPs.
     await page.getByRole('button', { name: 'IP fan-out' }).click()
     await expect(page.getByText('37 IPs')).toBeVisible()
 
-    // The Passwords lens lists raw passwords (no username).
     await page.getByRole('button', { name: 'Passwords', exact: true }).click()
     await expect(page.getByText('hunter2')).toBeVisible()
 
-    // Clicking a length bar swaps the whole card into a scrollable password
-    // list with a back button (no in-place reflow).
+    // View swap (no in-place reflow) must clear hover tooltips to avoid stale freeze-on-click.
     await page.getByRole('button', { name: /6 characters/ }).click()
     await expect(page.getByText('123456')).toBeVisible()
     const back = page.getByRole('button', { name: /Composition/ })
     await expect(back).toBeVisible()
-    // The hover tooltip must not survive the view swap (it used to freeze on
-    // the graph at the click point).
     await expect(page.getByRole('tooltip')).toHaveCount(0)
 
     await expectAxeClean(page)
-
-    // Back returns to the histogram (the length bars reappear).
-    await back.click()
     await expect(page.getByRole('button', { name: /6 characters/ })).toBeVisible()
   })
 
@@ -267,30 +254,24 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/countries')
     await expect(page.getByRole('heading', { level: 1, name: 'Countries' })).toBeVisible()
 
-    // Leaderboard rows (China ranks first by sessions).
     await expect(page.getByRole('button', { name: /China/ })).toBeVisible()
     await expect(page.getByRole('button', { name: /United States/ })).toBeVisible()
 
-    // The #1 country is auto-selected, so the detail panel paints without a
-    // click: its passwords (by=password mock) and top network are visible.
+    // #1 country auto-selected on mount; detail panel paints without click.
     await expect(page.getByRole('heading', { level: 2, name: 'China' })).toBeVisible()
     await expect(page.getByText('hunter2')).toBeVisible()
     await expect(page.getByText('OVH SAS')).toBeVisible()
 
-    // Selecting another country drives the URL and swaps the detail.
     await page.getByRole('button', { name: /United States/ }).click()
     await expect(page).toHaveURL(/country=US/)
     await expect(page.getByRole('heading', { level: 2, name: 'United States' })).toBeVisible()
 
-    // The geo-less "Unknown" bucket is drillable too (?? sentinel), surfacing
-    // its credentials like any country.
+    // Geo-less "Unknown" (? sentinel) is drillable like any country.
     await page.getByRole('button', { name: /Unknown/ }).click()
     await expect(page).toHaveURL(/country=(\?\?|%3F%3F)/)
     await expect(page.getByRole('heading', { level: 2, name: 'Unknown' })).toBeVisible()
     await expect(page.getByText('hunter2')).toBeVisible()
 
-    // Re-ranking by a different metric is URL-driven (the sort control is a
-    // radiogroup: single-select among the ranking axes).
     await page.getByRole('radio', { name: 'Unique IPs' }).click()
     await expect(page).toHaveURL(/sort=ips/)
 
@@ -303,13 +284,10 @@ test.describe('dashboard accessibility smoke', () => {
     await page.setViewportSize({ width: 390, height: 780 })
     await page.goto('/countries')
 
-    // List view: the leaderboard is visible, the detail back-affordance is not.
     await expect(page.getByRole('button', { name: /China/ })).toBeVisible()
     const back = page.getByRole('button', { name: /^Countries$/ })
     await expect(back).toBeHidden()
 
-    // Tapping a country drills into its detail; the leaderboard row is gone and
-    // the back button + breakdown are shown.
     await page.getByRole('button', { name: /China/ }).click()
     await expect(page).toHaveURL(/country=CN/)
     await expect(back).toBeVisible()
@@ -318,7 +296,6 @@ test.describe('dashboard accessibility smoke', () => {
 
     await expectAxeClean(page)
 
-    // Back returns to the list.
     await back.click()
     await expect(page).not.toHaveURL(/country=/)
     await expect(page.getByRole('button', { name: /United States/ })).toBeVisible()
@@ -326,10 +303,7 @@ test.describe('dashboard accessibility smoke', () => {
 
   test('overview map drills into the countries page', async ({ page }) => {
     await page.goto('/')
-    // The map's offscreen accessible list exposes a drill button per attacked
-    // country (US in the top-countries mock -> count 8). It is visually clipped
-    // (the SVG paths are the mouse target), so exercise the keyboard path it
-    // exists for: focus + Enter.
+    // Offscreen accessible list per attacked country; SVG paths are visual target, so test keyboard path (focus+Enter).
     const drill = page.getByRole('button', { name: /United States/ })
     await drill.focus()
     await page.keyboard.press('Enter')
@@ -347,7 +321,6 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(page.getByRole('heading', { level: 1, name: 'Activity' })).toBeVisible()
     await expect(page.getByRole('img', { name: /heatmap/i })).toBeVisible()
 
-    // Country scope is a custom dropdown shared with Sessions.
     await page.getByRole('button', { name: /Country/ }).click()
     await page.getByRole('option', { name: 'United States' }).click()
     await expect(page).toHaveURL(/country=US/)
@@ -368,11 +341,9 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(term).toContainText('whoami')
     await expect(term).toContainText('‹ip›')
     await expect(term).not.toContainText('34.11.136.102')
-    // Command lines carry the capture time in the gutter (HH:MM:SS UTC).
     await expect(term).toContainText('13:41:49')
 
-    // The Sessions nav tab stays active on the detail route (exact name so the
-    // "← All sessions" back-link doesn't also match).
+    // Exact name to distinguish from "← All sessions" back-link.
     await expect(page.getByRole('link', { name: 'Sessions', exact: true })).toHaveClass(
       /nav-link-active/,
     )
@@ -383,12 +354,9 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/sessions')
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
 
-    // Classification badge (the mocked session ran commands -> "CLI"). The badge
-    // renders in both the table and the (desktop-hidden) mobile card list, so
-    // target the first/visible one.
+    // Badge renders in table and mobile card; target first visible to avoid ambiguity.
     await expect(page.getByText('CLI', { exact: true }).first()).toBeVisible()
 
-    // Filters are custom dropdowns, URL-driven.
     await page.getByRole('button', { name: /^Show/ }).click()
     await page.getByRole('option', { name: 'CLI' }).click()
     await expect(page).toHaveURL(/category=active/)
@@ -401,12 +369,9 @@ test.describe('dashboard accessibility smoke', () => {
   })
 
   test('a failed sessions load shows the error boundary and recovers', async ({ page }) => {
-    // Override the list endpoint with a 500 (LIFO: this handler wins over the
-    // beforeEach mock). The view awaits suspense, so the rejection bubbles to the
-    // App-level ErrorBoundary outside <Suspense>.
+    // Override with 500 (LIFO wins over beforeEach mock); suspense rejects to App-level ErrorBoundary.
     let fail = true
-    // Regex (not glob) so the query-string list URL (/sessions/?page=...) matches
-    // but the detail route (/sessions/<id>) does not.
+    // Regex distinguishes list (/sessions/?page=...) from detail (/sessions/<id>).
     await page.route(/\/api\/v1\/sessions\/(\?|$)/, async (route) => {
       if (fail)
         return route.fulfill({
@@ -418,12 +383,11 @@ test.describe('dashboard accessibility smoke', () => {
     })
 
     await page.goto('/sessions')
-    // The list query retries 5xx twice with backoff before the boundary catches.
+    // List query retries 5xx twice with backoff before boundary catches.
     const alert = page.getByRole('alert')
     await expect(alert).toBeVisible({ timeout: 15_000 })
     await expect(alert).toContainText('Something went wrong')
 
-    // "Try again" resets the query and refetches; lift the failure first.
     fail = false
     await alert.getByRole('button', { name: 'Try again' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()

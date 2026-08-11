@@ -1,4 +1,9 @@
 <script setup lang="ts">
+  /**
+   * Container card with border, shadow, and flexible padding. Displays an
+   * optional title heading (respects document outline via `headingLevel`).
+   * Use for grouping related content; see also EmptyState and ErrorBoundary.
+   */
   import { computed, useSlots } from 'vue'
 
   type Padding = 'sm' | 'md' | 'lg'

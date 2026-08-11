@@ -1,7 +1,7 @@
 /**
  * Turn a captured session into an ordered list of terminal lines for the replay.
  *
- * Honesty contract: we render ONLY what cowrie captured -- attacker-typed input,
+ * Honesty contract: we render ONLY what cowrie captured - attacker-typed input,
  * login outcomes, and download events. Cowrie stores no command stdout, so the
  * transcript never fabricates output. Annotations (banner / login / download /
  * close) are tagged with their own line kinds so the renderer can mark them as
@@ -78,7 +78,7 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
   const lastAttempt = session.auth_attempts.at(-1)
   const sessionUser = clean(firstSuccess?.username ?? lastAttempt?.username ?? DEFAULT_USER)
 
-  // 1. synthetic connect banner (borrows the session start time)
+  // 1. synthetic connect banner
   const proto = clean(session.protocol).toUpperCase()
   const where = session.country ? ` from ${clean(session.country)}` : ''
   lines.push({
@@ -102,7 +102,7 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
 
   events.sort((x, y) => {
     if (x.ts === null && y.ts === null) return cmp(x.pri, y.pri) || cmp(x.rowId, y.rowId)
-    if (x.ts === null) return 1 // nulls last
+    if (x.ts === null) return 1
     if (y.ts === null) return -1
     return cmp(x.ts, y.ts) || cmp(x.pri, y.pri) || cmp(x.rowId, y.rowId)
   })
@@ -124,8 +124,7 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
           time,
         })
       } else {
-        // "root@honeypot's password: ‹pw› — Permission denied (password)." The
-        // password sits exactly where the attacker typed it before the denial.
+        // "root@honeypot's password: ‹pw› — Permission denied (password)."
         lines.push({
           id: `auth-${e.v.id}`,
           kind: 'auth-fail',
@@ -150,7 +149,7 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
     }
   }
 
-  // 4. closing line (borrows the session end time)
+  // 4. closing line
   const dur = humanizeDuration(session.started_at, session.ended_at)
   lines.push({
     id: 'closed',

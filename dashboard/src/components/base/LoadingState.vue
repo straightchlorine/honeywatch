@@ -1,4 +1,8 @@
 <script setup lang="ts">
+  /**
+   * Spinner + label with layout variants: 'inline' (flows with text), 'block'
+   * (centered, full width), 'overlay' (covers parent, blurred). Sized via CSS variables.
+   */
   import { computed } from 'vue'
   import Spinner from './Spinner.vue'
 

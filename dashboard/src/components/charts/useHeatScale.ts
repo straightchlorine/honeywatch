@@ -4,18 +4,14 @@
  * Attack counts are heavily skewed, so a sqrt scale keeps an "order of magnitude
  * hotter" cell legible where a linear scale collapses the long tail into one
  * shade. A floor lifts the lowest data color clearly above the zero color so a
- * single session never reads as "no data". Driven entirely by CSS tokens
- * (theme-reactive, zero runtime color deps).
+ * single session never reads as "no data".
  *
- * `useChoropleth` (map) reuses `rampColor` + `HEAT_FLOOR` but keeps its own
- * numeric-id Map lookup and `--map-land` zero color; the heatmap uses
- * `useHeatScale` directly with a `--bg-2` zero color.
+ * Map uses rampColor + HEAT_FLOOR with --map-land zero; heatmap uses --bg-2 zero.
  */
 
 export const HEAT_FLOOR = 0.15
 
-/** Map a normalized intensity (0..1) onto the amber ramp via token color-mix:
- *  --accent-dim -> --accent -> --warning (gold). */
+/** Normalized intensity (0..1) to amber via --accent-dim → --accent → --warning. */
 export function rampColor(t: number): string {
   const clamped = t < 0 ? 0 : t > 1 ? 1 : t
   if (clamped <= 0.5) {

@@ -4,8 +4,7 @@ import { ALPHA2_TO_NUMERIC } from '@/components/map/alpha2-to-numeric'
 
 describe('ALPHA2_TO_NUMERIC', () => {
   it('maps known alpha-2 codes to zero-padded numeric ISO ids', () => {
-    // The join-trap guard: world-atlas TopoJSON ids are zero-padded strings,
-    // so the table values must be too. AF -> "004", not "4".
+    // TopoJSON join requires zero-padded numeric ids; AF must be "004" not "4".
     expect(ALPHA2_TO_NUMERIC.AF).toBe('004')
     expect(ALPHA2_TO_NUMERIC.US).toBe('840')
     expect(ALPHA2_TO_NUMERIC.CN).toBe('156')

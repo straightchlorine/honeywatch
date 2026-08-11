@@ -8,7 +8,7 @@
 
   const props = defineProps<{ buckets: ActivityBucketResponse[]; label: string }>()
 
-  // Themed tooltip replacing the native title= hover on each bar.
+  // Themed tooltip instead of native title attribute.
   const tt = useTooltip()
 
   const max = computed(() => props.buckets.reduce((m, b) => Math.max(m, b.count), 0))

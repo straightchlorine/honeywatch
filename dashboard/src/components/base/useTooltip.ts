@@ -25,18 +25,9 @@ function canHover(): boolean {
 }
 
 /**
- * Shared state for a single themed `<Tooltip>`. One controller drives one
- * bubble; bind it to many triggers (e.g. every heatmap cell) so a hot grid
- * renders a single overlay instead of one component per cell. The bubble tracks
- * the cursor (clientX/clientY), so it works for SVG cells and DOM rows alike.
- *
- * Tooltips here are mouse-only visual sugar -- the accessible data path is the
- * visible text plus the offscreen lists each chart already ships (mirrors the
- * world-map pattern), so there is no focus/keyboard wiring.
- *
- * Visibility is self-managing: once shown, a click/tap/scroll anywhere or Esc
- * dismisses it. Without this the bubble freezes whenever its trigger unmounts
- * (e.g. a chart re-render or a view transition) before `mouseleave` fires.
+ * Shared state for one tooltip bubble driven by multiple triggers.
+ * Renders one overlay instead of n components. Data accessibility via visible
+ * labels + offscreen lists (no keyboard needed). Self-dismisses on click or Esc.
  */
 export function useTooltip(): TooltipController {
   const state = reactive<TooltipState>({ visible: false, x: 0, y: 0, text: '' })
@@ -85,8 +76,7 @@ export function useTooltip(): TooltipController {
     removeGlobals()
   }
 
-  // Clean up if the owning component unmounts while the bubble is still up.
-  // failSilently: this composable is also called bare in unit tests (no scope).
+  // Tests call this bare (no scope), so silence disposal failure.
   onScopeDispose(removeGlobals, true)
 
   return { state, show, hide }

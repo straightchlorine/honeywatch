@@ -2,9 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { loadWorldGeometry } from '@/components/map/useWorldGeometry'
 
-// Minimal valid TopoJSON: one square "country" with a zero-padded id, no
-// transform (arcs are absolute lon/lat). Exercises the feature/mesh/project
-// pipeline without shipping the 100KB asset into the test.
+// Minimal valid TopoJSON to exercise the pipeline without the 100KB production asset.
 const TINY_TOPOLOGY = {
   type: 'Topology',
   arcs: [
