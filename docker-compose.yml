@@ -1,5 +1,3 @@
-# Dev stack
-
 services:
   cowrie:
     image: cowrie/cowrie:sha-cd0770d
