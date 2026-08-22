@@ -27,7 +27,7 @@
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.0",
-    "@eslint/js": "^9.0.0",
+    "@eslint/js": "^10.0.1",
     "@hey-api/openapi-ts": "0.98.1",
     "@playwright/test": "^1.49.0",
     "@types/d3-geo": "^3.1.0",
