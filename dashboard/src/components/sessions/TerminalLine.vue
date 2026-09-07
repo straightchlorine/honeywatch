@@ -1,13 +1,15 @@
 <script setup lang="ts">
   import type { TerminalLine } from './useTerminalTranscript'
+  import { useHwTooltip } from '@/composables/useHwTooltip'
 
   defineProps<{ line: TerminalLine }>()
 
+  const tt = useHwTooltip()
   const HOST = 'honeypot'
 </script>
 
 <template>
-  <!-- Annotations (‹ … ›) mark honeywatch metadata; cowrie doesn't record raw input, so this avoids confusion. -->
+  <!-- Annotations (< ... >) mark honeywatch metadata, since cowrie doesn't record raw input. -->
   <div class="line" :class="`line-${line.kind}`">
     <span class="ts">{{ line.time }}</span>
     <span class="line-body">
@@ -15,23 +17,41 @@
         <span class="prompt">{{ line.user }}@{{ HOST }}:~$ </span
         ><span class="input"
           ><template v-for="(seg, i) in line.segments" :key="i"
-            ><span v-if="seg.redacted" class="ip-blot" title="IP address redacted"
-              >{{ seg.text }}<span class="visually-hidden"> (IP address redacted)</span></span
+            ><span
+              v-if="seg.redacted"
+              class="ip-blot"
+              tabindex="0"
+              @pointerenter="tt.show('IP address hidden')"
+              @pointermove="tt.move($event as PointerEvent)"
+              @pointerleave="tt.hide()"
+              @focus="tt.show('IP address hidden')"
+              @blur="tt.hide()"
+            >{{ seg.text }}<span class="visually-hidden"> (IP address hidden)</span></span
             ><template v-else>{{ seg.text }}</template></template
           ></span
         >
       </template>
       <span v-else-if="line.kind === 'auth-ok' || line.kind === 'auth-fail'" class="annotation"
-        ><span aria-hidden="true">‹ </span>{{ line.pre
-        }}<span v-if="line.password" class="cred" title="password the attacker supplied">{{
+        ><span aria-hidden="true">&lt; </span>{{ line.pre
+        }}<span
+          v-if="line.password"
+          class="cred"
+          tabindex="0"
+          @pointerenter="tt.show('password the attacker supplied')"
+          @pointermove="tt.move($event as PointerEvent)"
+          @pointerleave="tt.hide()"
+          @focus="tt.show('password the attacker supplied')"
+          @blur="tt.hide()"
+        >{{
           line.password
         }}</span
         ><span v-else class="cred cred-empty"
-          >‹empty›<span class="visually-hidden"> (no password supplied)</span></span
-        >{{ line.post }}<span aria-hidden="true"> ›</span></span
+          >(blank)<span class="visually-hidden"> (no password supplied)</span></span
+        >{{ line.post }}<span aria-hidden="true"> &gt;</span></span
       >
       <span v-else class="annotation"
-        ><span aria-hidden="true">‹ </span>{{ line.text }}<span aria-hidden="true"> ›</span></span
+        ><span aria-hidden="true">&lt; </span>{{ line.text
+        }}<span aria-hidden="true"> &gt;</span></span
       >
     </span>
   </div>
@@ -64,7 +84,6 @@
     flex: 1 1 auto;
     min-width: 0;
     white-space: pre-wrap;
-    /* Breaks long tokens to avoid horizontal scroll. */
     overflow-wrap: anywhere;
   }
 

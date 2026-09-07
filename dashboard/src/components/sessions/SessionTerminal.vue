@@ -27,17 +27,16 @@
   const title = computed(() => {
     const parts = ['honeypot', proto.value, country.value]
     if (startedUtc.value) parts.push(startedUtc.value)
-    if (duration.value !== '—') parts.push(duration.value)
-    return parts.join(' · ')
+    if (duration.value !== '-') parts.push(duration.value)
+    return parts.join(' - ')
   })
 
-  // Mobile uses two-line metadata; desktop uses single truncated line.
-  const idLine = computed(() => ['honeypot', proto.value, country.value].join(' · '))
+  const idLine = computed(() => ['honeypot', proto.value, country.value].join(' - '))
   const timeLine = computed(() => {
     const parts: string[] = []
     if (startedUtc.value) parts.push(startedUtc.value)
-    if (duration.value !== '—') parts.push(duration.value)
-    return parts.join(' · ')
+    if (duration.value !== '-') parts.push(duration.value)
+    return parts.join(' - ')
   })
 
   const copied = ref(false)
@@ -54,7 +53,7 @@
         // Auth lines carry the credential as pre/password/post, not a flat string;
         // re-assemble it so the copied transcript matches what is on screen.
         if (l.kind === 'auth-ok' || l.kind === 'auth-fail') {
-          return `${at}# ${l.pre}${l.password || '‹empty›'}${l.post}`
+          return `${at}# ${l.pre}${l.password || '(blank)'}${l.post}`
         }
         return `${at}# ${l.text}`
       })
@@ -96,12 +95,10 @@
 </script>
 
 <template>
-  <!-- aria-label provides the region landmark name. -->
-  <section class="terminal" :aria-label="`Terminal replay — ${proto} session from ${country}`">
+  <section class="terminal" :aria-label="`Replay of the ${proto} session from ${country}`">
     <header class="term-bar">
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
-      <!-- Screen readers only announce the display variant for their breakpoint. -->
       <span class="term-meta">
         <span class="term-id">{{ idLine }}</span>
         <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
@@ -137,9 +134,7 @@
     <details class="term-note">
       <summary>About this replay</summary>
       <p class="note-body">
-        Honeywatch reconstructs this session from captured events. Lines marked ‹…› are annotations,
-        not attacker output. Highlighted values are the credentials the attacker supplied. IP
-        addresses are redacted; no command output was recorded.
+        Rebuilt from what the honeypot recorded. Lines in &lt;...&gt; are our notes, not the attacker's. Highlighted text is what they typed to log in. Addresses are hidden, and the honeypot's replies were not recorded.
       </p>
     </details>
   </section>
@@ -226,7 +221,6 @@
       border-color var(--motion-fast) ease;
   }
 
-  /* Icon shown on mobile only. */
   .copy-icon {
     display: none;
     width: 1rem;
@@ -293,12 +287,10 @@
     }
   }
 
-  /* Row 1: dots + icon; rows 2-3: two-line metadata. */
   @media (max-width: 768px) {
     .term-bar {
       flex-wrap: wrap;
       align-items: center;
-      /* tighten the wrap gap between the dots/copy row and the metadata below */
       row-gap: var(--space-1);
     }
     .term-title {
@@ -307,8 +299,7 @@
     .copy-btn {
       order: 2;
       margin-left: auto;
-      /* Bare glyph, no card chrome: just the copy icon up by the window dots.
-         5px padding keeps a >=24px tap target (WCAG 2.5.8) without a button box. */
+      /* Icon only; 5px padding maintains >=24px tap target (WCAG 2.5.8). */
       min-height: auto;
       padding: 5px;
       background: transparent;

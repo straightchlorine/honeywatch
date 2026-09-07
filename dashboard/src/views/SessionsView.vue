@@ -1,482 +1,850 @@
 <script setup lang="ts">
-  import { computed } from 'vue'
-  import { useRoute, useRouter } from 'vue-router'
+  /**
+   * Sessions explorer: ranked by interest by default, with outcome/country/sort
+   * filters and server-side pagination. Rows expand in place (no navigation).
+   * All state (filters, page, expanded row) is URL-based for sharing and back-nav.
+   */
+  import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { useRoute, useRouter, type LocationQuery } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
-  import { listSessionsOptions } from '@/api/queries'
-  import PageHeader from '@/components/base/PageHeader.vue'
-  import Pagination from '@/components/base/Pagination.vue'
-  import EmptyState from '@/components/base/EmptyState.vue'
+  import {
+    listSessionsOptions,
+    statsOutcomesOptions,
+  } from '@/api/generated/@tanstack/vue-query.gen'
+  import PageShell from '@/components/layout/PageShell.vue'
+  import TopBar from '@/components/layout/TopBar.vue'
+  import HwCard from '@/components/base/HwCard.vue'
+  import ChipButton from '@/components/base/ChipButton.vue'
   import Dropdown from '@/components/base/Dropdown.vue'
-  import { fmtRelativeTime } from '@/utils/format'
-  import { humanizeDuration } from '@/utils/duration'
-  import { sessionClass } from '@/utils/sessionClass'
-  import { useCountryFilter } from '@/composables/useCountryFilter'
+  import EmptyState from '@/components/base/EmptyState.vue'
+  import SessionRow from '@/components/sessions/SessionRow.vue'
+  import OutcomeFilter from '@/components/sessions/OutcomeFilter.vue'
+  import { ICONS } from '@/components/icons'
+  import { fmtNumber } from '@/utils/format'
   import { useCountryOptions } from '@/composables/useCountryOptions'
 
-  type Opt = { value: string; label: string }
+  const PER_PAGE = 40
+  // Debounce the *fetch*, not the keystroke: the box updates instantly, the
+  // URL/query only commits once typing pauses.
+  const SEARCH_DEBOUNCE_MS = 250
+  // Server bounds on `q` (api/src/schemas/sessions.py) - outside [2, 64] the
+  // API 422s, so the box never lets a keystroke produce either edge.
+  const MIN_QUERY_LEN = 2
+  const MAX_QUERY_LEN = 64
 
-  const PER_PAGE = 25
-
-  type Sort = 'recent' | 'country' | 'active'
-  type Category = 'active' | 'login' | 'failed' | 'probe'
-  const SORTS: Sort[] = ['recent', 'country', 'active']
-  const CATEGORIES: Category[] = ['active', 'login', 'failed', 'probe']
-
-  const SORT_OPTIONS: Opt[] = [
-    { value: 'recent', label: 'Most recent' },
-    { value: 'country', label: 'Country A–Z' },
-    { value: 'active', label: 'Most active' },
+  type SortId = 'interest' | 'recent' | 'duration'
+  const SORTS: { id: SortId; label: string }[] = [
+    { id: 'interest', label: 'Most interesting' },
+    { id: 'recent', label: 'Most recent' },
+    { id: 'duration', label: 'Longest' },
   ]
-  const CATEGORY_OPTIONS: Opt[] = [
-    { value: '', label: 'All sessions' },
-    { value: 'active', label: 'CLI' },
-    { value: 'login', label: 'Successful login' },
-    { value: 'failed', label: 'Failed auth' },
-    { value: 'probe', label: 'Probe' },
-  ]
+  // Subtitles must reflect actual sort order (not independent hardcoded values).
+  const SORT_SUBTITLE: Record<SortId, string> = {
+    interest: 'ranked by how much the attacker did',
+    recent: 'newest first',
+    duration: 'longest sessions first',
+  }
+  // Short, lowercase clauses for the footer's "what the total is of" - keyed
+  // by the OutcomeFilter has= token (see OutcomeFilter.vue's MAIN_ROWS/NONE_ROW).
+  const OUTCOME_CLAUSE: Record<string, string> = {
+    success: 'got control',
+    commands: 'ran commands',
+    tcpip: 'tried to relay',
+    downloads: 'dropped a file',
+    none: 'did nothing at all',
+  }
 
+  // Every filter, the sort, the expanded row and the page live in the URL, so a
+  // view is shareable and survives refresh and back.
   const route = useRoute()
   const router = useRouter()
 
-  // All browse state lives in the URL so a filtered view is shareable + reloadable.
-  const page = computed(() => Math.max(1, Number(route.query.page) || 1))
-  const sort = computed<Sort>(() => {
-    const s = route.query.sort
-    return typeof s === 'string' && (SORTS as string[]).includes(s) ? (s as Sort) : 'recent'
+  // Merges over the last *requested* query, not route.query: two same-tick
+  // calls would otherwise both spread the stale route.query and the second
+  // replace() clobbers the first.
+  let pendingQuery: LocationQuery | null = null
+  function updateQuery(patch: Record<string, string | undefined>): void {
+    const next: LocationQuery = { ...(pendingQuery ?? route.query) }
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) delete next[k]
+      else next[k] = v
+    }
+    pendingQuery = next
+    void router.replace({ path: route.path, query: next }).finally(() => {
+      pendingQuery = null
+    })
+  }
+
+  // URL key `has` holds the API's comma-list verbatim ('commands,success', or
+  // the mutually-exclusive 'none').
+  const hasValue = computed<string>({
+    get: () => (route.query.has as string | undefined) ?? '',
+    set: (v) => updateQuery({ has: v || undefined, page: undefined, open: undefined }),
   })
-  const category = computed<Category | ''>(() => {
-    const c = route.query.category
-    return typeof c === 'string' && (CATEGORIES as string[]).includes(c) ? (c as Category) : ''
+  const sort = computed<SortId>({
+    get: () => (route.query.sort as SortId | undefined) ?? 'interest',
+    set: (v) => {
+      updateQuery({
+        sort: v === 'interest' ? undefined : v,
+        page: undefined,
+        open: undefined,
+      })
+    },
   })
-  const { country } = useCountryFilter()
-  const filtersActive = computed(() => Boolean(category.value || country.value))
+  const country = computed<string>({
+    get: () => (route.query.country as string | undefined) ?? '',
+    set: (v) => {
+      updateQuery({
+        country: v || undefined,
+        page: undefined,
+        open: undefined,
+      })
+    },
+  })
+  // Committed search term (URL state, ?q=) - same reset behavior as every
+  // other filter.
+  const search = computed<string>({
+    get: () => (route.query.q as string | undefined) ?? '',
+    set: (v) => updateQuery({ q: v || undefined, page: undefined, open: undefined }),
+  })
+  // ?sha256= scopes the list to one captured payload. Read-only here: the
+  // Payloads cards are the only thing that sets it, and it is validated
+  // server-side, so a hand-typed value that is not 64 lowercase hex 422s
+  // rather than silently returning the unfiltered 543k list.
+  const shaFilter = computed(() => {
+    const v = route.query.sha256
+    return typeof v === 'string' && /^[0-9a-f]{64}$/.test(v) ? v : undefined
+  })
+
+  // Expanded row persists in URL (?open=sessionId) to restore on back/forward.
+  const expandedId = computed<string | null>({
+    get: () => (route.query.open as string | undefined) ?? null,
+    set: (v) => updateQuery({ open: v || undefined }),
+  })
+
+  // Current page (?page=N) - 1-based, defaults to 1. Changes to filter/sort/
+  // country/search reset this to undefined (which defaults to 1 on read).
+  const currentPage = computed<number>({
+    get: () => {
+      const p = route.query.page as string | undefined
+      return p ? Math.max(1, parseInt(p, 10)) : 1
+    },
+    set: (v) => updateQuery({ page: v > 1 ? String(v) : undefined }),
+  })
+
+  const countryOptions = useCountryOptions('All countries')
+
+  // Outcome counts for the popover - scoped to the current country so the
+  // numbers in the panel agree with what the country dropdown would return.
+  // Not part of the page's blocking suspense (below): the panel's own counts
+  // can arrive after first paint without holding up the table.
+  const outcomesQ = useQuery(
+    computed(() => ({
+      ...statsOutcomesOptions({ query: { country: country.value || undefined } }),
+    })),
+  )
+
+  // The search box's live value. Sanitized on every keystroke (lowercase hex
+  // only, per the API's contract) so a stray character can never reach the
+  // API as an invalid `q` and 422. Committed to `search` (and so the URL and
+  // the fetch) only after SEARCH_DEBOUNCE_MS of no typing.
+  const searchInput = ref(search.value)
+  let searchTimer: ReturnType<typeof setTimeout> | undefined
+  function onSearchInput(e: Event): void {
+    const clean = (e.target as HTMLInputElement).value
+      .toLowerCase()
+      .replace(/[^0-9a-f]/g, '')
+      .slice(0, MAX_QUERY_LEN)
+    searchInput.value = clean
+    if (searchTimer) clearTimeout(searchTimer)
+    searchTimer = setTimeout(() => {
+      if (clean !== search.value) search.value = clean
+    }, SEARCH_DEBOUNCE_MS)
+  }
+  function clearSearch(): void {
+    if (searchTimer) clearTimeout(searchTimer)
+    searchInput.value = ''
+    if (search.value) search.value = ''
+  }
+  onUnmounted(() => {
+    if (searchTimer) clearTimeout(searchTimer)
+  })
+
+  // Never sent below the API's 2-char floor - the box can hold a shorter
+  // in-progress term without ever producing a request for it.
+  const searchActive = computed(() => search.value.length >= MIN_QUERY_LEN)
+  const qParam = computed(() => (searchActive.value ? search.value : undefined))
 
   const sessionsQ = useQuery(
     computed(() => ({
       ...listSessionsOptions({
         query: {
-          page: page.value,
+          page: currentPage.value,
           per_page: PER_PAGE,
           sort: sort.value,
-          ...(category.value ? { category: category.value } : {}),
-          ...(country.value ? { country: country.value } : {}),
+          has: hasValue.value || undefined,
+          country: country.value || undefined,
+          q: qParam.value,
+          sha256: shaFilter.value,
         },
       }),
+      // Hold the previous page on screen while the next one loads. Without it
+      // rows collapses to [] on every page change and the flex-sized table
+      // reflows - a blank frame and a layout jump on a page that must fit the
+      // viewport. PulseView and CredentialsView already do this.
       placeholderData: keepPreviousData,
     })),
   )
+
   await sessionsQ.suspense()
+  if (sessionsQ.error.value) throw sessionsQ.error.value
 
-  // Country options reuse the top-countries leaderboard (max 100). Not awaited:
-  // the table is the primary content and must render even if this lags or fails.
-  const countryOptions = useCountryOptions('All countries')
+  // The onMounted below is written after the top-level await above; script
+  // setup's compiler preserves the instance context across await
+  // expressions, so the hook still attaches correctly. It only fires once
+  // the initial render is committed to the DOM, well after this line runs.
+  const scrollEl = ref<HTMLElement | null>(null)
 
-  const rows = computed(() =>
-    (sessionsQ.data.value?.items ?? []).map((s) => ({ ...s, cls: sessionClass(s) })),
+  // Auto-open only when EXACTLY one matching session exists; picking a "best"
+  // row from many would be a guess, and the list is the right answer.
+  watch(
+    [shaFilter, () => sessionsQ.data.value?.items],
+    ([sha, items]) => {
+      const only = items?.length === 1 ? items[0] : undefined
+      if (!sha || !only) return
+      if (!route.query.open) expandedId.value = only.id
+    },
+    { immediate: true },
   )
-  const meta = computed(() => sessionsQ.data.value!.meta)
-  // keepPreviousData holds the prior page if a filter/page change fails to load;
-  // surface that rather than showing stale rows as if they were current.
-  const isStale = computed(() => sessionsQ.isError.value)
 
-  // Merge one filter into the URL and reset to page 1 (the result set changed).
-  function setParam(key: string, value: string | boolean): void {
-    const query: Record<string, string> = {}
-    for (const [k, v] of Object.entries(route.query)) {
-      if (k !== 'page' && typeof v === 'string') query[k] = v
+  onMounted(() => {
+    const openRow = scrollEl.value?.querySelector('tr[aria-expanded="true"]')
+    // scrollIntoView is absent in jsdom (unit tests) - guard the call, not
+    // just the element lookup.
+    openRow?.scrollIntoView?.({ block: 'nearest' })
+  })
+
+  const rows = computed(() => sessionsQ.data.value?.items ?? [])
+  const total = computed(() => sessionsQ.data.value?.meta.total ?? 0)
+  const pageCount = computed(() => sessionsQ.data.value?.meta.pages ?? 1)
+  // Global, unfiltered ceiling (stable across pagination - every page carries
+  // the same true dataset max) - normalizes the displayed per-row interest
+  // score to 0-100 in SessionRow.
+  const maxInterest = computed(() => sessionsQ.data.value?.max_interest ?? 0)
+
+  const subtitle = computed(() => SORT_SUBTITLE[sort.value])
+
+  // What the footer's total is a count *of*, when some scope narrows it below
+  // "every session" - null means the plain "sessions" wording applies.
+  const scopeClause = computed<string | null>(() => {
+    if (searchActive.value) return `matching "${search.value}"`
+    const parts: string[] = []
+    const outcomeLabels = hasValue.value
+      ? hasValue.value
+          .split(',')
+          .map((t) => OUTCOME_CLAUSE[t])
+          .filter((l): l is string => Boolean(l))
+      : []
+    if (outcomeLabels.length) parts.push(outcomeLabels.join(' and '))
+    if (country.value) {
+      const label = countryOptions.value.find((o) => o.value === country.value)?.label
+      if (label) parts.push(`from ${label}`)
     }
-    if (value === '' || value === false) delete query[key]
-    else query[key] = String(value)
-    void router.push({ query })
+    return parts.length ? parts.join(' ') : null
+  })
+
+  const emptyTitle = computed(() =>
+    searchActive.value ? `No sessions match "${search.value}"` : 'No sessions match these filters',
+  )
+  const emptyHint = computed(() =>
+    searchActive.value
+      ? 'Search matches the start of a session id.'
+      : 'Try a different outcome, country, or search.',
+  )
+
+  // Only when a country is actually set: option[0] is the '' / 'All countries'
+  // entry, and matching it would show a pressed chip offering to clear a
+  // filter that isn't applied.
+  const countryChip = computed(() =>
+    country.value ? countryOptions.value.find((o) => o.value === country.value) : undefined,
+  )
+
+  const canPrevious = computed(() => currentPage.value > 1)
+  const canNext = computed(() => currentPage.value < pageCount.value)
+
+  function clearShaFilter(): void {
+    updateQuery({ sha256: undefined, page: undefined, open: undefined })
   }
 
-  // 'recent' is the default sort, so drop it from the URL to keep links clean.
-  function onSort(value: string): void {
-    setParam('sort', value === 'recent' ? '' : value)
+  function toggleRow(id: string): void {
+    expandedId.value = expandedId.value === id ? null : id
   }
-
   function goToPage(p: number): void {
-    void router.push({ query: { ...route.query, page: String(p) } })
+    const clamped = Math.max(1, Math.min(p, pageCount.value))
+    currentPage.value = clamped
+  }
+  function prevPage(): void {
+    if (canPrevious.value) goToPage(currentPage.value - 1)
+  }
+  function nextPage(): void {
+    if (canNext.value) goToPage(currentPage.value + 1)
   }
 
-  function shortId(id: string): string {
-    return id.length > 14 ? `${id.slice(0, 14)}…` : id
-  }
+  const sortOptions = computed(() => SORTS.map((s) => ({ value: s.id, label: s.label })))
 </script>
 
 <template>
-  <div class="sessions">
-    <PageHeader title="Sessions" sub="Recent honeypot sessions. Open one to replay the terminal." />
+  <PageShell>
+    <template #head>
+      <TopBar current="sessions" />
+    </template>
 
-    <p v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</p>
+    <div class="page-head">
+      <h1>Sessions</h1>
+      <span class="sub">{{ fmtNumber(total) }} recorded &middot; {{ subtitle }}</span>
+    </div>
 
     <div class="filters" role="group" aria-label="Session filters">
-      <div class="field">
-        <span id="f-sort-label" class="field-label">Sort</span>
-        <Dropdown
-          button-id="f-sort"
-          label-id="f-sort-label"
-          :model-value="sort"
-          :options="SORT_OPTIONS"
-          @update:model-value="onSort"
+      <div class="search-box">
+        <svg
+          class="search-icon"
+          :class="{ active: searchInput.length > 0 }"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          stroke-width="1.8"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <circle cx="10" cy="10" r="6" />
+          <path d="M14 14l6 6" />
+        </svg>
+        <input
+          id="session-search"
+          :value="searchInput"
+          type="text"
+          autocomplete="off"
+          spellcheck="false"
+          placeholder="find a session id"
+          aria-label="Search sessions by id"
+          @input="onSearchInput"
         />
+        <span v-if="searchActive" class="match-count" role="status">
+          {{ fmtNumber(total) }} match{{ total === 1 ? '' : 'es' }}
+        </span>
+        <button
+          v-if="searchInput"
+          type="button"
+          class="search-clear"
+          aria-label="Clear search"
+          @click="clearSearch"
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false">
+            <path d="M18 6l-12 12M6 6l12 12" />
+          </svg>
+        </button>
       </div>
 
-      <div class="field">
-        <span id="f-category-label" class="field-label">Show</span>
-        <Dropdown
-          button-id="f-category"
-          label-id="f-category-label"
-          :model-value="category"
-          :options="CATEGORY_OPTIONS"
-          @update:model-value="(v) => setParam('category', v)"
+      <div class="controls-row">
+        <OutcomeFilter
+          v-model="hasValue"
+          :counts="outcomesQ.data.value ?? null"
         />
+        <div class="right">
+          <span class="country-control">
+            <Dropdown
+              button-id="country-dd"
+              label-id="country-label"
+              :model-value="country"
+              :options="countryOptions"
+              @update:model-value="country = $event"
+            />
+            <span id="country-label" class="visually-hidden">Country filter</span>
+          </span>
+          <span class="sort-control">
+            <Dropdown
+              button-id="sort-dd"
+              label-id="sort-label"
+              :model-value="sort"
+              :options="sortOptions"
+              @update:model-value="sort = $event as SortId"
+            />
+            <span id="sort-label" class="visually-hidden">Sort</span>
+          </span>
+        </div>
       </div>
 
-      <div class="field">
-        <span id="f-country-label" class="field-label">Country</span>
-        <Dropdown
-          button-id="f-country"
-          label-id="f-country-label"
-          :model-value="country"
-          :options="countryOptions"
-          @update:model-value="(v) => setParam('country', v)"
-        />
-      </div>
+      <!-- Mobile-only (see media query): the country dropdown above is
+           dropped at that width, so a shared ?country= link still needs a
+           visible, removable affordance - display:none hides this on desktop,
+           where the dropdown itself already shows the active country. -->
+      <ChipButton v-if="countryChip" class="country-chip" :pressed="true" @toggle="country = ''">
+        <span aria-hidden="true">{{ countryChip.icon }}</span>
+        <span aria-hidden="true">{{ countryChip.label }}</span>
+        <span aria-hidden="true" class="chip-x">&times;</span>
+        <span class="visually-hidden">Remove country filter: {{ countryChip.label }}</span>
+      </ChipButton>
+
+      <!-- Arriving from a Payloads card narrows a 543k list to a handful. Say
+           so, and make it removable, or the scope is invisible and permanent. -->
+      <ChipButton v-if="shaFilter" class="sha-chip" :pressed="true" @toggle="clearShaFilter">
+        <span aria-hidden="true" class="mono">{{ shaFilter.slice(0, 12) }}</span>
+        <span aria-hidden="true" class="chip-x">&times;</span>
+        <span class="visually-hidden">
+          Showing only sessions that dropped file {{ shaFilter.slice(0, 12) }}. Remove filter.
+        </span>
+      </ChipButton>
     </div>
 
-    <div class="table-wrap">
-      <table class="sessions-table">
-        <caption class="visually-hidden">
-          Honeypot sessions, filtered and paginated.
-        </caption>
-        <thead>
-          <tr>
-            <th scope="col">Session</th>
-            <th scope="col">Activity</th>
-            <th scope="col">Source country</th>
-            <th scope="col">Protocol</th>
-            <th scope="col">Started</th>
-            <th scope="col">Duration</th>
-            <th scope="col" class="num">Auth attempts</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="row in rows" :key="row.id" v-memo="[row.id, row.cls.kind, row.ended_at]">
-            <td class="id">
-              <RouterLink :to="{ name: 'session-detail', params: { id: row.id } }" :title="row.id">
-                {{ shortId(row.id) }}
-              </RouterLink>
-            </td>
-            <td>
-              <span class="badge" :class="`badge-${row.cls.kind}`" :title="row.cls.title">
-                <span class="badge-glyph" aria-hidden="true">{{ row.cls.glyph }}</span>
-                <span class="badge-label">{{ row.cls.label }}</span>
-              </span>
-            </td>
-            <td>{{ row.country ?? row.country_code ?? '—' }}</td>
-            <td>{{ row.protocol }}</td>
-            <td>
-              <time v-if="row.started_at" :datetime="row.started_at" :title="row.started_at">
-                {{ fmtRelativeTime(row.started_at) }}
-              </time>
-              <template v-else>—</template>
-            </td>
-            <td>{{ humanizeDuration(row.started_at, row.ended_at) }}</td>
-            <td class="num">{{ row.auth_attempt_count }}</td>
-          </tr>
-        </tbody>
-      </table>
+    <HwCard class="tbl-card" :class="{ 'has-rows': rows.length > 0 }">
+      <EmptyState v-if="rows.length === 0" :title="emptyTitle" :hint="emptyHint">
+        <ChipButton v-if="searchActive" @toggle="clearSearch">Clear search</ChipButton>
+      </EmptyState>
+      <div v-else ref="scrollEl" class="tbl-scroll" tabindex="0" role="region" aria-label="Sessions table">
+        <!-- treegrid, not table: rows carry aria-expanded because each one
+             discloses a detail panel, and aria-expanded is only valid on a row
+             inside a treegrid (axe rule aria-conditional-attr). -->
+        <table class="data" role="treegrid" aria-label="Sessions">
+          <thead>
+            <tr>
+              <th>Session</th>
+              <th>Story</th>
+              <th>Origin</th>
+              <th></th>
+              <th class="r">Duration</th>
+              <th class="r">Started</th>
+            </tr>
+          </thead>
+          <tbody>
+            <SessionRow
+              v-for="row in rows"
+              :key="row.id"
+              :row="row"
+              :expanded="expandedId === row.id"
+              :max-interest="maxInterest"
+              @toggle="toggleRow(row.id)"
+            />
+          </tbody>
+        </table>
+      </div>
+    </HwCard>
 
-      <!-- Mobile layout: the 7-column table side-scrolls unusably on phones, so
-           below --bp-md it is hidden and each session renders as a card. -->
-      <ul class="session-cards" aria-label="Honeypot sessions">
-        <li v-for="row in rows" :key="row.id" class="session-card">
-          <div class="card-head">
-            <RouterLink
-              class="card-id"
-              :to="{ name: 'session-detail', params: { id: row.id } }"
-              :title="row.id"
-            >
-              {{ shortId(row.id) }}
-            </RouterLink>
-            <span class="badge" :class="`badge-${row.cls.kind}`" :title="row.cls.title">
-              <span class="badge-glyph" aria-hidden="true">{{ row.cls.glyph }}</span>
-              <span class="badge-label">{{ row.cls.label }}</span>
-            </span>
-          </div>
-          <dl class="card-facts">
-            <div class="fact">
-              <dt>Country</dt>
-              <dd>{{ row.country ?? row.country_code ?? '—' }}</dd>
-            </div>
-            <div class="fact">
-              <dt>Protocol</dt>
-              <dd>{{ row.protocol }}</dd>
-            </div>
-            <div class="fact">
-              <dt>Started</dt>
-              <dd>
-                <time v-if="row.started_at" :datetime="row.started_at" :title="row.started_at">
-                  {{ fmtRelativeTime(row.started_at) }}
-                </time>
-                <template v-else>—</template>
-              </dd>
-            </div>
-            <div class="fact">
-              <dt>Duration</dt>
-              <dd>{{ humanizeDuration(row.started_at, row.ended_at) }}</dd>
-            </div>
-            <div class="fact">
-              <dt>Auth attempts</dt>
-              <dd>{{ row.auth_attempt_count }}</dd>
-            </div>
-          </dl>
-        </li>
-      </ul>
-
-      <EmptyState
-        v-if="!rows.length"
-        :title="filtersActive ? 'No sessions match these filters' : 'No sessions yet'"
-        :hint="
-          filtersActive
-            ? 'Try widening the filters above.'
-            : 'Sessions appear here as the honeypot captures activity.'
-        "
-      />
+    <div class="foot-line">
+      <span>
+        <b>{{ PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }} {{ scopeClause ?? 'sessions'
+        }}<span v-if="!scopeClause" class="hint-tail">
+          &middot; rows expand in place - the list never navigates away</span
+        >
+      </span>
+      <div class="pagination">
+        <button
+          type="button"
+          class="pg-btn"
+          :disabled="!canPrevious || sessionsQ.isFetching.value"
+          @click="prevPage"
+          aria-label="Previous page"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+            <path :d="ICONS['chevron-left']" fill="currentColor" />
+          </svg>
+        </button>
+        <div class="page-control">
+          <span class="page-label">Page</span>
+          <input
+            id="page-input"
+            type="number"
+            class="page-input"
+            :value="currentPage"
+            :min="1"
+            :max="pageCount"
+            @change="goToPage(parseInt(($event.target as HTMLInputElement).value, 10))"
+            @blur="goToPage(parseInt(($event.target as HTMLInputElement).value, 10))"
+            aria-label="Current page number"
+          />
+          <span class="page-label">of {{ fmtNumber(pageCount) }}</span>
+        </div>
+        <button
+          type="button"
+          class="pg-btn"
+          :disabled="!canNext || sessionsQ.isFetching.value"
+          @click="nextPage"
+          aria-label="Next page"
+        >
+          <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
+            <path :d="ICONS['chevron-right']" fill="currentColor" />
+          </svg>
+        </button>
+      </div>
     </div>
-
-    <Pagination
-      v-if="meta.pages > 1"
-      :page="page"
-      :pages="meta.pages"
-      :total="meta.total"
-      @update:page="goToPage"
-    />
-  </div>
+  </PageShell>
 </template>
 
 <style scoped>
-  .sessions {
+  .page-head {
     display: flex;
-    flex-direction: column;
-    gap: var(--space-4);
-    /* The table is the flexing hero with its own scroll, so the page fits the
-     viewport with no outer scroll (header + filters + pagination stay fixed). */
-    flex: 1 1 auto;
-    min-height: 0;
+    align-items: baseline;
+    gap: 16px;
+    flex: none;
   }
-
-  .stale {
-    flex: 0 0 auto;
+  .page-head h1 {
     margin: 0;
-    font-size: var(--type-xs);
-    color: var(--warning);
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+  }
+  .sub {
+    color: var(--text-dim);
+    font-size: 13px;
   }
 
   .filters {
-    flex: 0 0 auto;
     display: flex;
+    gap: 8px;
+    align-items: center;
+    flex: none;
     flex-wrap: wrap;
-    align-items: end;
-    gap: var(--space-3) var(--space-4);
-    padding: var(--space-3) var(--space-4);
-    background: var(--bg-1);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
   }
 
-  .field {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-
-  .field-label {
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text-dim);
-    font-weight: 600;
-  }
-
-  .table-wrap {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow: auto;
-  }
-
-  .sessions-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: var(--type-sm);
-  }
-
-  .sessions-table th,
-  .sessions-table td {
-    text-align: left;
-    padding: var(--space-2) var(--space-3);
-    border-bottom: 1px solid var(--border);
-  }
-
-  .sessions-table th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
-    background: var(--bg-1);
-    color: var(--text-muted);
-    font-weight: 600;
-    font-size: var(--type-xs);
-    letter-spacing: 0.02em;
-  }
-
-  .session-cards {
-    display: none;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  .session-card {
-    padding: var(--space-3);
-    background: var(--bg-1);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-  }
-
-  .card-head {
+  .controls-row {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
-    margin-bottom: var(--space-2);
+    gap: 8px;
+    flex: 1;
+    min-width: 0;
   }
 
-  .card-id {
-    font-family: var(--font-mono);
-    font-size: var(--type-sm);
-  }
-
-  .card-facts {
-    display: grid;
-    grid-template-columns: repeat(2, 1fr);
-    gap: var(--space-1) var(--space-3);
-    margin: 0;
-  }
-
-  .card-facts .fact {
+  /* Search box: its own bordered control (not the shared .chip pill) so it
+     can hold the icon, the live match count and the clear button together. */
+  .search-box {
+    width: 280px;
+    flex: none;
+    box-sizing: border-box;
+    min-height: var(--control-h);
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    padding: 6px 10px 6px 12px;
+    transition: all var(--motion-fast);
   }
-
-  .card-facts dt {
-    font-size: var(--type-xs);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+  .search-box:focus-within {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px var(--accent-glow);
+  }
+  .search-icon {
+    flex: 0 0 auto;
+    width: 14px;
+    height: 14px;
+    color: color-mix(in srgb, var(--text-dim) 55%, transparent);
+  }
+  .search-icon.active {
+    color: var(--accent);
+  }
+  .search-box input {
+    flex: 1 1 auto;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    outline: none;
+    color: var(--text);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    font-weight: 550;
+  }
+  .search-box input::placeholder {
+    color: color-mix(in srgb, var(--text-dim) 55%, transparent);
+    font-family: var(--font-sans);
+  }
+  .match-count {
+    flex: 0 0 auto;
     color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11.5px;
+    font-weight: 550;
+    white-space: nowrap;
+  }
+  .search-clear {
+    flex: 0 0 auto;
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    padding: 0;
+    border: none;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+  }
+  .search-clear:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+  .search-clear:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .search-clear svg {
+    width: 12px;
+    height: 12px;
   }
 
-  .card-facts dd {
-    margin: 0;
-    font-size: var(--type-sm);
+  .chip-x {
+    font-size: 13px;
+    line-height: 1;
+  }
+  .filters .country-chip {
+    display: none;
+  }
+
+  .right {
+    margin-left: auto;
+    display: flex;
+    gap: 8px;
+  }
+
+  .pg-btn {
+    appearance: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--control-h);
+    height: var(--control-h);
+    box-sizing: border-box;
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all var(--motion-fast);
+  }
+  .pg-btn:hover:not(:disabled) {
+    border-color: var(--accent-dim);
     color: var(--text);
   }
+  .pg-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+  .pg-btn:disabled {
+    color: color-mix(in srgb, var(--text-dim) 55%, transparent);
+    cursor: default;
+  }
 
-  .sessions-table td.num,
-  .sessions-table th.num {
+  .tbl-card {
+    flex: 1;
+    min-height: 0;
+    padding: 0;
+    overflow: hidden;
+    position: relative;
+  }
+  .tbl-scroll {
+    overflow-y: auto;
+    height: 100%;
+    scrollbar-width: thin;
+    scrollbar-color: color-mix(in srgb, var(--text-dim) 55%, transparent) transparent;
+  }
+  .tbl-scroll:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
+  }
+  /* Bottom fade: a real affordance that the card scrolls, not just clips.
+     Only when rows are actually rendered - the empty state has nothing to
+     scroll, and the fade shouldn't sit over its centered message. */
+  .tbl-card.has-rows::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 46px;
+    background: linear-gradient(to top, var(--surface), transparent);
+    pointer-events: none;
+  }
+
+  table.data {
+    width: 100%;
+    /* Fixed layout: column widths come only from the widths below, never from
+       cell content - keeps the expanded row's wide transcript preview
+       (colspan=6) from shifting every other row's column boundaries. */
+    table-layout: fixed;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  table.data th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    padding: 8px 10px;
+    border-bottom: 1px solid var(--border-strong);
+    position: sticky;
+    top: 0;
+    background: var(--surface);
+    z-index: 2;
+  }
+  table.data th.r {
     text-align: right;
+  }
+  /* Session / Story / Origin / spacer / Duration / Started columns (290px 340px 320px minmax(0,1fr) 130px 150px).
+     4th column carries no width so fixed layout hands it all leftover space. */
+  /* border-box: widths below are the column's actual width, padding included. */
+  table.data th {
+    box-sizing: border-box;
+  }
+  table.data th:nth-child(1) {
+    width: 290px;
+    padding-left: 16px;
+  }
+  table.data th:nth-child(2) {
+    width: 340px;
+  }
+  table.data th:nth-child(3) {
+    width: 320px;
+  }
+  table.data th:nth-child(5) {
+    width: 130px;
+  }
+  table.data th:nth-child(6) {
+    width: 150px;
+    padding-right: 22px;
+  }
+  table.data :deep(td) {
+    padding: 9px 10px;
+    border-bottom: 1px solid var(--grid-line);
+    vertical-align: middle;
+  }
+  table.data :deep(td.r) {
+    text-align: right;
+  }
+  table.data :deep(.num) {
+    font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
   }
 
-  .sessions-table td.id {
-    font-family: var(--font-mono);
+  .foot-line {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--text-dim);
+    font-size: 12.5px;
   }
-
-  .badge {
-    display: inline-flex;
-    align-items: baseline;
+  .foot-line .pagination {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .foot-line .page-control {
+    display: flex;
+    align-items: center;
     gap: 4px;
-    padding: 1px var(--space-2);
-    border-radius: var(--radius-sm);
-    border: 1px solid currentcolor;
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
   }
-
-  /* Non-color cue so the class is distinguishable in grayscale (WCAG 1.4.1). */
-  .badge-glyph {
-    font-family: var(--font-mono);
-    font-weight: 700;
-  }
-
-  .badge-active {
-    color: var(--accent);
-  }
-  .badge-login {
-    color: var(--warning);
-  }
-  .badge-failed {
-    color: var(--error);
-  }
-  .badge-probe {
+  .foot-line .page-label {
+    font-size: 12.5px;
     color: var(--text-dim);
   }
+  .foot-line .page-input {
+    width: 48px;
+    padding: 4px 6px;
+    border: 1px solid var(--border-strong);
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-muted);
+    font: 550 12.5px var(--font-sans);
+    text-align: center;
+  }
+  .foot-line .page-input:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .foot-line .page-input::-webkit-outer-spin-button,
+  .foot-line .page-input::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+  .foot-line .page-input[type='number'] {
+    appearance: textfield;
+  }
 
-  @media (max-width: 768px) {
-    .sessions-table {
-      display: none;
-    }
-    .session-cards {
-      display: flex;
-    }
-
-    /* Keep the three filters on one row: the Dropdown's 160px min-width forced a
-     2+1 wrap. Drop it to equal columns; long values (country names) ellipsize on
-     the trigger - the open list still shows them in full. */
+  @media (max-width: 760px) {
     .filters {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      align-items: end;
-      gap: var(--space-2);
-      padding: var(--space-3);
+      flex-direction: column;
+      align-items: stretch;
     }
-    .field {
-      min-width: 0;
-    }
-    .field :deep(.dropdown) {
-      display: flex;
-    }
-    .field :deep(.dd-button) {
-      min-width: 0;
+    .search-box {
       width: 100%;
     }
-    /* flex:1 + min-width:0 let the value shrink below its content width - without
-     it the flex child keeps min-width:auto and text-overflow never fires, so a
-     long country name overflows the trigger instead of ellipsizing. */
-    .field :deep(.dd-value) {
+    .controls-row {
+      flex-wrap: wrap;
+    }
+    /* Outcome + sort share one row, evenly split; the country dropdown is
+       dropped entirely (three controls don't fit) in favor of the removable
+       chip above, when a country is actually set. */
+    .controls-row :deep(.outcome-filter) {
       flex: 1;
+    }
+    .controls-row :deep(.of-trigger) {
+      width: 100%;
+      justify-content: space-between;
+    }
+    .filters .country-chip {
+      display: inline-flex;
+      align-self: flex-start;
+    }
+    .right {
+      flex: 1;
+      margin-left: 0;
+    }
+    .country-control {
+      display: none;
+    }
+    .sort-control {
+      flex: 1;
+      display: flex;
+    }
+    .sort-control :deep(.dropdown) {
+      flex: 1;
+    }
+    .sort-control :deep(.dd-button) {
+      width: 100%;
       min-width: 0;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      justify-content: space-between;
     }
 
-    /* The Country list (rightmost column, wide country names) opened past the right
-     edge; .shell-main's overflow-y:auto then made the x-axis scrollable and the
-     page slid sideways. Open it right-aligned, cap it to the viewport, and let
-     long names wrap so the list can never reach beyond the screen. */
-    .field:last-child :deep(.dd-list) {
-      left: auto;
-      right: 0;
-      max-width: calc(100vw - 2 * var(--space-4));
+    /* Both remaining columns must drop their desktop px widths (340px alone
+       would overflow a phone screen) - Session flexes, Story sizes to its badges. */
+    /* Not `auto` for both: under table-layout fixed that splits 50/50, leaving
+       Story ~181px for ~185px of badges, so all three wrapped to a second line
+       and every row grew from 36px to 56px. Session needs 166px (chevron, hex,
+       12-char id, gaps, padding); the rest goes to Story. */
+    table.data th:nth-child(1) {
+      width: 46%;
     }
-    .field :deep(.dd-option) {
-      white-space: normal;
+    table.data th:nth-child(2) {
+      width: 54%;
+    }
+    table.data th:nth-child(n + 3),
+    table.data :deep(td:nth-child(n + 3)) {
+      display: none;
+    }
+
+    .foot-line {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 8px;
+    }
+    .foot-line .hint-tail {
+      display: none;
+    }
+    .foot-line .pagination {
+      margin-left: 0;
     }
   }
 </style>

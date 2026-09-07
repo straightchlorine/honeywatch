@@ -12,6 +12,9 @@ function makeSession(over: Partial<SessionDetailResponse> = {}): SessionDetailRe
     sensor: 'edge-01',
     country: 'United States',
     country_code: 'US',
+    city: null,
+    lat: null,
+    lon: null,
     started_at: '2026-05-31T13:40:52+00:00',
     ended_at: '2026-05-31T13:41:50+00:00',
     auth_attempts: [],
@@ -26,6 +29,28 @@ function cmdText(line: { kind: string; segments?: { text: string }[] }): string 
 }
 
 describe('buildTranscript', () => {
+  it('blots IPs in attacker-supplied usernames and passwords', () => {
+    const lines = buildTranscript(
+      makeSession({
+        auth_attempts: [
+          {
+            id: 1,
+            username: 'root@203.0.113.7',
+            password: 'connect 198.51.100.42 now',
+            success: false,
+            timestamp: '2026-05-31T13:41:38+00:00',
+          },
+        ],
+      }),
+    )
+    const auth = lines.find((l) => l.kind === 'auth-fail')!
+    const rendered = JSON.stringify(auth)
+    expect(rendered).not.toContain('203.0.113.7')
+    expect(rendered).not.toContain('198.51.100.42')
+    expect(auth.kind === 'auth-fail' && auth.password).toContain('<ip>')
+    expect(auth.kind === 'auth-fail' && auth.pre).toContain('<ip>')
+  })
+
   it('opens with a connect banner and closes with a duration line', () => {
     const lines = buildTranscript(makeSession())
     expect(lines[0]!.kind).toBe('banner')
@@ -179,7 +204,6 @@ describe('buildTranscript', () => {
           {
             id: 1,
             url: 'http://34.11.136.102/meow',
-            outfile: 'downloads/x',
             sha256: '8da193366e1554c08b2870c50f737b9587c3372b656151c4a96028af26f51334',
             timestamp: '2026-05-31T13:41:51+00:00',
           },
@@ -188,7 +212,7 @@ describe('buildTranscript', () => {
     )
     const cmd = lines.find((l) => l.kind === 'command')!
     expect(cmdText(cmd)).not.toContain('34.11.136.102')
-    expect(cmdText(cmd)).toContain('‹ip›')
+    expect(cmdText(cmd)).toContain('<ip>')
     const dl = lines.find((l) => l.kind === 'download')!
     expect(dl.kind === 'download' && dl.text).not.toContain('34.11.136.102')
     expect(dl.kind === 'download' && dl.text).toContain('sha256')
@@ -226,11 +250,11 @@ describe('buildTranscript', () => {
     const lines = buildTranscript(
       makeSession({
         downloads: [
-          { id: 1, url: null, outfile: null, sha256: null, timestamp: '2026-05-31T13:41:51+00:00' },
+          { id: 1, url: null, sha256: null, timestamp: '2026-05-31T13:41:51+00:00' },
         ],
       }),
     )
     const dl = lines.find((l) => l.kind === 'download')!
-    expect(dl.kind === 'download' && dl.text).toContain('in-band capture')
+    expect(dl.kind === 'download' && dl.text).toContain('(no link - sent directly)')
   })
 })

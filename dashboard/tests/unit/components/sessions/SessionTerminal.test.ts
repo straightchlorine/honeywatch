@@ -13,6 +13,9 @@ function session(over: Partial<SessionDetailResponse> = {}): SessionDetailRespon
     sensor: 'edge-01',
     country: 'United States',
     country_code: 'US',
+    city: null,
+    lat: null,
+    lon: null,
     started_at: '2026-05-31T13:40:52+00:00',
     ended_at: '2026-05-31T13:41:50+00:00',
     auth_attempts: [
@@ -51,12 +54,12 @@ describe('SessionTerminal', () => {
     const w = mount(SessionTerminal, { props: { session: session() } })
     const body = w.find('.term-body').text()
     expect(body).not.toContain('34.11.136.102')
-    expect(body).toContain('‹ip›')
+    expect(body).toContain('<ip>')
   })
 
   it('labels the terminal region for assistive tech', () => {
     const w = mount(SessionTerminal, { props: { session: session() } })
     // Section element requires aria-label for implicit ARIA landmark.
-    expect(w.find('section.terminal').attributes('aria-label')).toContain('Terminal replay')
+    expect(w.find('section.terminal').attributes('aria-label')).toContain('Replay of the')
   })
 })

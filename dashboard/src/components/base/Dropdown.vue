@@ -4,6 +4,7 @@
   interface DropdownOption {
     value: string
     label: string
+    icon?: string
   }
 
   const props = defineProps<{
@@ -29,13 +30,11 @@
   const listId = computed(() => `${props.buttonId}-list`)
   const optionId = (i: number) => `${props.buttonId}-opt-${i}`
 
-  // Type-ahead buffer: printable keys jump to the first matching option, so a long
-  // list (e.g. ~100 countries) is reachable without dozens of arrow presses.
+  // Type-ahead: printable keys jump to matching options, avoiding numerous arrow presses on long lists.
   let typeBuffer = ''
   let typeTimer: ReturnType<typeof setTimeout> | undefined
 
-  // The active option is tracked via aria-activedescendant, not DOM focus, so the
-  // scroll container won't follow it automatically - keep it in view manually.
+  // aria-activedescendant tracking requires manual scroll into view.
   function scrollActiveIntoView(): void {
     void nextTick(() => {
       // Optional call: jsdom (unit tests) does not implement scrollIntoView.
@@ -107,7 +106,6 @@
         close(false)
         break
       default:
-        // Printable single character -> type-ahead jump.
         if (e.key.length === 1 && !e.altKey && !e.ctrlKey && !e.metaKey) {
           typeBuffer += e.key.toLowerCase()
           if (typeTimer) clearTimeout(typeTimer)
@@ -121,8 +119,6 @@
     }
   }
 
-  // Close when focus leaves the component entirely (covers click-outside, since
-  // the listbox holds focus while open).
   function onFocusout(e: FocusEvent): void {
     if (!root.value?.contains(e.relatedTarget as Node | null)) open.value = false
   }
@@ -141,6 +137,9 @@
       @click="open ? close() : openList()"
       @keydown="onButtonKeydown"
     >
+      <span v-if="props.options[selectedIndex]?.icon" class="dd-icon" aria-hidden="true">
+        {{ props.options[selectedIndex]?.icon }}
+      </span>
       <span class="dd-value">{{ selectedLabel }}</span>
       <svg
         class="chevron"
@@ -160,8 +159,7 @@
       </svg>
     </button>
 
-    <!-- aria-activedescendant keyboard + mouse-only handlers: intentional
-         bypass of click-events/static-element/focus rules below. -->
+    <!-- aria-activedescendant + keyboard/mouse handlers require these eslint bypasses. -->
     <!-- eslint-disable vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/interactive-supports-focus -->
     <ul
       v-if="open"
@@ -186,6 +184,7 @@
         @mousemove="activeIndex = i"
         @click="choose(i)"
       >
+        <span v-if="opt.icon" class="dd-option-icon" aria-hidden="true">{{ opt.icon }}</span>
         {{ opt.label }}
       </li>
     </ul>
@@ -209,29 +208,30 @@
     min-width: 160px;
     width: auto;
     min-height: var(--control-h);
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: var(--space-2) var(--space-3);
-    font-family: inherit;
-    font-size: var(--type-sm);
-    line-height: var(--type-sm-lh);
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font: 550 12.5px var(--font-sans);
     cursor: pointer;
     text-align: left;
-    transition:
-      background var(--motion-fast) ease,
-      border-color var(--motion-fast) ease;
+    transition: all var(--motion-fast);
   }
 
   .dd-button:hover {
-    background: var(--surface-hover);
-    border-color: var(--border-strong);
+    color: var(--text);
+    border-color: var(--accent-dim);
   }
 
   .dd-button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
+  }
+
+  .dd-icon {
+    font-size: 1.1em;
+    line-height: 1;
   }
 
   .dd-value {
@@ -296,12 +296,18 @@
   }
 
   .dd-option.dd-selected::before {
-    content: '✓';
+    /* CSS unicode escape for checkmark; source must remain ASCII-only. */
+    content: '\2713';
     font-size: var(--type-xs);
   }
 
   .dd-option:not(.dd-selected)::before {
     content: '';
     width: var(--type-xs);
+  }
+
+  .dd-option-icon {
+    font-size: 1.1em;
+    line-height: 1;
   }
 </style>
