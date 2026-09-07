@@ -1,15 +1,16 @@
 /**
- * Shared country options from the top-countries leaderboard.
- * allLabel differentiates the "all countries" label per view.
+ * Shared country options from the top-countries leaderboard, with customizable "all countries" label.
  */
 import { computed, type ComputedRef } from 'vue'
 import { useQuery } from '@tanstack/vue-query'
 import { statsTopCountriesOptions } from '@/api/queries'
 import { isAlpha2 } from './useCountryFilter'
+import { useCountryFlag } from './useCountryFlag'
 
 export interface Opt {
   value: string
   label: string
+  icon?: string
 }
 
 /**
@@ -25,6 +26,7 @@ export function useCountryOptions(allLabel: string): ComputedRef<Opt[]> {
       .map((c) => ({
         value: c.country_code as string,
         label: (c.country ?? c.country_code) as string,
+        icon: useCountryFlag(c.country_code as string),
       })),
   ])
 }

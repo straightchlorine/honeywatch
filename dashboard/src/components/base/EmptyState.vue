@@ -1,7 +1,4 @@
 <script setup lang="ts">
-  /**
-   * Empty state for lists with no results. See BarList for integration example.
-   */
   withDefaults(
     defineProps<{
       title: string
