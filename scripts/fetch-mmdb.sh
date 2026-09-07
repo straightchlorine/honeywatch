@@ -3,7 +3,6 @@
 # Requires MAXMIND_ACCOUNT_ID and MAXMIND_LICENSE_KEY in the environment.
 #
 # Usage: ./scripts/fetch-mmdb.sh <target-dir>
-# --
 
 set -euo pipefail
 

@@ -1,5 +1,4 @@
 <script setup lang="ts">
-  // Error boundary with sanitized display and retry.
   import { computed, onErrorCaptured, ref } from 'vue'
   import { useQueryClient } from '@tanstack/vue-query'
   import { sanitizeAttackerText } from '@/utils/sanitize'
@@ -38,7 +37,7 @@
   })
 
   // Strip control chars + bidi overrides from attacker-derived messages and cap
-  // length. Shared rule lives in utils/sanitize.
+  // length.
   const safeMessage = computed(() => {
     const cleaned = sanitizeAttackerText(error.value?.message ?? '', {
       mode: 'strip',

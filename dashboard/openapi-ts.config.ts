@@ -1,6 +1,5 @@
 import { defineConfig } from '@hey-api/openapi-ts'
 
-// Uses committed openapi.json; run `just openapi-regen` if missing on clone.
 export default defineConfig({
   input: '../api/openapi.json',
   output: {

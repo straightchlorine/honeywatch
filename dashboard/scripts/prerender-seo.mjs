@@ -1,6 +1,6 @@
 // Post-build SEO prerender: stamp per-route metadata into static HTML files.
 //
-// The app is a client-rendered SPA—crawlers see only the shell. We generate
+// The app is a client-rendered SPA - crawlers see only the shell. We generate
 // per-route static HTML (dist/activity.html, etc.) so crawlers find the correct
 // <title>, description, canonical, and og: tags in raw HTML before JS runs.
 //
@@ -8,7 +8,7 @@
 // nginx try_files $uri $uri.html ... serves them directly so /activity matches
 // the canonical and sitemap (no redirect).
 //
-// Sitemap and route list sourced from src/seo/routes.json—they stay in sync.
+// Sitemap and route list sourced from src/seo/routes.json - they stay in sync.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 

@@ -1,10 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate `ingestor/tests/fixtures/cowrie_sample.jsonl` from real cowrie output.
-
-Reads a cowrie JSONL stream (file path arg or stdin), keeps one of each
-`eventid` the writer dispatches on plus the always-emitted `client.*`
-events, rewrites every `session` field to a single canonical id so the
-contract test reads a tidy single-session record, and prints the result.
+"""Regenerate ingestor/tests/fixtures/cowrie_sample.jsonl from real cowrie output.
 
 Usage::
 

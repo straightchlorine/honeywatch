@@ -1,8 +1,4 @@
 <script setup lang="ts">
-  /**
-   * Spinner + label with layout variants: 'inline' (flows with text), 'block'
-   * (centered, full width), 'overlay' (covers parent, blurred). Sized via CSS variables.
-   */
   import { computed } from 'vue'
   import Spinner from './Spinner.vue'
 
@@ -15,7 +11,7 @@
       variant?: Variant
       size?: Size
     }>(),
-    { label: 'Loading…', variant: 'block', size: 'md' },
+    { label: 'Loading...', variant: 'block', size: 'md' },
   )
 
   const rootClass = computed(() => `loading loading-${props.variant}`)

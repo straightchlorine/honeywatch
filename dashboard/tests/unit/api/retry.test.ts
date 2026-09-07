@@ -21,7 +21,6 @@ describe('shouldRetry', () => {
   })
 
   it('reads the numeric code, not the string status reason phrase', () => {
-    // Regression guard: the bug was reading `status` (a string) as a number.
     expect(shouldRetry(0, { code: 500, status: 'Internal Server Error' })).toBe(true)
   })
 })

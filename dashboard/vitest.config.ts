@@ -16,7 +16,7 @@ export default defineConfig({
     include: ['tests/unit/**/*.{test,spec}.ts'],
     coverage: {
       provider: 'v8',
-      // Unit gate covers logic + components only; App/router/views tested by Playwright/axe e2e.
+      // Components and logic only; App/router/views are tested by Playwright/axe e2e.
       exclude: [
         'src/api/generated/**',
         'src/api/client.ts',
