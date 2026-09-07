@@ -42,7 +42,7 @@ describe('RankList', () => {
     expect(style).not.toMatch(/auto|minmax/)
   })
 
-  it('declares the bar track/fill as blocks (invisible-bar regression - pitfall 14.1)', async () => {
+  it('declares the bar track/fill as blocks so the bar is not invisible', async () => {
     // jsdom does not resolve scoped-SFC CSS via getComputedStyle, so this reads
     // the compiled <style> source directly rather than the rendered box.
     const raw = await import('@/components/base/RankList.vue?raw')
