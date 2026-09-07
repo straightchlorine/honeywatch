@@ -31,7 +31,6 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Sentinel pushed by the producer to tell the consumer to drain and exit.
 _STOP_SENTINEL = object()
 
 
@@ -45,8 +44,8 @@ def _producer(
         for line in lines:
             if stop_event.is_set():
                 break
-            # block on backpressure - cowrie's file still holds the line so
-            # the next loop will catch up once the consumer drains.
+            # Block on backpressure; cowrie's log retains the line until
+            # consumer drains.
             while not stop_event.is_set():
                 try:
                     out_queue.put(line, timeout=0.5)
@@ -66,7 +65,7 @@ def _consumer(
     stop_event: threading.Event,
 ) -> None:
     """Drain queue, parse and persist events, heartbeat liveness file."""
-    # Touching, so probes won't kill the pod during cold start.
+    # Touch liveness file early to prevent cold-start probe timeout.
     _touch_healthy(config)
 
     while not stop_event.is_set():
@@ -98,11 +97,8 @@ def _consumer(
 
 
 def _touch_healthy(config: Config) -> None:
-    """Refresh the liveness file.
-
-    Not "after successful DB write" - DB stalls (which the fuse rides out)
-    must not age the file out and trigger restarts that lose the backlog.
-    """
+    """Refresh the liveness file regardless of DB state to prevent mid-backlog
+    restarts."""
     try:
         config.healthcheck_path.touch()
     except OSError:

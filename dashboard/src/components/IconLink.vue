@@ -1,12 +1,15 @@
 <script setup lang="ts">
   import { computed } from 'vue'
   import { ICONS, type IconName } from './icons'
+  import { useHwTooltip } from '../composables/useHwTooltip'
 
   const props = defineProps<{
     icon: IconName
     href: string
     label: string
   }>()
+
+  const tt = useHwTooltip()
 
   const safeHref = computed(() => {
     const h = props.href
@@ -24,10 +27,14 @@
   <a
     :href="safeHref"
     :aria-label="label"
-    :title="label"
     target="_blank"
     rel="noopener noreferrer"
     class="icon-link"
+    @pointerenter="tt.show(label)"
+    @pointermove="tt.move($event)"
+    @pointerleave="tt.hide()"
+    @focus="tt.show(label)"
+    @blur="tt.hide()"
   >
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path :d="ICONS[props.icon]" />

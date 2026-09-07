@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import LiteralString
+from typing import Any, LiteralString
 from unittest.mock import patch
 
 import pytest
@@ -17,11 +17,13 @@ from src.events import (
     CowrieEvent,
     DirectTcpipRequest,
     FileDownload,
+    FileDownloadFailed,
     LoginFailed,
     LoginSuccess,
     SessionClosed,
     SessionConnect,
 )
+from src.geoip import GeoData
 from src.writer import EventWriter
 from tests.conftest import DbConn
 
@@ -141,6 +143,147 @@ def test_write_download(
     assert row[1] == "http://evil.com/malware.sh"
     assert row[2] == "/tmp/malware.sh"
     assert row[3] == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def test_write_download_failed_keeps_url_but_no_specimen(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Failed fetch stores URL only (NULL sha256 excludes it from specimen queries)."""
+    writer.write_event(_connect_event())
+
+    writer.write_event(
+        FileDownloadFailed(
+            session_id="sess-001",
+            url="http://evil.com/dropper.sh",
+            timestamp=datetime(2024, 1, 15, 10, 30, 25, tzinfo=timezone.utc),
+        )
+    )
+
+    row = db_connection.execute(
+        "SELECT url, outfile, sha256 FROM downloads WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+
+    assert row is not None
+    assert row[0] == "http://evil.com/dropper.sh"
+    assert row[1] is None
+    assert row[2] is None
+
+    n_downloads = _session_counters(db_connection, "sess-001")[1]
+    assert n_downloads == 0
+
+
+def _session_counters(db_connection: DbConn, session_id: str) -> Any:
+    row = db_connection.execute(
+        "SELECT n_commands, n_downloads, n_tcpip, auth_success, interest"
+        " FROM sessions WHERE id = %s",
+        (session_id,),
+    ).fetchone()
+    assert row is not None
+    return row
+
+
+def test_write_command_increments_session_counter(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Session counters are maintained instead of aggregating child tables per
+    request."""
+    writer.write_event(_connect_event())
+    for i in range(3):
+        writer.write_event(
+            CommandInput(
+                session_id="sess-001",
+                input=f"cmd-{i}",
+                timestamp=datetime(2024, 1, 15, 10, 30, 15 + i, tzinfo=timezone.utc),
+            )
+        )
+    n_commands, n_downloads, n_tcpip, auth_success, interest = _session_counters(
+        db_connection, "sess-001"
+    )
+    assert n_commands == 3
+    assert n_downloads == 0
+    assert n_tcpip == 0
+    assert auth_success is False
+    assert interest == 2 * 3  # 2 per command, nothing else
+
+
+def test_write_download_increments_session_counter(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    writer.write_event(
+        FileDownload(
+            session_id="sess-001",
+            url="http://evil.com/malware.sh",
+            outfile="/tmp/malware.sh",
+            sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            timestamp=datetime(2024, 1, 15, 10, 30, 20, tzinfo=timezone.utc),
+        )
+    )
+    n_commands, n_downloads, n_tcpip, _auth_success, interest = _session_counters(
+        db_connection, "sess-001"
+    )
+    assert n_downloads == 1
+    assert interest == 5  # 5 per download
+
+
+def test_write_direct_tcpip_increments_session_counter(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    writer.write_event(
+        DirectTcpipRequest(
+            session_id="sess-001",
+            dst_ip="10.0.0.99",
+            dst_port=3306,
+            src_ip=None,
+            src_port=None,
+            timestamp=datetime(2024, 1, 15, 10, 30, 25, tzinfo=timezone.utc),
+        )
+    )
+    _n_commands, _n_downloads, n_tcpip, _auth_success, interest = _session_counters(
+        db_connection, "sess-001"
+    )
+    assert n_tcpip == 1
+    assert interest == 2  # 2 per direct-tcpip request
+
+
+def test_login_success_sets_auth_success_flag(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    writer.write_event(
+        LoginFailed(
+            session_id="sess-001",
+            username="root",
+            password="wrong",
+            timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
+        )
+    )
+    *_, auth_success_after_fail, interest_after_fail = _session_counters(
+        db_connection, "sess-001"
+    )
+    assert auth_success_after_fail is False
+    assert interest_after_fail == 0
+
+    writer.write_event(
+        LoginSuccess(
+            session_id="sess-001",
+            username="root",
+            password="toor",
+            timestamp=datetime(2024, 1, 15, 10, 30, 6, tzinfo=timezone.utc),
+        )
+    )
+    *_, auth_success_after_success, interest_after_success = _session_counters(
+        db_connection, "sess-001"
+    )
+    assert auth_success_after_success is True
+    assert interest_after_success == 3  # 3 for auth_success, once set never re-added
 
 
 def test_write_session_closed(
@@ -274,11 +417,7 @@ def test_loopback_session_gated_by_flag(
     drop_loopback: bool,
     expected: int,
 ) -> None:
-    """Cowrie's docker healthcheck dials 127.0.0.1:2222.
-
-    Production drops them (`drop_loopback=True`); dev keeps them so an
-    operator's `just attack` from the host appears in the session list.
-    """
+    """drop_loopback controls whether 127.0.0.1 connections are stored."""
     event = SessionConnect(
         session_id=f"sess-loopback-{drop_loopback}",
         src_ip="127.0.0.1",
@@ -454,10 +593,7 @@ def test_geo_failure_preserves_session(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
-    """Geo upsert failure must not roll back the session row.
-
-    Split-tx is load-bearing: an attack record is more valuable than its enrichment.
-    """
+    """Geo upsert failure rolls back only the enrichment, not the session row."""
     from src import writer as writer_module
     from src.geoip import GeoData
 
@@ -498,11 +634,7 @@ def test_geo_failure_preserves_session(
 def test_pool_check_not_called_per_event(
     writer: EventWriter, db_connection: DbConn
 ) -> None:
-    """Regression guard: per-event `pool.check()` was a hot-path tax.
-
-    The new design relies on `ConnectionPool(check=...)` running on
-    checkout, not on every write_event call.
-    """
+    """ConnectionPool.check() runs at checkout, not per write_event."""
     with patch.object(writer.pool, "check") as mock_check:
         writer.write_event(_connect_event())
     mock_check.assert_not_called()
@@ -589,12 +721,7 @@ def test_direct_tcpip_orphan_caught(
 def test_direct_tcpip_dst_port_overflow_dropped(
     writer: EventWriter, db_connection: DbConn, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """A dst_port beyond INT4 range hits Postgres DataError and is dropped.
-
-    Pydantic accepts the unbounded int; the INTEGER column rejects it. The
-    handler must drop (log SQLSTATE) rather than crash or retry-loop. Parent
-    session exists, so this is a DataError, not an FK orphan.
-    """
+    """dst_port overflow is dropped with SQLSTATE logged, not retried."""
     writer.write_event(_connect_event())
     with caplog.at_level("WARNING", logger="src.writer"):
         writer.write_event(
@@ -615,6 +742,114 @@ def test_direct_tcpip_dst_port_overflow_dropped(
         and "sqlstate=" in r.message
         for r in caplog.records
     )
+
+
+def test_direct_tcpip_destination_ip_enrichment(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Direct-tcpip destination IP literals trigger geo enrichment.
+
+    Hostname destinations and private/reserved ranges are skipped.
+    """
+    fake_geo = GeoData(
+        country_code="DE",
+        country="Germany",
+        city="Berlin",
+        latitude=52.5,
+        longitude=13.4,
+        asn=12345,
+        as_org="Example ISP",
+    )
+
+    writer.write_event(_connect_event())
+
+    with patch.object(
+        writer_module, "geoip_lookup", return_value=fake_geo
+    ) as mock_lookup:
+        writer.write_event(
+            DirectTcpipRequest(
+                session_id="sess-001",
+                dst_ip="203.0.113.50",
+                dst_port=443,
+                src_ip="192.168.1.100",
+                src_port=54321,
+                timestamp=_TS,
+            )
+        )
+    assert mock_lookup.call_count == 1
+    mock_lookup.assert_called_with("203.0.113.50")
+
+    row = db_connection.execute(
+        "SELECT country_code, city, asn FROM geo_locations WHERE ip = %s",
+        ("203.0.113.50",),
+    ).fetchone()
+    assert row is not None
+    assert row == ("DE", "Berlin", 12345)
+
+
+def test_direct_tcpip_hostname_destination_skipped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Direct-tcpip with hostname destination does not trigger enrichment."""
+    writer.write_event(_connect_event())
+
+    with patch.object(writer_module, "geoip_lookup") as mock_lookup:
+        writer.write_event(
+            DirectTcpipRequest(
+                session_id="sess-001",
+                dst_ip="smtp.example.net",
+                dst_port=25,
+                src_ip="192.168.1.100",
+                src_port=54321,
+                timestamp=_TS,
+            )
+        )
+    assert mock_lookup.call_count == 0
+
+    row = db_connection.execute(
+        "SELECT dst_ip FROM direct_tcpip_requests WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchone()
+    assert row is not None
+    assert row[0] == "smtp.example.net"
+
+
+def test_direct_tcpip_dest_ip_ttl_cache_honored(writer: EventWriter) -> None:
+    """Geo lookup for a destination IP is cached to skip redundant queries."""
+    fake_geo = GeoData(
+        country_code="US",
+        country="United States",
+        city=None,
+        latitude=None,
+        longitude=None,
+        asn=15169,
+        as_org="Google",
+    )
+
+    writer.write_event(_connect_event())
+
+    with patch.object(
+        writer_module, "geoip_lookup", return_value=fake_geo
+    ) as mock_lookup:
+        writer.write_event(
+            DirectTcpipRequest(
+                session_id="sess-001",
+                dst_ip="8.8.8.8",
+                dst_port=443,
+                timestamp=_TS,
+            )
+        )
+        writer.write_event(
+            DirectTcpipRequest(
+                session_id="sess-001",
+                dst_ip="8.8.8.8",
+                dst_port=53,
+                timestamp=_TS,
+            )
+        )
+    assert mock_lookup.call_count == 1
 
 
 # --- Attacker-string length clamps (truncate before INSERT) ---
@@ -766,11 +1001,7 @@ def _dropped(reason: str) -> float:
 
 
 def test_unhandled_eventid_counted_as_dropped(writer: EventWriter) -> None:
-    """A parsed event with no `write_event` case bumps events_dropped_total.
-
-    `cowrie.client.size` parses fine (it's a modelled event) but has no
-    writer case - it must not be indistinguishable from a real write.
-    """
+    """Parsed events without a write_event case are counted as dropped."""
     before = _dropped("unhandled_eventid")
     writer.write_event(
         ClientSize(session_id="sess-001", width=80, height=24, timestamp=_TS)
@@ -782,7 +1013,7 @@ def test_unhandled_eventid_counted_as_dropped(writer: EventWriter) -> None:
 
 
 def _fake_geo():
-    """Build a fixed GeoData stand-in for mocking."""
+    """Return a fixed GeoData for test mocking."""
     from src.geoip import GeoData
 
     return GeoData(

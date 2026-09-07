@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, overload
 
 from sqlalchemy import BigInteger, case, cast, func, nulls_last, select, tuple_
 from sqlalchemy.orm import Session as DbSession
 
 from src.models.auth_attempt import AuthAttempt
 from src.models.session import Session
+from src.services.redact import redact_ips
 from src.services.stats.common import DEFAULT_TOP_N, require_one_of, scope_to_country
 from src.services.types import (
     AuthOutcomesDict,
@@ -27,6 +28,24 @@ VALID_CRED_OUTCOMES = frozenset({"any", "success", "failed"})
 PASSWORD_LENGTH_CAP = 16
 
 
+@overload
+def _cred(value: str) -> str: ...
+
+
+@overload
+def _cred(value: None) -> None: ...
+
+
+def _cred(value: str | None) -> str | None:
+    """Blot IP literals out of an attacker-supplied credential.
+
+    Grouping already happened in SQL on the raw value, so counts are unaffected
+    - only the label changes. numeric_hosts=False because a credential is not a
+    shell command: "123456789" is a password, not an integer-encoded host.
+    """
+    return redact_ips(value, numeric_hosts=False)
+
+
 def top_passwords(db: DbSession, top_n: int = DEFAULT_TOP_N) -> list[TopPasswordDict]:
     """Top-N passwords by attempt count, descending."""
     rows = db.execute(
@@ -35,7 +54,7 @@ def top_passwords(db: DbSession, top_n: int = DEFAULT_TOP_N) -> list[TopPassword
         .order_by(func.count().desc())
         .limit(top_n)
     ).all()
-    return [{"password": row[0], "count": row[1]} for row in rows]
+    return [{"password": _cred(row[0]), "count": row[1]} for row in rows]
 
 
 def top_credentials(
@@ -112,8 +131,8 @@ def top_credentials(
         values = dict(zip(keys, grouped))
         out.append(
             {
-                "username": values.get("username"),
-                "password": values.get("password"),
+                "username": _cred(values.get("username")),
+                "password": _cred(values.get("password")),
                 "count": count,
                 "distinct_ips": row[-1] if metric == "ip_fanout" else None,
             }
@@ -238,4 +257,4 @@ def passwords_by_length(
         .order_by(func.count().desc())
         .limit(top_n)
     ).all()
-    return [{"password": row[0], "count": row[1]} for row in rows]
+    return [{"password": _cred(row[0]), "count": row[1]} for row in rows]

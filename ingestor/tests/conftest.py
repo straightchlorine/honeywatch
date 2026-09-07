@@ -14,9 +14,8 @@ from src.writer import EventWriter
 
 DbConn = psycopg.Connection[tuple[object, ...]]
 
-# Schema lives in api/alembic/. We shell out to `uv run alembic upgrade head`
-# from the api directory so its env.py finds its own models and venv, and we
-# avoid pulling alembic + sqlalchemy into the ingestor's dependency tree.
+# Shell out to api/alembic so its env.py finds its own models/venv;
+# avoids pulling alembic + sqlalchemy into ingestor deps.
 _API_DIR = Path(__file__).resolve().parents[2] / "api"
 
 
@@ -88,11 +87,10 @@ def db_connection(db_url: str) -> Generator[DbConn]:
 
 @pytest.fixture
 def writer(db_url: str) -> Generator[EventWriter]:
-    """EventWriter bound to the test DB.
+    """EventWriter bound to the test DB with loopback drop disabled.
 
-    Loopback drop disabled so tests using RFC1918 / loopback IPs don't
-    silently no-op. Tests that exercise the loopback gate should construct
-    their own EventWriter with `drop_loopback=True`.
+    Tests that exercise the loopback gate should construct their own
+    EventWriter with `drop_loopback=True`.
     """
     with EventWriter(db_url, drop_loopback=False) as w:
         yield w
@@ -175,5 +173,21 @@ def sample_session_closed() -> str:
             "eventid": "cowrie.session.closed",
             "session": "abc123",
             "timestamp": "2024-01-15T10:31:00.000000Z",
+        }
+    )
+
+
+@pytest.fixture
+def sample_direct_tcpip_ip_dest() -> str:
+    """Direct-tcpip event with an IP literal destination."""
+    return json.dumps(
+        {
+            "eventid": "cowrie.direct-tcpip.request",
+            "session": "abc123",
+            "dst_ip": "203.0.113.100",
+            "dst_port": 443,
+            "src_ip": "192.168.1.100",
+            "src_port": 54321,
+            "timestamp": "2024-01-15T10:30:25.000000Z",
         }
     )

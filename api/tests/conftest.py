@@ -180,8 +180,7 @@ def seed_data(db_session: Session) -> dict[str, Any]:
     }
 
 
-# Passwords exercise each charset-class branch of stats.credentials
-# (empty, symbol, digits, lower, upper, alnum) plus >= PASSWORD_LENGTH_CAP.
+# Exercises each charset class and PASSWORD_LENGTH_CAP behavior.
 LONG_PASSWORD = "abcdefghijklmnopqr"
 _CHARSET_PASSWORDS: dict[str, str] = {
     "empty": "",

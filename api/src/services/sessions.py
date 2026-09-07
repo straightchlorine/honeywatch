@@ -4,16 +4,45 @@ from __future__ import annotations
 
 from typing import Any
 
-from sqlalchemy import and_, asc, exists, func, nulls_last, select
+from sqlalchemy import and_, asc, desc, exists, func, nulls_last, select
 from sqlalchemy.orm import Session as DbSession
 from sqlalchemy.orm import selectinload
 
 from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
+from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
+from src.models.ssh_client import SshClient
 from src.services.serializers import session_detail, session_summary
 from src.services.types import SessionDetailDict, SessionsPageDict
+
+VALID_HAS_FILTERS = frozenset({"commands", "downloads", "success", "tcpip", "none"})
+
+
+def _has_conditions(has: str | None) -> list[Any]:
+    """Turn a comma-list `has` query value into AND-ed SQL predicates.
+
+    Unrecognized tokens, and "none" combined with any other token, are
+    already rejected by the schema's has= validator before this runs, so any
+    token here is a valid VALID_HAS_FILTERS member and "none" (if present)
+    is the only token.
+    """
+    if not has:
+        return []
+    tokens = set(has.split(","))
+    predicates: list[Any] = []
+    if "commands" in tokens:
+        predicates.append(Session.n_commands > 0)
+    if "downloads" in tokens:
+        predicates.append(Session.n_downloads > 0)
+    if "success" in tokens:
+        predicates.append(Session.auth_success.is_(True))
+    if "tcpip" in tokens:
+        predicates.append(Session.n_tcpip > 0)
+    if "none" in tokens:
+        predicates.append(Session.interest == 0)
+    return predicates
 
 
 def get_sessions_paginated(
@@ -21,22 +50,17 @@ def get_sessions_paginated(
     page: int,
     per_page: int,
     *,
+    q: str | None = None,
     country: str | None = None,
     category: str | None = None,
     sort: str = "recent",
+    has: str | None = None,
+    sha256: str | None = None,
 ) -> SessionsPageDict:
     """One page of session summaries, filtered and sorted in SQL.
 
-    Arguments:
-      db: DbSession — database connection
-      page: int — 1-indexed page number; clamping happens in schema, not here
-      per_page: int — items per page; clamping happens in schema
-      country: str | None — filter by country code
-      category: str | None — session type: "active", "login", "failed", "probe"
-      sort: str — "recent", "country", or "active"
-
-    Returns:
-      SessionsPageDict — sessions with total count and pagination metadata
+    Country filter with sort="interest" requires a geo join, cannot use the
+    interest index alone.
     """
     offset = (page - 1) * per_page
 
@@ -69,11 +93,14 @@ def get_sessions_paginated(
     )
 
     conditions: list[Any] = []
+    if q:
+        # Schema validates q as lowercase hex only, preventing LIKE wildcards.
+        conditions.append(Session.id.like(q + "%"))
     if country:
         conditions.append(GeoLocation.country_code == country)
 
-    # Same priority order as classify_category: commands > login > failed >
-    # probe. Expressed as predicates here so the filter and the count agree.
+    # Category priority: commands > login > failed > probe (must match
+    # classify_category).
     if category == "active":
         conditions.append(commands_exists)
     elif category == "login":
@@ -82,6 +109,17 @@ def get_sessions_paginated(
         conditions.append(and_(~commands_exists, ~success_exists, auth_exists))
     elif category == "probe":
         conditions.append(and_(~commands_exists, ~auth_exists))
+
+    conditions.extend(_has_conditions(has))
+
+    if sha256:
+        # Use EXISTS to avoid multiplying rows (sessions can have multiple
+        # downloads per digest).
+        conditions.append(
+            exists().where(
+                and_(Download.session_id == Session.id, Download.sha256 == sha256)
+            )
+        )
 
     count_stmt = (
         select(func.count(Session.id))
@@ -92,9 +130,14 @@ def get_sessions_paginated(
         count_stmt = count_stmt.where(cond)
     total = db.execute(count_stmt).scalar_one()
 
-    # Two-phase page fetch: pick the page's ids using only the sort keys, then
-    # run the correlated counters over those rows alone. Counting first would
-    # aggregate the whole table just to throw all but per_page rows away.
+    # Unfiltered max enables consistent interest score normalization across filters.
+    max_interest = db.execute(select(func.max(Session.interest))).scalar() or 0
+
+    # Two-phase (ids then rows) avoids aggregating the entire table before limiting.
+    duration_expr = func.extract(
+        "epoch",
+        func.coalesce(Session.ended_at, Session.started_at) - Session.started_at,
+    )
     inner_cols: list[Any] = [Session.id.label("sid")]
     inner = select(*inner_cols).outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
     if sort == "country":
@@ -114,6 +157,19 @@ def get_sessions_paginated(
             cmd_agg, cmd_agg.c.session_id == Session.id
         )
         inner_order = [sort_n.desc(), Session.started_at.desc(), Session.id.desc()]
+    elif sort == "interest":
+        inner_order = [
+            Session.interest.desc(),
+            Session.started_at.desc(),
+            Session.id.desc(),
+        ]
+    elif sort == "duration":
+        inner = inner.add_columns(duration_expr.label("sort_n"))
+        inner_order = [
+            nulls_last(desc(duration_expr)),
+            Session.started_at.desc(),
+            Session.id.desc(),
+        ]
     else:  # recent
         inner_order = [Session.started_at.desc(), Session.id.desc()]
     for cond in conditions:
@@ -126,9 +182,15 @@ def get_sessions_paginated(
             Session.started_at.desc(),
             Session.id.desc(),
         ]
-    elif sort == "active":
+    elif sort == "active" or sort == "duration":
         outer_order = [
-            page_ids.c.sort_n.desc(),
+            nulls_last(desc(page_ids.c.sort_n)),
+            Session.started_at.desc(),
+            Session.id.desc(),
+        ]
+    elif sort == "interest":
+        outer_order = [
+            Session.interest.desc(),
             Session.started_at.desc(),
             Session.id.desc(),
         ]
@@ -139,12 +201,14 @@ def get_sessions_paginated(
         select(
             Session,
             GeoLocation,
+            SshClient.client_version,
             command_count.label("command_count"),
             auth_attempt_count.label("auth_attempt_count"),
             login_success.label("login_success"),
         )
         .join(page_ids, page_ids.c.sid == Session.id)
         .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
+        .outerjoin(SshClient, SshClient.session_id == Session.id)
         .order_by(*outer_order)
     )
     rows = db.execute(stmt).all()
@@ -157,13 +221,15 @@ def get_sessions_paginated(
                 command_count=cc,
                 auth_attempt_count=ac,
                 login_success=ls,
+                client_version=cv,
             )
-            for s, g, cc, ac, ls in rows
+            for s, g, cv, cc, ac, ls in rows
         ],
         "total": total,
         "page": page,
         "per_page": per_page,
         "pages": (total + per_page - 1) // per_page if per_page > 0 else 0,
+        "max_interest": max_interest,
     }
 
 

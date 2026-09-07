@@ -5,6 +5,8 @@ import {
   buildCredentialFieldRows,
   buildCredentialRows,
   buildLengthBars,
+  buildMatrixEntities,
+  buildMatrixPairs,
   buildPairBarRows,
   buildPasswordRows,
   fmtSuccessRate,
@@ -36,7 +38,7 @@ describe('buildCredentialRows', () => {
     expect(rows[0]).toMatchObject({ label: 'root', sub: ':123456', value: 10, widthPct: '100%' })
     expect(rows[0]!.valueLabel).toBe('10')
     expect(rows[0]!.emphasis).toBe(false)
-    expect(rows[0]!.title).toContain('root:123456 — 10 attempts')
+    expect(rows[0]!.title).toContain('root:123456 - 10 attempts')
     expect(rows[1]!.widthPct).toBe('50%')
   })
 
@@ -57,9 +59,9 @@ describe('buildCredentialRows', () => {
       ],
       'ip_fanout',
     )
-    expect(rows[0]).toMatchObject({ value: 42, valueLabel: '42 IPs', emphasis: true })
-    expect(rows[1]).toMatchObject({ value: 1, valueLabel: '1 IP', emphasis: false })
-    expect(rows[0]!.title).toContain('tried by 42 IPs (400 attempts)')
+    expect(rows[0]).toMatchObject({ value: 42, valueLabel: '42 addresses', emphasis: true })
+    expect(rows[1]).toMatchObject({ value: 1, valueLabel: '1 address', emphasis: false })
+    expect(rows[0]!.title).toContain('tried from 42 addresses (400 attempts)')
   })
 
   it('renders an empty marker for blank usernames/passwords', () => {
@@ -67,8 +69,8 @@ describe('buildCredentialRows', () => {
       [{ username: '', password: '', count: 3, distinct_ips: null }],
       'attempts',
     )
-    expect(rows[0]!.label).toBe('‹empty›')
-    expect(rows[0]!.sub).toBe(':‹empty›')
+    expect(rows[0]!.label).toBe('(blank)')
+    expect(rows[0]!.sub).toBe(':(blank)')
   })
 })
 
@@ -90,7 +92,7 @@ describe('buildPasswordRows', () => {
       { password: '', count: 5 },
     ])
     expect(rows[0]).toMatchObject({ label: '123456', count: 10, widthPct: '100%' })
-    expect(rows[1]!.label).toBe('‹empty›')
+    expect(rows[1]!.label).toBe('(blank)')
     expect(rows[1]!.widthPct).toBe('50%')
   })
 })
@@ -131,7 +133,7 @@ describe('buildLengthBars', () => {
 
 describe('fmtSuccessRate', () => {
   it('dashes a null rate and formats small/large rates', () => {
-    expect(fmtSuccessRate(null)).toBe('—')
+    expect(fmtSuccessRate(null)).toBe('-')
     expect(fmtSuccessRate(1.8)).toBe('1.80%')
     expect(fmtSuccessRate(33.33)).toBe('33.3%')
   })
@@ -141,7 +143,7 @@ describe('fmtSuccessRate', () => {
   })
 })
 
-describe('buildCredentialRows — attacker-text sanitization', () => {
+describe('buildCredentialRows - attacker-text sanitization', () => {
   it('escapes a bidi override in a username and an embedded IP in a password', () => {
     // U+202E (RIGHT-TO-LEFT OVERRIDE) must not appear raw in any display field.
     const rows = buildCredentialRows(
@@ -152,7 +154,7 @@ describe('buildCredentialRows — attacker-text sanitization', () => {
     expect(rows[0]!.label).toContain('\\x202E')
     // Scheme preserved during IP redaction.
     expect(rows[0]!.sub).not.toContain('1.2.3.4')
-    expect(rows[0]!.sub).toContain('‹ip›')
+    expect(rows[0]!.sub).toContain('<ip>')
     expect(rows[0]!.title).not.toContain('‮')
     expect(rows[0]!.title).not.toContain('1.2.3.4')
   })
@@ -179,7 +181,7 @@ describe('buildPasswordRows — attacker-text sanitization', () => {
   it('redacts an embedded IP literal in a password', () => {
     const rows = buildPasswordRows([{ password: 'http://1.2.3.4/x', count: 5 }])
     expect(rows[0]!.label).not.toContain('1.2.3.4')
-    expect(rows[0]!.label).toContain('‹ip›')
+    expect(rows[0]!.label).toContain('<ip>')
   })
 })
 
@@ -212,7 +214,7 @@ describe('buildCredentialFieldRows', () => {
       'password',
     )
     expect(rows[0]!.label).not.toContain('1.2.3.4')
-    expect(rows[0]!.label).toContain('‹ip›')
+    expect(rows[0]!.label).toContain('<ip>')
   })
 
   it('shows the empty-marker for a blank value', () => {
@@ -220,6 +222,65 @@ describe('buildCredentialFieldRows', () => {
       [{ username: null, password: '', count: 3, distinct_ips: null }],
       'password',
     )
-    expect(rows[0]!.label).toBe('‹empty›')
+    expect(rows[0]!.label).toBe('(blank)')
+  })
+})
+
+describe('buildMatrixEntities', () => {
+  it('labels by the requested field and keeps the count', () => {
+    const rows = buildMatrixEntities(
+      [{ username: 'root', password: null, count: 40, distinct_ips: null }],
+      'username',
+    )
+    expect(rows).toEqual([{ label: 'root', count: 40 }])
+  })
+
+  it('sanitizes an attacker-controlled credential string', () => {
+    const rows = buildMatrixEntities(
+      [{ username: null, password: 'http://1.2.3.4/x', count: 1, distinct_ips: null }],
+      'password',
+    )
+    expect(rows[0]!.label).not.toContain('1.2.3.4')
+    expect(rows[0]!.label).toContain('<ip>')
+  })
+
+  it('shows the empty-marker for a blank value', () => {
+    const rows = buildMatrixEntities(
+      [{ username: '', password: null, count: 1, distinct_ips: null }],
+      'username',
+    )
+    expect(rows[0]!.label).toBe('(blank)')
+  })
+})
+
+describe('buildMatrixPairs', () => {
+  it('marks a pair accepted only when it appears in the accepted set', () => {
+    const pairs = buildMatrixPairs(
+      [
+        { username: 'root', password: '123456', count: 100, distinct_ips: null },
+        { username: 'admin', password: 'admin', count: 30, distinct_ips: null },
+      ],
+      [{ username: 'root', password: '123456', count: 12, distinct_ips: null }],
+    )
+    const byKey = Object.fromEntries(pairs.map((p) => [`${p.username}:${p.password}`, p]))
+    expect(byKey['root:123456']).toMatchObject({ accepted: true, count: 100 })
+    expect(byKey['admin:admin']).toMatchObject({ accepted: false, count: 30 })
+  })
+
+  it('keeps an accepted-only pair (not in the overall top list) with its own count', () => {
+    const pairs = buildMatrixPairs(
+      [],
+      [{ username: 'guest', password: 'guest', count: 4, distinct_ips: null }],
+    )
+    expect(pairs).toEqual([{ username: 'guest', password: 'guest', count: 4, accepted: true }])
+  })
+
+  it('sanitizes both fields so the merge key cannot be spoofed by attacker text', () => {
+    const pairs = buildMatrixPairs(
+      [{ username: 'http://1.2.3.4/x', password: 'y', count: 2, distinct_ips: null }],
+      [],
+    )
+    expect(pairs[0]!.username).not.toContain('1.2.3.4')
+    expect(pairs[0]!.username).toContain('<ip>')
   })
 })

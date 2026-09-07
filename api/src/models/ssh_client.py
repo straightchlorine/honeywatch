@@ -13,12 +13,7 @@ if TYPE_CHECKING:
 
 
 class SshClient(Base):
-    """Per-session SSH client identity.
-
-    One row per session, filled in by two separate cowrie events (`client.version`
-    and `client.kex`); `first_seen` is stamped by whichever lands first, so columns
-    from the other event may be null.
-    """
+    """Per-session SSH client identity, populated from separate cowrie events."""
 
     __tablename__ = "ssh_clients"
 

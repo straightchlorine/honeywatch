@@ -51,7 +51,6 @@ def test_retry_policy_exhausts_with_expected_backoff() -> None:
     fn = MagicMock(side_effect=psycopg.OperationalError("boom"))
     assert policy.run(fn) is Outcome.RETRY_EXHAUSTED
     assert fn.call_count == 3
-    # Two sleeps between three attempts; backoff doubles each time.
     assert calls == [1.0, 2.0]
 
 
@@ -104,7 +103,6 @@ def test_fuse_probe_retries_with_exp_backoff_until_healthy() -> None:
     fuse.record_failure()  # trip immediately
     assert not fuse.open
     assert probe.call_count == 3
-    # Exp backoff doubling: 5, 10, 20.
     assert calls == [5.0, 10.0, 20.0]
 
 
@@ -113,7 +111,7 @@ def test_fuse_probe_backoff_caps() -> None:
     probe = MagicMock(side_effect=[False] * 9 + [True])
     fuse = Fuse(threshold=1, sleep_seconds=200.0, probe=probe, sleep=sleep)
     fuse.record_failure()
-    # 200 -> 300 (capped) -> 300 -> ... -> success on 10th probe.
+    # Backoff caps at 300s after the first retry.
     assert calls[0] == 200.0
     assert calls[1] == 300.0
     assert all(s == 300.0 for s in calls[1:])
@@ -137,7 +135,6 @@ def test_fuse_on_wait_fires_once_per_probe_attempt() -> None:
 
 
 def test_fuse_without_on_wait_still_works() -> None:
-    # on_wait defaults to None for backward compatibility.
     sleep, _ = _make_recorder()
     probe = MagicMock(return_value=True)
     fuse = Fuse(threshold=1, sleep_seconds=1.0, probe=probe, sleep=sleep)
@@ -191,7 +188,7 @@ def test_writer_exhaustion_counts_toward_fuse() -> None:
 
 
 def test_writer_fatal_does_not_count_toward_fuse() -> None:
-    """FATAL = bug/schema drift, not backend health -> fuse not tripped."""
+    """Fatal errors indicate bugs, not backend health, so fuse is not tripped."""
     sleep, _ = _make_recorder()
     event_writer = MagicMock()
     event_writer.write_event.side_effect = ValueError("bug")

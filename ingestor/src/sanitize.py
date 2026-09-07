@@ -32,7 +32,7 @@ def truncate(s: str | None, max_len: int) -> str | None:
 
     Preserves None for nullable columns. Strips NUL (Postgres rejects it)
     and other C0/DEL chars (prevent log injection downstream). `\\t` is
-    kept—legitimate in attacker input. Control chars stripped before
+    kept - legitimate in attacker input. Control chars stripped before
     length cap so max_len counts stored bytes.
 
     Arguments:

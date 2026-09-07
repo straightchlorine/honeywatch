@@ -280,6 +280,85 @@
         ],
         "type": "object"
       },
+      "CountryDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "a2": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "CN",
+            "type": "string"
+          },
+          "attempts": {
+            "description": "Auth attempts from this country.",
+            "example": 512,
+            "type": "integer"
+          },
+          "daily": {
+            "description": "Session counts for the trailing 14 days.",
+            "items": {
+              "$ref": "#/components/schemas/DailyPointResponse"
+            },
+            "type": "array"
+          },
+          "ips": {
+            "description": "Distinct source IPs from this country.",
+            "example": 42,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Human-readable country name.",
+            "example": "China",
+            "type": "string"
+          },
+          "sessions": {
+            "description": "Distinct sessions from this country.",
+            "example": 137,
+            "type": "integer"
+          },
+          "success_rate": {
+            "description": "Accepted percentage (null when no attempts).",
+            "example": 0.59,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "top_asns": {
+            "description": "Top source networks for this country.",
+            "items": {
+              "$ref": "#/components/schemas/AsnResponse"
+            },
+            "type": "array"
+          },
+          "top_cities": {
+            "description": "Top 5 cities by session count for this country, empty if none resolved.",
+            "items": {
+              "$ref": "#/components/schemas/MapCityResponse"
+            },
+            "type": "array"
+          },
+          "top_credentials": {
+            "description": "Top attempted credentials for this country.",
+            "items": {
+              "$ref": "#/components/schemas/TopCredentialResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "a2",
+          "attempts",
+          "daily",
+          "ips",
+          "name",
+          "sessions",
+          "success_rate",
+          "top_asns",
+          "top_cities",
+          "top_credentials"
+        ],
+        "type": "object"
+      },
       "CountryRowResponse": {
         "additionalProperties": false,
         "properties": {
@@ -371,6 +450,26 @@
         ],
         "type": "object"
       },
+      "DailyPointResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "date": {
+            "description": "ISO 8601 date (YYYY-MM-DD).",
+            "example": "2026-08-10",
+            "type": "string"
+          },
+          "sessions": {
+            "description": "Sessions on this date.",
+            "example": 12,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "date",
+          "sessions"
+        ],
+        "type": "object"
+      },
       "DownloadResponse": {
         "additionalProperties": false,
         "properties": {
@@ -378,14 +477,6 @@
             "description": "Download row id.",
             "example": 99,
             "type": "integer"
-          },
-          "outfile": {
-            "description": "Local path where the honeypot saved the captured payload.",
-            "example": "/data/downloads/abc123",
-            "type": [
-              "string",
-              "null"
-            ]
           },
           "sha256": {
             "description": "SHA-256 hex digest of the captured payload.",
@@ -415,7 +506,6 @@
         },
         "required": [
           "id",
-          "outfile",
           "sha256",
           "timestamp",
           "url"
@@ -443,6 +533,59 @@
             "type": "string"
           }
         },
+        "type": "object"
+      },
+      "FingerprintResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "fingerprint": {
+            "description": "SSH public key fingerprint (hex digest).",
+            "example": "5b:d1:07:8a:3f:01:7c:c9:8d:e2:6b:5f:94:a3:7c:2e",
+            "type": "string"
+          },
+          "fingerprint_type": {
+            "description": "Fingerprint algorithm (e.g. 'ssh-rsa', 'ssh-ed25519').",
+            "example": "ssh-rsa",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "first_seen": {
+            "description": "ISO 8601 timestamp of the first observation (or null).",
+            "example": "2026-08-01T12:04:31+00:00",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "ips": {
+            "description": "Number of distinct source IPs offering this fingerprint.",
+            "example": 7,
+            "type": "integer"
+          },
+          "last_seen": {
+            "description": "ISO 8601 timestamp of the most recent observation (or null).",
+            "example": "2026-08-11T23:59:59+00:00",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessions": {
+            "description": "Number of distinct sessions offering this fingerprint.",
+            "example": 28,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "fingerprint",
+          "fingerprint_type",
+          "first_seen",
+          "ips",
+          "last_seen",
+          "sessions"
+        ],
         "type": "object"
       },
       "HealthResponse": {
@@ -482,6 +625,147 @@
           "count",
           "hour",
           "weekday"
+        ],
+        "type": "object"
+      },
+      "MapCityResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "city": {
+            "description": "City name.",
+            "example": "Shanghai",
+            "type": "string"
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "CN",
+            "type": "string"
+          },
+          "lat": {
+            "description": "Latitude (jittered, rounded to 0.1 deg).",
+            "example": 31.2,
+            "type": "number"
+          },
+          "lon": {
+            "description": "Longitude (jittered, rounded to 0.1 deg).",
+            "example": 121.5,
+            "type": "number"
+          },
+          "sessions": {
+            "description": "Distinct sessions from this marker.",
+            "example": 88,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "city",
+          "country_code",
+          "lat",
+          "lon",
+          "sessions"
+        ],
+        "type": "object"
+      },
+      "MapCountryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "a2": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "CN",
+            "type": "string"
+          },
+          "ips": {
+            "description": "Distinct source IPs from this country.",
+            "example": 42,
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Distinct sessions from this country.",
+            "example": 137,
+            "type": "integer"
+          },
+          "success_rate": {
+            "description": "Accepted percentage (null when no attempts).",
+            "example": 0.59,
+            "type": [
+              "number",
+              "null"
+            ]
+          }
+        },
+        "required": [
+          "a2",
+          "ips",
+          "sessions",
+          "success_rate"
+        ],
+        "type": "object"
+      },
+      "MapResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "cities": {
+            "description": "Top city markers by session count.",
+            "items": {
+              "$ref": "#/components/schemas/MapCityResponse"
+            },
+            "type": "array"
+          },
+          "countries": {
+            "description": "Every resolved country, choropleth-ready.",
+            "items": {
+              "$ref": "#/components/schemas/MapCountryResponse"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "cities",
+          "countries"
+        ],
+        "type": "object"
+      },
+      "OutcomeCountsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "commands": {
+            "description": "Sessions with at least one executed command.",
+            "example": 92,
+            "type": "integer"
+          },
+          "downloads": {
+            "description": "Sessions with at least one download.",
+            "example": 37,
+            "type": "integer"
+          },
+          "none": {
+            "description": "Sessions with none of the above (interest == 0) - the complement of the other four buckets, not an overlap member.",
+            "example": 9500,
+            "type": "integer"
+          },
+          "shell": {
+            "description": "Sessions with an accepted login (auth_success).",
+            "example": 178,
+            "type": "integer"
+          },
+          "tcpip": {
+            "description": "Sessions with at least one direct-tcpip request.",
+            "example": 14,
+            "type": "integer"
+          },
+          "total": {
+            "description": "Every session in scope.",
+            "example": 9876,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "commands",
+          "downloads",
+          "none",
+          "shell",
+          "tcpip",
+          "total"
         ],
         "type": "object"
       },
@@ -587,6 +871,180 @@
         ],
         "type": "object"
       },
+      "PayloadCountryRowResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "country": {
+            "description": "Human-readable country name.",
+            "example": "China",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "example": "CN",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessions": {
+            "description": "Distinct sessions downloading from this country.",
+            "example": 15,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "country",
+          "country_code",
+          "sessions"
+        ],
+        "type": "object"
+      },
+      "PayloadDetailResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "countries": {
+            "description": "All countries ranked by session count, descending.",
+            "example": [
+              {
+                "country": "China",
+                "country_code": "CN",
+                "sessions": 25
+              },
+              {
+                "country": "Russia",
+                "country_code": "RU",
+                "sessions": 12
+              }
+            ],
+            "items": {
+              "$ref": "#/components/schemas/PayloadCountryRowResponse"
+            },
+            "type": "array"
+          },
+          "first_seen": {
+            "description": "ISO 8601 timestamp of first download.",
+            "example": "2026-08-10T14:30:00+00:00",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "description": "ISO 8601 timestamp of last download.",
+            "example": "2026-08-11T09:15:00+00:00",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "description": "Filename parsed from the most common download URL (never the honeypot's local storage path); null if no URL was recorded.",
+            "example": "exploit.sh",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessions": {
+            "description": "Distinct sessions that downloaded this payload.",
+            "example": 42,
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "SHA256 hash of the downloaded file.",
+            "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85",
+            "type": "string"
+          }
+        },
+        "required": [
+          "countries",
+          "first_seen",
+          "last_seen",
+          "name",
+          "sessions",
+          "sha256"
+        ],
+        "type": "object"
+      },
+      "PayloadDownloadResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "countries": {
+            "description": "Top 3 country alpha-2 codes by session count.",
+            "example": [
+              "CN",
+              "RU",
+              "US"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "first_seen": {
+            "description": "ISO 8601 timestamp of first download.",
+            "example": "2026-08-10T14:30:00+00:00",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "host": {
+            "description": "Host the payload was fetched from, or null when cowrie recorded no URL or its host was a bare IP. Never an IP, and never a stand-in for one.",
+            "example": "attacker.example.com",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "last_seen": {
+            "description": "ISO 8601 timestamp of last download.",
+            "example": "2026-08-11T09:15:00+00:00",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "machines": {
+            "description": "Distinct source machines behind those sessions. A count, never an address. Sessions close to machines means a distributed botnet; sessions well above machines means one operator fetching repeatedly.",
+            "example": 40,
+            "type": "integer"
+          },
+          "name": {
+            "description": "Filename parsed from the most common download URL (never the honeypot's local storage path); null if no URL was recorded.",
+            "example": "exploit.sh",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sessions": {
+            "description": "Distinct sessions that downloaded this payload.",
+            "example": 42,
+            "type": "integer"
+          },
+          "sha256": {
+            "description": "SHA256 hash of the downloaded file.",
+            "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b85",
+            "type": "string"
+          }
+        },
+        "required": [
+          "countries",
+          "first_seen",
+          "host",
+          "last_seen",
+          "machines",
+          "name",
+          "sessions",
+          "sha256"
+        ],
+        "type": "object"
+      },
       "ReadyResponse": {
         "additionalProperties": false,
         "properties": {
@@ -610,6 +1068,14 @@
               "$ref": "#/components/schemas/AuthAttemptResponse"
             },
             "type": "array"
+          },
+          "city": {
+            "description": "City name of the source IP, when resolved.",
+            "example": "Amsterdam",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "commands": {
             "description": "Commands executed during the session.",
@@ -660,6 +1126,22 @@
             "example": "abc123",
             "type": "string"
           },
+          "lat": {
+            "description": "Latitude of the source IP, when resolved.",
+            "example": 52.4,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lon": {
+            "description": "Longitude of the source IP, when resolved.",
+            "example": 4.9,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
           "protocol": {
             "description": "Application protocol observed.",
             "example": "ssh",
@@ -690,6 +1172,7 @@
         },
         "required": [
           "auth_attempts",
+          "city",
           "commands",
           "country",
           "country_code",
@@ -697,6 +1180,8 @@
           "dst_port",
           "ended_at",
           "id",
+          "lat",
+          "lon",
           "protocol",
           "sensor",
           "src_port",
@@ -707,10 +1192,23 @@
       "SessionSummaryResponse": {
         "additionalProperties": false,
         "properties": {
+          "asn_org": {
+            "description": "Source network organisation.",
+            "example": "OVH SAS",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "auth_attempt_count": {
             "description": "Number of authentication attempts in this session.",
             "example": 5,
             "type": "integer"
+          },
+          "auth_success": {
+            "description": "Whether any auth attempt in the session succeeded (maintained flag).",
+            "example": true,
+            "type": "boolean"
           },
           "category": {
             "description": "Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.",
@@ -722,6 +1220,22 @@
             ],
             "example": "active",
             "type": "string"
+          },
+          "city": {
+            "description": "City name of the source IP, when resolved.",
+            "example": "Amsterdam",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "client_version": {
+            "description": "SSH client version string, when captured.",
+            "example": "SSH-2.0-libssh2_1.10.0",
+            "type": [
+              "string",
+              "null"
+            ]
           },
           "command_count": {
             "description": "Number of shell commands recorded in this session.",
@@ -768,6 +1282,42 @@
             "example": "abc123",
             "type": "string"
           },
+          "interest": {
+            "description": "DB-computed interest score: 2*commands + 5*downloads + 2*tcpip + 3*auth_success.",
+            "example": 9,
+            "type": "integer"
+          },
+          "lat": {
+            "description": "Latitude of the source IP, when resolved.",
+            "example": 52.4,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "lon": {
+            "description": "Longitude of the source IP, when resolved.",
+            "example": 4.9,
+            "type": [
+              "number",
+              "null"
+            ]
+          },
+          "n_commands": {
+            "description": "Maintained commands counter.",
+            "example": 3,
+            "type": "integer"
+          },
+          "n_downloads": {
+            "description": "Maintained downloads counter.",
+            "example": 0,
+            "type": "integer"
+          },
+          "n_tcpip": {
+            "description": "Maintained direct-tcpip-request counter.",
+            "example": 0,
+            "type": "integer"
+          },
           "protocol": {
             "description": "Application protocol observed.",
             "example": "ssh",
@@ -789,8 +1339,12 @@
           }
         },
         "required": [
+          "asn_org",
           "auth_attempt_count",
+          "auth_success",
           "category",
+          "city",
+          "client_version",
           "command_count",
           "country",
           "country_code",
@@ -798,6 +1352,12 @@
           "ended_at",
           "has_successful_login",
           "id",
+          "interest",
+          "lat",
+          "lon",
+          "n_commands",
+          "n_downloads",
+          "n_tcpip",
           "protocol",
           "src_port",
           "started_at"
@@ -814,6 +1374,11 @@
             },
             "type": "array"
           },
+          "max_interest": {
+            "description": "Highest interest value across all sessions (unfiltered) - the ceiling row-level interest scores are normalized against for display.",
+            "example": 56,
+            "type": "integer"
+          },
           "meta": {
             "$ref": "#/components/schemas/PaginationMeta",
             "description": "Pagination metadata for the response page."
@@ -821,7 +1386,81 @@
         },
         "required": [
           "items",
+          "max_interest",
           "meta"
+        ],
+        "type": "object"
+      },
+      "SshClientResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "client_version": {
+            "description": "SSH client version string (banner or key exchange).",
+            "example": "libssh_0.8.9",
+            "type": "string"
+          },
+          "sessions": {
+            "description": "Number of sessions using this client version.",
+            "example": 42,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "client_version",
+          "sessions"
+        ],
+        "type": "object"
+      },
+      "TcpipDestinationResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "country": {
+            "description": "Human-readable country name for the destination network, or null if unresolved.",
+            "example": "United States",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "ISO 3166-1 alpha-2 country code for the destination network, or null if unresolved.",
+            "example": "US",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hosts": {
+            "description": "Distinct destination hosts behind this network and port.",
+            "example": 12,
+            "type": "integer"
+          },
+          "network": {
+            "description": "Destination network: the AS org, or the destination itself when it is a DNS name. Null when neither is known. Never an IP.",
+            "example": "Cloudflare, Inc.",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "port": {
+            "description": "Destination port.",
+            "example": 3306,
+            "type": "integer"
+          },
+          "sessions": {
+            "description": "Distinct sessions attempting this network and port.",
+            "example": 8,
+            "type": "integer"
+          }
+        },
+        "required": [
+          "country",
+          "country_code",
+          "hosts",
+          "network",
+          "port",
+          "sessions"
         ],
         "type": "object"
       },
@@ -1022,7 +1661,7 @@
             "schema": {
               "default": 1,
               "example": 1,
-              "maximum": 10000,
+              "maximum": 50000,
               "minimum": 1,
               "type": "integer"
             }
@@ -1038,6 +1677,23 @@
               "maximum": 100,
               "minimum": 1,
               "type": "integer"
+            }
+          },
+          {
+            "description": "Session id prefix, lowercase hex only (2-64 chars). Matched with a leading-anchor search, so it never carries a LIKE wildcard.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "a1b2c3",
+              "maxLength": 64,
+              "minLength": 2,
+              "pattern": "^[0-9a-f]+$",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {
@@ -1077,7 +1733,7 @@
             }
           },
           {
-            "description": "Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first).",
+            "description": "Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first), 'interest' (highest interest score first), 'duration' (longest session first).",
             "in": "query",
             "name": "sort",
             "required": false,
@@ -1086,10 +1742,41 @@
               "enum": [
                 "recent",
                 "country",
-                "active"
+                "active",
+                "interest",
+                "duration"
               ],
               "example": "country",
               "type": "string"
+            }
+          },
+          {
+            "description": "Comma-separated filters, all must match: 'commands' (n_commands > 0), 'downloads' (n_downloads > 0), 'success' (auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, did nothing at all - mutually exclusive with the others).",
+            "in": "query",
+            "name": "has",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "commands,success",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only sessions that captured this payload. Lowercase hex; the pattern is the whole defence, so the value can never reach SQL as anything but a digest.",
+            "in": "query",
+            "name": "sha256",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           }
         ],
@@ -1395,6 +2082,215 @@
         ]
       }
     },
+    "/api/v1/stats/countries/{a2}": {
+      "get": {
+        "operationId": "statsCountryDetail",
+        "parameters": [
+          {
+            "description": "ISO 3166-1 alpha-2 country code.",
+            "in": "path",
+            "name": "a2",
+            "required": true,
+            "schema": {
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CountryDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the country intel-drawer bundle: totals, networks, credentials, trend.",
+        "tags": [
+          "stats"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "a2",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/stats/downloads": {
+      "get": {
+        "operationId": "statsDownloads",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/PayloadDownloadResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N downloaded payloads grouped by SHA256.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/downloads/{sha256}": {
+      "get": {
+        "operationId": "statsDownloadDetail",
+        "parameters": [
+          {
+            "description": "SHA256 hash of the payload.",
+            "in": "path",
+            "name": "sha256",
+            "required": true,
+            "schema": {
+              "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PayloadDetailResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return full detail for one payload: basic info plus countries breakdown.",
+        "tags": [
+          "stats"
+        ]
+      },
+      "parameters": [
+        {
+          "in": "path",
+          "name": "sha256",
+          "required": true,
+          "schema": {
+            "minLength": 1,
+            "type": "string"
+          }
+        }
+      ]
+    },
+    "/api/v1/stats/fingerprints": {
+      "get": {
+        "operationId": "statsFingerprints",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/FingerprintResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N SSH client public key fingerprints by distinct IP count.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
     "/api/v1/stats/heatmap": {
       "get": {
         "operationId": "statsHeatmap",
@@ -1440,6 +2336,80 @@
           }
         },
         "summary": "Return session counts per (weekday, hour) cell.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/map": {
+      "get": {
+        "operationId": "statsMap",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MapResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return one payload for the Overview map deck: choropleth + city markers.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/outcomes": {
+      "get": {
+        "operationId": "statsOutcomes",
+        "parameters": [
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OutcomeCountsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return session counts per outcome bucket, for the Sessions Outcome filter.",
         "tags": [
           "stats"
         ]
@@ -1527,6 +2497,102 @@
           }
         },
         "summary": "Return the top-N passwords of a given length (histogram drill-down).",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/ssh-clients": {
+      "get": {
+        "operationId": "statsSshClients",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/SshClientResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N SSH client versions ranked by session count.",
+        "tags": [
+          "stats"
+        ]
+      }
+    },
+    "/api/v1/stats/tcpip-destinations": {
+      "get": {
+        "operationId": "statsTcpipDestinations",
+        "parameters": [
+          {
+            "description": "Number of top entries to return (max 100).",
+            "in": "query",
+            "name": "top_n",
+            "required": false,
+            "schema": {
+              "default": 10,
+              "example": 10,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TcpipDestinationResponse"
+                  },
+                  "type": "array"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return the top-N direct-tcpip relay destinations grouped by (host, port).",
         "tags": [
           "stats"
         ]
@@ -1851,7 +2917,7 @@
     },
     "/health/ready": {
       "get": {
-        "description": "Unlike /health this touches the database, so gate traffic on this probe\nand keep restarts on /health - a DB blip is not a dead process.",
+        "description": "This probe touches the database; gate traffic on it while /health gates\nrestarts (a DB blip is not fatal).",
         "operationId": "healthReady",
         "responses": {
           "200": {

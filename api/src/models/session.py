@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import TYPE_CHECKING
 
-from sqlalchemy import DateTime, Integer, String, func
+from sqlalchemy import Boolean, Computed, DateTime, Integer, String, func
 from sqlalchemy.dialects.postgresql import INET
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -36,6 +36,22 @@ class Session(Base):
         DateTime(timezone=True), nullable=True
     )
     sensor: Mapped[str | None] = mapped_column(String(64), nullable=True)
+
+    # Maintained by the ingestor (one UPDATE per child-row insert, same
+    # transaction - see ingestor/src/writer.py) so the Sessions explorer can
+    # sort/filter without a per-request aggregate scan. `interest` is a
+    # Postgres GENERATED ALWAYS column; never assign it from Python.
+    n_commands: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    n_tcpip: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    auth_success: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    interest: Mapped[int] = mapped_column(
+        Integer,
+        Computed(
+            "2*n_commands + 5*n_downloads + 2*n_tcpip + (auth_success::int)*3",
+            persisted=True,
+        ),
+    )
 
     auth_attempts: Mapped[list[AuthAttempt]] = relationship(
         back_populates="session", cascade="all, delete-orphan"

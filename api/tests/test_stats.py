@@ -2,6 +2,8 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 from src.models.auth_attempt import AuthAttempt
+from src.models.direct_tcpip import DirectTcpipRequest
+from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
 from tests.conftest import LONG_PASSWORD
@@ -35,12 +37,8 @@ def test_top_passwords_top_n_clamp(client: Any, seed_data: Any) -> None:
 def test_top_countries_buckets_missing_geo_as_unknown(
     client: Any, seed_data: Any
 ) -> None:
-    """Sessions without a geo row appear under "Unknown" (outer join + COALESCE).
-
-    The ingestor splits session and geo writes so a session row can exist
-    before (or without) its geo enrichment. Inner-joining would silently
-    undercount the leaderboard; bucketing as Unknown surfaces the gap.
-    """
+    """Outer join + COALESCE bucket sessions without geo rows as Unknown to avoid
+    undercounting."""
     response = client.get("/api/v1/stats/top-countries")
     assert response.status_code == 200
     data = response.get_json()
@@ -65,7 +63,6 @@ def test_activity_each_bucket(client: Any, seed_data: Any) -> None:
 
 
 def test_activity_invalid_bucket(client: Any) -> None:
-    # marshmallow OneOf validation produces a 422 from flask-smorest
     response = client.get("/api/v1/stats/activity?bucket=fortnight")
     assert response.status_code == 422
     data = response.get_json()
@@ -109,8 +106,6 @@ def test_trend_zero_previous_returns_null_pct(client: Any, db_session: Any) -> N
 
 
 def test_trend_period_days_clamped(client: Any) -> None:
-    # period_days > 365 fails validate.Range, surfacing 422 (strict validation,
-    # no silent clamp).
     response = client.get("/api/v1/stats/trend?period_days=99999")
     assert response.status_code == 422
 
@@ -177,13 +172,11 @@ def test_stats_country_filter_rejects_invalid(client: Any) -> None:
 
 
 def test_top_credentials_pairs_default(client: Any, seed_data: Any) -> None:
-    """Default grouping returns username+password pairs ranked by count."""
     del seed_data
     response = client.get("/api/v1/stats/top-credentials")
     assert response.status_code == 200
     data = response.get_json()
     assert isinstance(data, list)
-    # seed has 3 distinct pairs, each tried once.
     assert {(r["username"], r["password"]) for r in data} == {
         ("root", "password123"),
         ("admin", "admin"),
@@ -191,36 +184,30 @@ def test_top_credentials_pairs_default(client: Any, seed_data: Any) -> None:
     }
     counts = [r["count"] for r in data]
     assert counts == sorted(counts, reverse=True)
-    # distinct_ips is null for the (default) attempts metric - no sessions join.
     assert all(r["distinct_ips"] is None for r in data)
 
 
 def test_top_credentials_by_username(client: Any, seed_data: Any) -> None:
-    """Grouping by username collapses the password (None) and sums attempts."""
     del seed_data
     response = client.get("/api/v1/stats/top-credentials?by=username")
     assert response.status_code == 200
     data = response.get_json()
     assert all(r["password"] is None for r in data)
     by_user = {r["username"]: r["count"] for r in data}
-    # root appears in two attempts (password123 + toor); admin once.
     assert by_user == {"root": 2, "admin": 1}
     assert data[0]["username"] == "root"
 
 
 def test_top_credentials_by_password(client: Any, seed_data: Any) -> None:
-    """Grouping by password alone collapses the username (None)."""
     del seed_data
     response = client.get("/api/v1/stats/top-credentials?by=password")
     assert response.status_code == 200
     data = response.get_json()
     assert all(r["username"] is None for r in data)
-    # seed passwords: password123, admin, toor - each tried once.
     assert {r["password"] for r in data} == {"password123", "admin", "toor"}
 
 
 def test_top_credentials_success_only(client: Any, seed_data: Any) -> None:
-    """outcome=success returns only the cowrie-accepted credential(s)."""
     del seed_data
     response = client.get("/api/v1/stats/top-credentials?outcome=success")
     assert response.status_code == 200
@@ -237,7 +224,6 @@ def test_top_credentials_ip_fanout_metric(client: Any, seed_data: Any) -> None:
     assert response.status_code == 200
     data = response.get_json()
     assert data, data
-    # every seeded pair was tried from exactly one source IP.
     assert all(isinstance(r["distinct_ips"], int) for r in data)
     assert all(r["distinct_ips"] == 1 for r in data)
 
@@ -307,6 +293,143 @@ def test_auth_outcomes_empty_returns_null_rate(client: Any, db_session: Any) -> 
     }
 
 
+def _outcome_session(
+    db_session: Any,
+    sid: str,
+    ip: str,
+    *,
+    n_commands: int = 0,
+    n_downloads: int = 0,
+    n_tcpip: int = 0,
+    auth_success: bool = False,
+    country_code: str | None = None,
+) -> None:
+    """Seed session with ingestor-maintained outcome counters (not derived from
+    child rows)."""
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        HoneypotSession(
+            id=sid,
+            src_ip=ip,
+            src_port=1,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+            n_commands=n_commands,
+            n_downloads=n_downloads,
+            n_tcpip=n_tcpip,
+            auth_success=auth_success,
+        )
+    )
+    db_session.flush()
+    if country_code is not None:
+        db_session.add(GeoLocation(ip=ip, country_code=country_code))
+        db_session.flush()
+
+
+def test_outcomes_keys_and_types(client: Any, seed_data: Any) -> None:
+    del seed_data
+    response = client.get("/api/v1/stats/outcomes")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert set(data.keys()) == {
+        "shell",
+        "commands",
+        "tcpip",
+        "downloads",
+        "none",
+        "total",
+    }
+    assert all(isinstance(v, int) for v in data.values())
+
+
+def test_outcomes_buckets_overlap_and_none_is_complement(
+    client: Any, db_session: Any
+) -> None:
+    """Buckets overlap - a session can count in both `shell` and `commands` -
+    so a naive sum-to-total implementation must fail this test. `none` is
+    exactly the sessions with none of the other four, not `total` minus
+    their sum.
+    """
+    # Both shell and commands on one session - exercises the overlap.
+    _outcome_session(
+        db_session, "out-both", "203.0.113.1", n_commands=2, auth_success=True
+    )
+    _outcome_session(db_session, "out-shell", "203.0.113.2", auth_success=True)
+    _outcome_session(db_session, "out-download", "203.0.113.3", n_downloads=1)
+    _outcome_session(db_session, "out-tcpip", "203.0.113.4", n_tcpip=2)
+    _outcome_session(db_session, "out-none", "203.0.113.5")
+    db_session.commit()
+
+    data = client.get("/api/v1/stats/outcomes").get_json()
+    assert data["shell"] == 2  # out-both, out-shell
+    assert data["commands"] == 1  # out-both
+    assert data["downloads"] == 1  # out-download
+    assert data["tcpip"] == 1  # out-tcpip
+    assert data["none"] == 1  # out-none only
+    assert data["total"] == 5
+    # Overlap proof: the four activity buckets sum to MORE than the number of
+    # sessions that had any activity at all, because out-both is counted twice.
+    # Comparing against `total` would not prove it - the idle session drags the
+    # total back up to the sum by coincidence.
+    overlap_sum = data["shell"] + data["commands"] + data["downloads"] + data["tcpip"]
+    assert overlap_sum > data["total"] - data["none"]
+
+
+def test_outcomes_country_narrows_every_bucket(client: Any, db_session: Any) -> None:
+    _outcome_session(
+        db_session,
+        "out-us-both",
+        "203.0.113.11",
+        n_commands=1,
+        auth_success=True,
+        country_code="US",
+    )
+    _outcome_session(
+        db_session,
+        "out-us-download",
+        "203.0.113.12",
+        n_downloads=1,
+        country_code="US",
+    )
+    _outcome_session(
+        db_session,
+        "out-de-shell",
+        "203.0.113.13",
+        auth_success=True,
+        country_code="DE",
+    )
+    db_session.commit()
+
+    data = client.get("/api/v1/stats/outcomes?country=US").get_json()
+    assert data["shell"] == 1
+    assert data["commands"] == 1
+    assert data["downloads"] == 1
+    assert data["tcpip"] == 0
+    assert data["none"] == 0
+    assert data["total"] == 2  # the DE session is excluded
+
+
+def test_outcomes_unknown_country_is_all_zero(client: Any, seed_data: Any) -> None:
+    """A country with no matching sessions returns all-zero counts, not a 404 -
+    the aggregate query always yields exactly one row."""
+    del seed_data
+    response = client.get("/api/v1/stats/outcomes?country=ZZ")
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "shell": 0,
+        "commands": 0,
+        "tcpip": 0,
+        "downloads": 0,
+        "none": 0,
+        "total": 0,
+    }
+
+
+def test_outcomes_rejects_invalid_country(client: Any) -> None:
+    assert client.get("/api/v1/stats/outcomes?country=USA").status_code == 422
+
+
 def _country_row(data: dict[str, Any], code: str) -> dict[str, Any]:
     """Pluck one country row from the leaderboard envelope by code."""
     matches = [r for r in data["countries"] if r["country_code"] == code]
@@ -362,7 +485,6 @@ def test_countries_session_grain_not_inflated_by_attempts(
 
 
 def test_countries_sort_by_success_rate(client: Any, seed_data: Any) -> None:
-    """The Unknown bucket (100% success) outranks US (0%) under success_rate sort."""
     del seed_data
     data = client.get("/api/v1/stats/countries?sort=success_rate").get_json()
     order = [r["country_code"] for r in data["countries"]]
@@ -389,7 +511,6 @@ def test_countries_empty_geo_pct_is_null(client: Any, db_session: Any) -> None:
 
 
 def test_asns_scoped_to_country(client: Any, seed_data: Any) -> None:
-    """ASN breakdown for US returns the seeded network; an unseen country empty."""
     del seed_data
     data = client.get("/api/v1/stats/asns?country=US").get_json()
     assert len(data) == 1
@@ -402,7 +523,6 @@ def test_asns_scoped_to_country(client: Any, seed_data: Any) -> None:
 
 
 def test_asns_excludes_null_asn(client: Any, seed_data: Any) -> None:
-    """The geo-less session has no ASN, so global ASNs list only the US network."""
     del seed_data
     data = client.get("/api/v1/stats/asns").get_json()
     assert [r["asn"] for r in data] == [14618]
@@ -459,7 +579,6 @@ def test_top_credentials_unknown_bucket(client: Any, seed_data: Any) -> None:
 
 
 def test_asns_unknown_bucket_empty_without_geo(client: Any, seed_data: Any) -> None:
-    """The geo-less session has no geo row at all, so its ASN bucket is empty."""
     del seed_data
     assert client.get("/api/v1/stats/asns?country=??").get_json() == []
 
@@ -482,11 +601,7 @@ def _add_session(
     attempts: int = 0,
     successful: int = 0,
 ) -> None:
-    """Seed a session (+ optional geo row + N auth attempts) for edge-case tests.
-
-    `country_code=None` with an `asn` models the MaxMind ASN-hit-without-city
-    case; `attempts=0` models a country with sessions but no auth attempts.
-    """
+    """Seed session with optional geo row and auth attempts for edge cases."""
     now = datetime.now(timezone.utc)
     db_session.add(
         HoneypotSession(
@@ -601,7 +716,6 @@ def test_countries_success_rate_sort_puts_no_attempt_country_last(
 
 
 def test_country_filter_normalizes_lowercase(client: Any, seed_data: Any) -> None:
-    """A lowercase ?country=us resolves to the US data (case-insensitive filter)."""
     del seed_data
     lower = client.get("/api/v1/stats/asns?country=us").get_json()
     upper = client.get("/api/v1/stats/asns?country=US").get_json()
@@ -612,7 +726,6 @@ def test_country_filter_normalizes_lowercase(client: Any, seed_data: Any) -> Non
 def test_strict_country_filter_normalizes_lowercase(
     client: Any, seed_data: Any
 ) -> None:
-    """The strict country filter (activity/trend/heatmap) also upper-cases input."""
     del seed_data
     lower = client.get("/api/v1/stats/activity?bucket=day&country=us")
     assert lower.status_code == 200
@@ -627,10 +740,8 @@ def test_password_composition(client: Any, seed_data: Any) -> None:
     data = response.get_json()
     assert data["total"] == 3
     assert data["capped_at"] == 16
-    # lengths: password123=11, admin=5, toor=4 -> three single-count buckets.
     lengths = {row["length"]: row["count"] for row in data["lengths"]}
     assert lengths == {4: 1, 5: 1, 11: 1}
-    # charset classes: admin + toor are lowercase, password123 is alnum.
     classes = {row["name"]: row["count"] for row in data["classes"]}
     assert classes == {"lower": 2, "alnum": 1}
     assert data["classes"][0]["name"] == "lower"
@@ -639,14 +750,11 @@ def test_password_composition(client: Any, seed_data: Any) -> None:
 def test_password_composition_charset_classes_cover_every_branch(
     client: Any, charset_seed: Any
 ) -> None:
-    """Every branch of the charset CASE is exercised and prioritized (see
-    conftest.py's charset_seed for the ordering rationale): 'p@ss!' contains
-    digits/letters but must land in 'symbol' because that branch comes first."""
+    """Charset classification prioritizes by branch order (see conftest.py)."""
     del charset_seed
     response = client.get("/api/v1/stats/password-composition")
     assert response.status_code == 200
     classes = {row["name"]: row["count"] for row in response.get_json()["classes"]}
-    # 'secret' + the 18-char all-lowercase LONG_PASSWORD both classify as lower.
     assert classes == {
         "empty": 1,
         "symbol": 1,
@@ -692,16 +800,301 @@ def test_passwords_by_length_cap_is_inclusive_tail(
     assert len(LONG_PASSWORD) >= 16
     tail = client.get("/api/v1/stats/passwords-by-length?length=16").get_json()
     assert {row["password"] for row in tail} == {LONG_PASSWORD}
-    # the exact-length branch (< cap) does not pick up the longer password.
     exact = client.get("/api/v1/stats/passwords-by-length?length=11").get_json()
     assert all(row["password"] != LONG_PASSWORD for row in exact)
 
 
 def test_passwords_by_length_requires_length(client: Any) -> None:
-    # length is required; omitting it is a 422 (no silent default).
     assert client.get("/api/v1/stats/passwords-by-length").status_code == 422
 
 
 def test_passwords_by_length_rejects_out_of_range(client: Any) -> None:
     assert client.get("/api/v1/stats/passwords-by-length?length=-1").status_code == 422
     assert client.get("/api/v1/stats/passwords-by-length?length=99").status_code == 422
+
+
+def test_downloads_name_is_url_basename_not_outfile(
+    client: Any, db_session: Any
+) -> None:
+    """`name` derives from attacker URL, not honeypot storage path."""
+    now = datetime.now(timezone.utc)
+    sha256 = "f" * 64
+    db_session.add(
+        HoneypotSession(id="dl-001", src_ip="203.0.113.9", src_port=1, started_at=now)
+    )
+    db_session.flush()
+    db_session.add_all(
+        [
+            Download(
+                session_id="dl-001",
+                url="http://cnc.example.com/meow",
+                outfile=f"var/lib/cowrie/downloads/{sha256}",
+                sha256=sha256,
+                timestamp=now,
+            ),
+            Download(
+                session_id="dl-001",
+                url="http://cnc.example.com/meow",
+                outfile=f"var/lib/cowrie/downloads/{sha256}",
+                sha256=sha256,
+                timestamp=now,
+            ),
+            Download(
+                session_id="dl-001",
+                url="http://other.example.com/other",
+                outfile=f"var/lib/cowrie/downloads/{sha256}",
+                sha256=sha256,
+                timestamp=now,
+            ),
+        ]
+    )
+    db_session.flush()
+
+    response = client.get("/api/v1/stats/downloads")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert len(body) == 1
+    row = body[0]
+    assert row["sha256"] == sha256
+    assert row["name"] == "meow"
+    assert row["sessions"] == 1
+    assert row["host"] == "cnc.example.com"
+    assert b"var/lib/cowrie/downloads" not in response.data
+
+
+def test_downloads_name_is_null_when_no_url(client: Any, db_session: Any) -> None:
+    now = datetime.now(timezone.utc)
+    sha256 = "e" * 64
+    db_session.add(
+        HoneypotSession(id="dl-002", src_ip="203.0.113.10", src_port=1, started_at=now)
+    )
+    db_session.flush()
+    db_session.add(
+        Download(
+            session_id="dl-002",
+            url=None,
+            outfile=f"var/lib/cowrie/downloads/{sha256}",
+            sha256=sha256,
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+
+    response = client.get("/api/v1/stats/downloads")
+    assert response.status_code == 200
+    body = response.get_json()
+    assert body[0]["name"] is None
+
+
+def test_download_detail_found(client: Any, db_session: Any) -> None:
+    now = datetime.now(timezone.utc)
+    sha256 = "d" * 64
+    db_session.add(
+        HoneypotSession(id="dd-001", src_ip="203.0.113.1", src_port=1, started_at=now)
+    )
+    db_session.flush()
+    db_session.add(
+        HoneypotSession(id="dd-002", src_ip="203.0.113.2", src_port=1, started_at=now)
+    )
+    db_session.flush()
+    db_session.add(
+        HoneypotSession(id="dd-003", src_ip="203.0.113.3", src_port=1, started_at=now)
+    )
+    db_session.flush()
+
+    db_session.add(GeoLocation(ip="203.0.113.1", country_code="CN", country="China"))
+    db_session.flush()
+    db_session.add(GeoLocation(ip="203.0.113.2", country_code="RU", country="Russia"))
+    db_session.flush()
+    db_session.add(GeoLocation(ip="203.0.113.3", country_code="CN", country="China"))
+    db_session.flush()
+
+    db_session.add(
+        Download(
+            session_id="dd-001",
+            url="http://attacker.example.com/payload",
+            outfile=f"var/lib/cowrie/downloads/{sha256}",
+            sha256=sha256,
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        Download(
+            session_id="dd-002",
+            url="http://attacker.example.com/payload",
+            outfile=f"var/lib/cowrie/downloads/{sha256}",
+            sha256=sha256,
+            timestamp=now + timedelta(hours=1),
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        Download(
+            session_id="dd-003",
+            url="http://attacker.example.com/payload",
+            outfile=f"var/lib/cowrie/downloads/{sha256}",
+            sha256=sha256,
+            timestamp=now + timedelta(hours=2),
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/api/v1/stats/downloads/{sha256}")
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["sha256"] == sha256
+    assert data["name"] == "payload"
+    assert data["sessions"] == 3
+    assert data["first_seen"] == now.isoformat()
+    assert data["last_seen"] == (now + timedelta(hours=2)).isoformat()
+    assert len(data["countries"]) == 2
+    assert data["countries"][0]["country_code"] == "CN"
+    assert data["countries"][0]["sessions"] == 2
+    assert data["countries"][1]["country_code"] == "RU"
+    assert data["countries"][1]["sessions"] == 1
+
+
+def test_download_detail_not_found(client: Any) -> None:
+    response = client.get(f"/api/v1/stats/downloads/{'a' * 64}")
+    assert response.status_code == 404
+
+
+def test_download_detail_no_raw_ip_leak(client: Any, db_session: Any) -> None:
+    """No raw IP addresses in /downloads/<sha256> response."""
+    now = datetime.now(timezone.utc)
+    sha256 = "c" * 64
+    ip = "198.51.100.1"
+    db_session.add(HoneypotSession(id="dd-noip", src_ip=ip, src_port=1, started_at=now))
+    db_session.flush()
+    db_session.add(GeoLocation(ip=ip, country_code="US", country="United States"))
+    db_session.flush()
+    db_session.add(
+        Download(
+            session_id="dd-noip",
+            url="http://example.com/file",
+            outfile=f"var/lib/cowrie/downloads/{sha256}",
+            sha256=sha256,
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+
+    response = client.get(f"/api/v1/stats/downloads/{sha256}")
+    assert response.status_code == 200
+    assert ip.encode() not in response.data
+
+
+def _tcpip_session(db_session: Any, sid: str, ip: str) -> None:
+    db_session.add(
+        HoneypotSession(
+            id=sid, src_ip=ip, src_port=1, started_at=datetime.now(timezone.utc)
+        )
+    )
+
+
+def test_downloads_host_is_null_when_url_host_is_an_ip(
+    client: Any, db_session: Any
+) -> None:
+    """Payloads from bare IPs must not borrow session AS org (which names the
+    attacker)."""
+    now = datetime.now(timezone.utc)
+    sha256 = "d" * 64
+    _tcpip_session(db_session, "dl-ip", "203.0.113.77")
+    db_session.add(
+        GeoLocation(ip="203.0.113.77", country_code="US", as_org="Attacker Net LLC")
+    )
+    db_session.flush()
+    db_session.add(
+        Download(
+            session_id="dl-ip",
+            url="http://203.0.113.200/meow",
+            outfile=f"var/lib/cowrie/downloads/{sha256}",
+            sha256=sha256,
+            timestamp=now,
+        )
+    )
+    db_session.flush()
+
+    response = client.get("/api/v1/stats/downloads")
+    assert response.status_code == 200
+    row = next(r for r in response.get_json() if r["sha256"] == sha256)
+    assert row["host"] is None
+    assert b"Attacker Net LLC" not in response.data
+    assert b"203.0.113.200" not in response.data
+
+
+def test_tcpip_destinations_group_by_network_not_host(
+    client: Any, db_session: Any
+) -> None:
+    """Multiple IPs on one AS collapse into one row to avoid unshowable IP rows."""
+    now = datetime.now(timezone.utc)
+    for n, ip in enumerate(("198.51.100.1", "198.51.100.2", "198.51.100.3")):
+        _tcpip_session(db_session, f"tc-{n}", f"203.0.113.{100 + n}")
+        db_session.flush()
+        db_session.add(
+            GeoLocation(
+                ip=ip, country_code="US", country="United States", as_org="Bigcorp Inc."
+            )
+        )
+        db_session.flush()
+        db_session.add(
+            DirectTcpipRequest(
+                session_id=f"tc-{n}", dst_ip=ip, dst_port=25, timestamp=now
+            )
+        )
+        db_session.flush()
+
+    response = client.get("/api/v1/stats/tcpip-destinations")
+    assert response.status_code == 200
+    rows = [r for r in response.get_json() if r["network"] == "Bigcorp Inc."]
+    assert len(rows) == 1
+    assert rows[0] == {
+        "network": "Bigcorp Inc.",
+        "port": 25,
+        "sessions": 3,
+        "hosts": 3,
+        "country_code": "US",
+        "country": "United States",
+    }
+
+
+def test_tcpip_destinations_never_leak_an_ip_shaped_destination(
+    client: Any, db_session: Any
+) -> None:
+    """Invalid-inet destinations (malformed IP-shaped strings) must not leak as row
+    labels."""
+    now = datetime.now(timezone.utc)
+    for n, dst in enumerate(("1.2.3.4.5", "2001:db8:::1", "relay.example.com")):
+        _tcpip_session(db_session, f"tl-{n}", f"203.0.113.{200 + n}")
+        db_session.flush()
+        db_session.add(
+            DirectTcpipRequest(
+                session_id=f"tl-{n}", dst_ip=dst, dst_port=80, timestamp=now
+            )
+        )
+    db_session.flush()
+
+    response = client.get("/api/v1/stats/tcpip-destinations")
+    assert response.status_code == 200
+    assert b"1.2.3.4.5" not in response.data
+    assert b"2001:db8" not in response.data
+    networks = {r["network"] for r in response.get_json()}
+    assert "relay.example.com" in networks
+    assert None in networks
+
+
+def test_tcpip_destinations_survive_junk_destination(
+    client: Any, db_session: Any
+) -> None:
+    """Junk dst_ip values must not crash the query; attacker-supplied input can be
+    malformed."""
+    now = datetime.now(timezone.utc)
+    _tcpip_session(db_session, "tj-0", "203.0.113.250")
+    db_session.flush()
+    db_session.add(
+        DirectTcpipRequest(session_id="tj-0", dst_ip="...", dst_port=80, timestamp=now)
+    )
+    db_session.flush()
+
+    assert client.get("/api/v1/stats/tcpip-destinations").status_code == 200

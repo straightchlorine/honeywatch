@@ -2,7 +2,7 @@
 
 import type { Client, ClientMeta, Options as Options2, RequestResult, TDataShape } from './client';
 import { client } from './client.gen';
-import type { GetSessionByIdData, GetSessionByIdErrors, GetSessionByIdResponses, HealthLiveData, HealthLiveErrors, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, StatsActivityData, StatsActivityErrors, StatsActivityResponses, StatsAsnsData, StatsAsnsErrors, StatsAsnsResponses, StatsAuthOutcomesData, StatsAuthOutcomesErrors, StatsAuthOutcomesResponses, StatsCountriesData, StatsCountriesErrors, StatsCountriesResponses, StatsHeatmapData, StatsHeatmapErrors, StatsHeatmapResponses, StatsPasswordCompositionData, StatsPasswordCompositionErrors, StatsPasswordCompositionResponses, StatsPasswordsByLengthData, StatsPasswordsByLengthErrors, StatsPasswordsByLengthResponses, StatsTopCountriesData, StatsTopCountriesErrors, StatsTopCountriesResponses, StatsTopCredentialsData, StatsTopCredentialsErrors, StatsTopCredentialsResponses, StatsTopPasswordsData, StatsTopPasswordsErrors, StatsTopPasswordsResponses, StatsTotalsData, StatsTotalsErrors, StatsTotalsResponses, StatsTrendData, StatsTrendErrors, StatsTrendResponses } from './types.gen';
+import type { GetSessionByIdData, GetSessionByIdErrors, GetSessionByIdResponses, HealthLiveData, HealthLiveErrors, HealthLiveResponses, HealthReadyData, HealthReadyErrors, HealthReadyResponses, ListSessionsData, ListSessionsErrors, ListSessionsResponses, StatsActivityData, StatsActivityErrors, StatsActivityResponses, StatsAsnsData, StatsAsnsErrors, StatsAsnsResponses, StatsAuthOutcomesData, StatsAuthOutcomesErrors, StatsAuthOutcomesResponses, StatsCountriesData, StatsCountriesErrors, StatsCountriesResponses, StatsCountryDetailData, StatsCountryDetailErrors, StatsCountryDetailResponses, StatsDownloadDetailData, StatsDownloadDetailErrors, StatsDownloadDetailResponses, StatsDownloadsData, StatsDownloadsErrors, StatsDownloadsResponses, StatsFingerprintsData, StatsFingerprintsErrors, StatsFingerprintsResponses, StatsHeatmapData, StatsHeatmapErrors, StatsHeatmapResponses, StatsMapData, StatsMapErrors, StatsMapResponses, StatsOutcomesData, StatsOutcomesErrors, StatsOutcomesResponses, StatsPasswordCompositionData, StatsPasswordCompositionErrors, StatsPasswordCompositionResponses, StatsPasswordsByLengthData, StatsPasswordsByLengthErrors, StatsPasswordsByLengthResponses, StatsSshClientsData, StatsSshClientsErrors, StatsSshClientsResponses, StatsTcpipDestinationsData, StatsTcpipDestinationsErrors, StatsTcpipDestinationsResponses, StatsTopCountriesData, StatsTopCountriesErrors, StatsTopCountriesResponses, StatsTopCredentialsData, StatsTopCredentialsErrors, StatsTopCredentialsResponses, StatsTopPasswordsData, StatsTopPasswordsErrors, StatsTopPasswordsResponses, StatsTotalsData, StatsTotalsErrors, StatsTotalsResponses, StatsTrendData, StatsTrendErrors, StatsTrendResponses } from './types.gen';
 
 export type Options<TData extends TDataShape = TDataShape, ThrowOnError extends boolean = boolean, TResponse = unknown> = Options2<TData, ThrowOnError, TResponse> & {
     /**
@@ -49,9 +49,39 @@ export const statsAuthOutcomes = <ThrowOnError extends boolean = false>(options?
 export const statsCountries = <ThrowOnError extends boolean = false>(options?: Options<StatsCountriesData, ThrowOnError>): RequestResult<StatsCountriesResponses, StatsCountriesErrors, ThrowOnError> => (options?.client ?? client).get<StatsCountriesResponses, StatsCountriesErrors, ThrowOnError>({ url: '/api/v1/stats/countries', ...options });
 
 /**
+ * Return the country intel-drawer bundle: totals, networks, credentials, trend.
+ */
+export const statsCountryDetail = <ThrowOnError extends boolean = false>(options: Options<StatsCountryDetailData, ThrowOnError>): RequestResult<StatsCountryDetailResponses, StatsCountryDetailErrors, ThrowOnError> => (options.client ?? client).get<StatsCountryDetailResponses, StatsCountryDetailErrors, ThrowOnError>({ url: '/api/v1/stats/countries/{a2}', ...options });
+
+/**
+ * Return the top-N downloaded payloads grouped by SHA256.
+ */
+export const statsDownloads = <ThrowOnError extends boolean = false>(options?: Options<StatsDownloadsData, ThrowOnError>): RequestResult<StatsDownloadsResponses, StatsDownloadsErrors, ThrowOnError> => (options?.client ?? client).get<StatsDownloadsResponses, StatsDownloadsErrors, ThrowOnError>({ url: '/api/v1/stats/downloads', ...options });
+
+/**
+ * Return full detail for one payload: basic info plus countries breakdown.
+ */
+export const statsDownloadDetail = <ThrowOnError extends boolean = false>(options: Options<StatsDownloadDetailData, ThrowOnError>): RequestResult<StatsDownloadDetailResponses, StatsDownloadDetailErrors, ThrowOnError> => (options.client ?? client).get<StatsDownloadDetailResponses, StatsDownloadDetailErrors, ThrowOnError>({ url: '/api/v1/stats/downloads/{sha256}', ...options });
+
+/**
+ * Return the top-N SSH client public key fingerprints by distinct IP count.
+ */
+export const statsFingerprints = <ThrowOnError extends boolean = false>(options?: Options<StatsFingerprintsData, ThrowOnError>): RequestResult<StatsFingerprintsResponses, StatsFingerprintsErrors, ThrowOnError> => (options?.client ?? client).get<StatsFingerprintsResponses, StatsFingerprintsErrors, ThrowOnError>({ url: '/api/v1/stats/fingerprints', ...options });
+
+/**
  * Return session counts per (weekday, hour) cell.
  */
 export const statsHeatmap = <ThrowOnError extends boolean = false>(options?: Options<StatsHeatmapData, ThrowOnError>): RequestResult<StatsHeatmapResponses, StatsHeatmapErrors, ThrowOnError> => (options?.client ?? client).get<StatsHeatmapResponses, StatsHeatmapErrors, ThrowOnError>({ url: '/api/v1/stats/heatmap', ...options });
+
+/**
+ * Return one payload for the Overview map deck: choropleth + city markers.
+ */
+export const statsMap = <ThrowOnError extends boolean = false>(options?: Options<StatsMapData, ThrowOnError>): RequestResult<StatsMapResponses, StatsMapErrors, ThrowOnError> => (options?.client ?? client).get<StatsMapResponses, StatsMapErrors, ThrowOnError>({ url: '/api/v1/stats/map', ...options });
+
+/**
+ * Return session counts per outcome bucket, for the Sessions Outcome filter.
+ */
+export const statsOutcomes = <ThrowOnError extends boolean = false>(options?: Options<StatsOutcomesData, ThrowOnError>): RequestResult<StatsOutcomesResponses, StatsOutcomesErrors, ThrowOnError> => (options?.client ?? client).get<StatsOutcomesResponses, StatsOutcomesErrors, ThrowOnError>({ url: '/api/v1/stats/outcomes', ...options });
 
 /**
  * Return the password length histogram + charset-class breakdown.
@@ -62,6 +92,16 @@ export const statsPasswordComposition = <ThrowOnError extends boolean = false>(o
  * Return the top-N passwords of a given length (histogram drill-down).
  */
 export const statsPasswordsByLength = <ThrowOnError extends boolean = false>(options: Options<StatsPasswordsByLengthData, ThrowOnError>): RequestResult<StatsPasswordsByLengthResponses, StatsPasswordsByLengthErrors, ThrowOnError> => (options.client ?? client).get<StatsPasswordsByLengthResponses, StatsPasswordsByLengthErrors, ThrowOnError>({ url: '/api/v1/stats/passwords-by-length', ...options });
+
+/**
+ * Return the top-N SSH client versions ranked by session count.
+ */
+export const statsSshClients = <ThrowOnError extends boolean = false>(options?: Options<StatsSshClientsData, ThrowOnError>): RequestResult<StatsSshClientsResponses, StatsSshClientsErrors, ThrowOnError> => (options?.client ?? client).get<StatsSshClientsResponses, StatsSshClientsErrors, ThrowOnError>({ url: '/api/v1/stats/ssh-clients', ...options });
+
+/**
+ * Return the top-N direct-tcpip relay destinations grouped by (host, port).
+ */
+export const statsTcpipDestinations = <ThrowOnError extends boolean = false>(options?: Options<StatsTcpipDestinationsData, ThrowOnError>): RequestResult<StatsTcpipDestinationsResponses, StatsTcpipDestinationsErrors, ThrowOnError> => (options?.client ?? client).get<StatsTcpipDestinationsResponses, StatsTcpipDestinationsErrors, ThrowOnError>({ url: '/api/v1/stats/tcpip-destinations', ...options });
 
 /**
  * Return the top-N attacking countries ranked by session count.
@@ -96,7 +136,7 @@ export const healthLive = <ThrowOnError extends boolean = false>(options?: Optio
 /**
  * Return 200 when the DB is reachable, 503 otherwise.
  *
- * Unlike /health this touches the database, so gate traffic on this probe
- * and keep restarts on /health - a DB blip is not a dead process.
+ * This probe touches the database; gate traffic on it while /health gates
+ * restarts (a DB blip is not fatal).
  */
 export const healthReady = <ThrowOnError extends boolean = false>(options?: Options<HealthReadyData, ThrowOnError>): RequestResult<HealthReadyResponses, HealthReadyErrors, ThrowOnError> => (options?.client ?? client).get<HealthReadyResponses, HealthReadyErrors, ThrowOnError>({ url: '/health/ready', ...options });

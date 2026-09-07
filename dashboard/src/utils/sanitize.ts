@@ -1,30 +1,22 @@
 /**
- * Single source of truth for neutralizing attacker-controlled text before it is
- * rendered in the dashboard. Cowrie captures (usernames, passwords, command
- * input, download URLs) and server error messages can contain terminal control
- * sequences and Unicode bidi overrides that spoof how text renders. We either
- * strip or hex-escape those code points; ordinary whitespace can be preserved
- * for multi-line content (e.g. pretty-printed JSON).
- *
- * Used by both the session payload viewer (escape mode) and the error boundary
- * (strip mode) so the rule cannot drift between call sites.
+ * Neutralize attacker-controlled text by escaping or removing terminal control
+ * sequences and Unicode bidi overrides that spoof rendering.
  */
 
 export type SanitizeMode = 'escape' | 'strip'
 
 export interface SanitizeOptions {
-  /** 'escape': \xHH replacement; 'strip': remove. */
+  /** 'escape' renders a dangerous char as \xHH; 'strip' drops it. */
   mode?: SanitizeMode
   /** Keep TAB/LF/CR (default true). Set false for single-line messages. */
   allowWhitespace?: boolean
-  /** Optional UTF-8 byte cap, applied to the RAW input BEFORE the scan so a
-   *  pathological payload never gets fully scanned. Appends a truncation marker. */
+  /** UTF-8 byte cap on the raw input, applied before the scan so a pathological
+   *  payload is never fully scanned. Appends a truncation marker. */
   maxBytes?: number
 }
 
 const TRUNCATION_MARKER = '\n... [truncated]'
 
-/** True for C0 controls (minus allowed whitespace), DEL/C1, bidi marks + overrides. */
 function isDangerous(code: number, allowWhitespace: boolean): boolean {
   const isAllowedWs = allowWhitespace && (code === 0x09 || code === 0x0a || code === 0x0d)
   if (isAllowedWs) return false

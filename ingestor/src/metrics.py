@@ -1,11 +1,5 @@
-"""Prometheus metrics for the ingestor.
-
-Exposed on `Config.metrics_port` via `start_http_server`.
-
-All counters use the singular process registry so the metrics endpoint
-needs no per-test isolation in unit tests (we reset via `_REGISTRY.clear()`
-in conftest if needed).
-"""
+"""Prometheus metrics for the ingestor; singleton registry reset via
+_REGISTRY.clear() in conftest for test isolation."""
 
 from __future__ import annotations
 

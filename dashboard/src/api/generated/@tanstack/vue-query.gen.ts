@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/vue-query';
 
 import { client } from '../client.gen';
-import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCountries, statsHeatmap, statsPasswordComposition, statsPasswordsByLength, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
-import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
+import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCountries, statsCountryDetail, statsDownloadDetail, statsDownloads, statsFingerprints, statsHeatmap, statsMap, statsOutcomes, statsPasswordComposition, statsPasswordsByLength, statsSshClients, statsTcpipDestinations, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
+import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsCountryDetailData, StatsCountryDetailError, StatsCountryDetailResponse, StatsDownloadDetailData, StatsDownloadDetailError, StatsDownloadDetailResponse, StatsDownloadsData, StatsDownloadsError, StatsDownloadsResponse, StatsFingerprintsData, StatsFingerprintsError, StatsFingerprintsResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsMapData, StatsMapError, StatsMapResponse, StatsOutcomesData, StatsOutcomesError, StatsOutcomesResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsSshClientsData, StatsSshClientsError, StatsSshClientsResponse, StatsTcpipDestinationsData, StatsTcpipDestinationsError, StatsTcpipDestinationsResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -206,6 +206,78 @@ export const statsCountriesOptions = (options?: Options<StatsCountriesData>) => 
     queryKey: statsCountriesQueryKey(options)
 });
 
+export const statsCountryDetailQueryKey = (options: Options<StatsCountryDetailData>) => createQueryKey('statsCountryDetail', options, false, ['stats']);
+
+/**
+ * Return the country intel-drawer bundle: totals, networks, credentials, trend.
+ */
+export const statsCountryDetailOptions = (options: Options<StatsCountryDetailData>) => queryOptions<StatsCountryDetailResponse, StatsCountryDetailError, StatsCountryDetailResponse, ReturnType<typeof statsCountryDetailQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsCountryDetail({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsCountryDetailQueryKey(options)
+});
+
+export const statsDownloadsQueryKey = (options?: Options<StatsDownloadsData>) => createQueryKey('statsDownloads', options, false, ['stats']);
+
+/**
+ * Return the top-N downloaded payloads grouped by SHA256.
+ */
+export const statsDownloadsOptions = (options?: Options<StatsDownloadsData>) => queryOptions<StatsDownloadsResponse, StatsDownloadsError, StatsDownloadsResponse, ReturnType<typeof statsDownloadsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsDownloads({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsDownloadsQueryKey(options)
+});
+
+export const statsDownloadDetailQueryKey = (options: Options<StatsDownloadDetailData>) => createQueryKey('statsDownloadDetail', options, false, ['stats']);
+
+/**
+ * Return full detail for one payload: basic info plus countries breakdown.
+ */
+export const statsDownloadDetailOptions = (options: Options<StatsDownloadDetailData>) => queryOptions<StatsDownloadDetailResponse, StatsDownloadDetailError, StatsDownloadDetailResponse, ReturnType<typeof statsDownloadDetailQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsDownloadDetail({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsDownloadDetailQueryKey(options)
+});
+
+export const statsFingerprintsQueryKey = (options?: Options<StatsFingerprintsData>) => createQueryKey('statsFingerprints', options, false, ['stats']);
+
+/**
+ * Return the top-N SSH client public key fingerprints by distinct IP count.
+ */
+export const statsFingerprintsOptions = (options?: Options<StatsFingerprintsData>) => queryOptions<StatsFingerprintsResponse, StatsFingerprintsError, StatsFingerprintsResponse, ReturnType<typeof statsFingerprintsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsFingerprints({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsFingerprintsQueryKey(options)
+});
+
 export const statsHeatmapQueryKey = (options?: Options<StatsHeatmapData>) => createQueryKey('statsHeatmap', options, false, ['stats']);
 
 /**
@@ -222,6 +294,42 @@ export const statsHeatmapOptions = (options?: Options<StatsHeatmapData>) => quer
         return data;
     },
     queryKey: statsHeatmapQueryKey(options)
+});
+
+export const statsMapQueryKey = (options?: Options<StatsMapData>) => createQueryKey('statsMap', options, false, ['stats']);
+
+/**
+ * Return one payload for the Overview map deck: choropleth + city markers.
+ */
+export const statsMapOptions = (options?: Options<StatsMapData>) => queryOptions<StatsMapResponse, StatsMapError, StatsMapResponse, ReturnType<typeof statsMapQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsMap({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsMapQueryKey(options)
+});
+
+export const statsOutcomesQueryKey = (options?: Options<StatsOutcomesData>) => createQueryKey('statsOutcomes', options, false, ['stats']);
+
+/**
+ * Return session counts per outcome bucket, for the Sessions Outcome filter.
+ */
+export const statsOutcomesOptions = (options?: Options<StatsOutcomesData>) => queryOptions<StatsOutcomesResponse, StatsOutcomesError, StatsOutcomesResponse, ReturnType<typeof statsOutcomesQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsOutcomes({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsOutcomesQueryKey(options)
 });
 
 export const statsPasswordCompositionQueryKey = (options?: Options<StatsPasswordCompositionData>) => createQueryKey('statsPasswordComposition', options, false, ['stats']);
@@ -258,6 +366,42 @@ export const statsPasswordsByLengthOptions = (options: Options<StatsPasswordsByL
         return data;
     },
     queryKey: statsPasswordsByLengthQueryKey(options)
+});
+
+export const statsSshClientsQueryKey = (options?: Options<StatsSshClientsData>) => createQueryKey('statsSshClients', options, false, ['stats']);
+
+/**
+ * Return the top-N SSH client versions ranked by session count.
+ */
+export const statsSshClientsOptions = (options?: Options<StatsSshClientsData>) => queryOptions<StatsSshClientsResponse, StatsSshClientsError, StatsSshClientsResponse, ReturnType<typeof statsSshClientsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsSshClients({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsSshClientsQueryKey(options)
+});
+
+export const statsTcpipDestinationsQueryKey = (options?: Options<StatsTcpipDestinationsData>) => createQueryKey('statsTcpipDestinations', options, false, ['stats']);
+
+/**
+ * Return the top-N direct-tcpip relay destinations grouped by (host, port).
+ */
+export const statsTcpipDestinationsOptions = (options?: Options<StatsTcpipDestinationsData>) => queryOptions<StatsTcpipDestinationsResponse, StatsTcpipDestinationsError, StatsTcpipDestinationsResponse, ReturnType<typeof statsTcpipDestinationsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await statsTcpipDestinations({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: statsTcpipDestinationsQueryKey(options)
 });
 
 export const statsTopCountriesQueryKey = (options?: Options<StatsTopCountriesData>) => createQueryKey('statsTopCountries', options, false, ['stats']);
@@ -373,8 +517,8 @@ export const healthReadyQueryKey = (options?: Options<HealthReadyData>) => creat
 /**
  * Return 200 when the DB is reachable, 503 otherwise.
  *
- * Unlike /health this touches the database, so gate traffic on this probe
- * and keep restarts on /health - a DB blip is not a dead process.
+ * This probe touches the database; gate traffic on it while /health gates
+ * restarts (a DB blip is not fatal).
  */
 export const healthReadyOptions = (options?: Options<HealthReadyData>) => queryOptions<HealthReadyResponse, HealthReadyError, HealthReadyResponse, ReturnType<typeof healthReadyQueryKey>>({
     queryFn: async ({ queryKey, signal }) => {

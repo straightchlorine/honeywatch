@@ -24,7 +24,7 @@ def classify_category(
       auth_attempt_count: number of login attempts
 
     Returns:
-      str — one of SESSION_CATEGORIES
+      str - one of SESSION_CATEGORIES
     """
     if command_count > 0:
         return "active"

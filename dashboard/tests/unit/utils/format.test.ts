@@ -15,9 +15,9 @@ describe('fmtNumber', () => {
   })
 
   it('renders an em dash for missing or non-finite values (never throws)', () => {
-    expect(fmtNumber(undefined)).toBe('—')
-    expect(fmtNumber(null)).toBe('—')
-    expect(fmtNumber(NaN)).toBe('—')
+    expect(fmtNumber(undefined)).toBe('-')
+    expect(fmtNumber(null)).toBe('-')
+    expect(fmtNumber(NaN)).toBe('-')
   })
 })
 
@@ -48,9 +48,9 @@ describe('fmtCompact', () => {
   })
 
   it('renders an em dash for missing or non-finite values', () => {
-    expect(fmtCompact(undefined)).toBe('—')
-    expect(fmtCompact(null)).toBe('—')
-    expect(fmtCompact(NaN)).toBe('—')
+    expect(fmtCompact(undefined)).toBe('-')
+    expect(fmtCompact(null)).toBe('-')
+    expect(fmtCompact(NaN)).toBe('-')
   })
 })
 

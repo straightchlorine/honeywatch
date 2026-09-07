@@ -2,7 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask_smorest import Blueprint
+from flask import after_this_request
+from flask_smorest import Blueprint, abort
 
 from src.extensions import get_db
 from src.schemas.stats import (
@@ -13,10 +14,21 @@ from src.schemas.stats import (
     AuthOutcomesResponse,
     CountriesQuery,
     CountriesResponse,
+    CountryDetailPath,
+    CountryDetailResponse,
+    FingerprintResponse,
     HeatmapPointResponse,
     HeatmapQuery,
+    MapResponse,
+    OutcomeCountsResponse,
+    OutcomesQuery,
     PasswordCompositionResponse,
     PasswordsByLengthQuery,
+    PayloadDetailPath,
+    PayloadDetailResponse,
+    PayloadDownloadResponse,
+    SshClientResponse,
+    TcpipDestinationResponse,
     TopCountryResponse,
     TopCredentialResponse,
     TopCredentialsQuery,
@@ -26,14 +38,30 @@ from src.schemas.stats import (
     TrendQuery,
     TrendResponse,
 )
-from src.services.stats import activity, countries, credentials
+from src.services.stats import (
+    activity,
+    clients,
+    countries,
+    credentials,
+    map_deck,
+    outcomes,
+    payloads,
+)
 from src.services.types import (
     ActivityBucketDict,
     AuthOutcomesDict,
     CountriesDict,
     CountryAsnDict,
+    CountryDetailDict,
+    FingerprintDict,
     HeatmapPointDict,
+    MapDataDict,
+    OutcomeCountsDict,
     PasswordCompositionDict,
+    PayloadDetailDict,
+    PayloadDownloadDict,
+    SshClientDict,
+    TcpipDestinationDict,
     TopCountryDict,
     TopCredentialDict,
     TopPasswordDict,
@@ -133,6 +161,17 @@ def stats_auth_outcomes() -> AuthOutcomesDict:
     return credentials.auth_outcomes(get_db())
 
 
+@stats_bp.route("/outcomes")
+@stats_bp.doc(operationId="statsOutcomes")
+@stats_bp.arguments(OutcomesQuery, location="query")
+@stats_bp.response(200, OutcomeCountsResponse)
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_outcomes(query_args: dict[str, Any]) -> OutcomeCountsDict:
+    """Return session counts per outcome bucket, for the Sessions Outcome filter."""
+    return outcomes.outcome_counts(get_db(), country=query_args.get("country"))
+
+
 @stats_bp.route("/password-composition")
 @stats_bp.doc(operationId="statsPasswordComposition")
 @stats_bp.response(200, PasswordCompositionResponse)
@@ -188,3 +227,98 @@ def stats_trend(query_args: dict[str, Any]) -> TrendDict:
 def stats_heatmap(query_args: dict[str, Any]) -> list[HeatmapPointDict]:
     """Return session counts per (weekday, hour) cell."""
     return activity.heatmap(get_db(), query_args.get("country"))
+
+
+@stats_bp.route("/map")
+@stats_bp.doc(operationId="statsMap")
+@stats_bp.response(200, MapResponse)
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_map() -> MapDataDict:
+    """Return one payload for the Overview map deck: choropleth + city markers."""
+
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
+    return map_deck.map_data(get_db())
+
+
+@stats_bp.route("/countries/<a2>")
+@stats_bp.doc(operationId="statsCountryDetail")
+@stats_bp.arguments(CountryDetailPath, location="path")
+@stats_bp.response(200, CountryDetailResponse)
+@stats_bp.alt_response(404, "NotFound")
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_country_detail(_path_args: dict[str, Any], a2: str) -> CountryDetailDict:
+    """Return the country intel-drawer bundle: totals, networks, credentials, trend."""
+    result = countries.country_detail(get_db(), a2.upper())
+    if result is None:
+        abort(404, message="Country not found")
+
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=300"
+        return response
+
+    return result
+
+
+@stats_bp.route("/ssh-clients")
+@stats_bp.doc(operationId="statsSshClients")
+@stats_bp.arguments(TopNQuery, location="query")
+@stats_bp.response(200, SshClientResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_ssh_clients(query_args: dict[str, Any]) -> list[SshClientDict]:
+    """Return the top-N SSH client versions ranked by session count."""
+    return clients.ssh_clients(get_db(), top_n=query_args["top_n"])
+
+
+@stats_bp.route("/fingerprints")
+@stats_bp.doc(operationId="statsFingerprints")
+@stats_bp.arguments(TopNQuery, location="query")
+@stats_bp.response(200, FingerprintResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_fingerprints(query_args: dict[str, Any]) -> list[FingerprintDict]:
+    """Return the top-N SSH client public key fingerprints by distinct IP count."""
+    return clients.fingerprints(get_db(), top_n=query_args["top_n"])
+
+
+@stats_bp.route("/downloads")
+@stats_bp.doc(operationId="statsDownloads")
+@stats_bp.arguments(TopNQuery, location="query")
+@stats_bp.response(200, PayloadDownloadResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_downloads(query_args: dict[str, Any]) -> list[PayloadDownloadDict]:
+    """Return the top-N downloaded payloads grouped by SHA256."""
+    return payloads.downloads(get_db(), top_n=query_args["top_n"])
+
+
+@stats_bp.route("/downloads/<sha256>")
+@stats_bp.doc(operationId="statsDownloadDetail")
+@stats_bp.arguments(PayloadDetailPath, location="path")
+@stats_bp.response(200, PayloadDetailResponse)
+@stats_bp.alt_response(404, "NotFound")
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_download_detail(_path_args: dict[str, Any], sha256: str) -> PayloadDetailDict:
+    """Return full detail for one payload: basic info plus countries breakdown."""
+    result = payloads.payload_detail(get_db(), sha256)
+    if result is None:
+        abort(404, message="Payload not found")
+    return result
+
+
+@stats_bp.route("/tcpip-destinations")
+@stats_bp.doc(operationId="statsTcpipDestinations")
+@stats_bp.arguments(TopNQuery, location="query")
+@stats_bp.response(200, TcpipDestinationResponse(many=True))
+@stats_bp.alt_response(422, "UnprocessableEntity")
+@stats_bp.alt_response(500, "InternalServerError")
+def stats_tcpip_destinations(query_args: dict[str, Any]) -> list[TcpipDestinationDict]:
+    """Return the top-N direct-tcpip relay destinations grouped by (host, port)."""
+    return payloads.tcpip_destinations(get_db(), top_n=query_args["top_n"])

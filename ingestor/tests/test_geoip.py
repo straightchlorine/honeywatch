@@ -12,10 +12,9 @@ from src import geoip
 
 @pytest.fixture(autouse=True)
 def _isolated_geoip_state() -> Generator[None]:
-    """Reset module globals so tests don't leak cached readers/warnings.
+    """Reset module globals to prevent test pollution.
 
-    `_lookup_cached` is `lru_cache`d and the readers live in module globals,
-    so a prior test's state would otherwise poison this one.
+    lru_cache and module-level readers leak state between tests.
     """
     geoip.close()
     geoip._warned.clear()
@@ -48,8 +47,8 @@ def test_corrupt_mmdb_warns_once(
     monkeypatch.setattr(geoip, "_ASN_PATH", asn_path)
 
     with caplog.at_level("WARNING", logger="src.geoip"):
-        # Two different IPs so the lru_cache doesn't just return the same
-        # cached None without re-entering _open_readers.
+        # Multiple IPs to trigger _open_readers each time (lru_cache would
+        # otherwise return cached None without re-entering).
         geoip.lookup("8.8.8.8")
         geoip.lookup("1.1.1.1")
 

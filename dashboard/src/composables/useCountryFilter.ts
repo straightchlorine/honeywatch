@@ -1,8 +1,5 @@
 /**
- * Country scope lives in the URL (?country=XX); empty = all countries. Shared by
- * ActivityView and SessionsView, which both read/validate/normalize the same
- * alpha-2 param. This is the single source of the validation regex so the two
- * views can never drift on what counts as a valid country code.
+ * Country scope validation regex, shared by views to prevent drift on valid country codes.
  */
 import { computed, type ComputedRef } from 'vue'
 import { useRoute } from 'vue-router'
@@ -21,12 +18,7 @@ export interface CountryFilter {
   countryQuery: ComputedRef<{ country?: string }>
 }
 
-/**
- * Reads the `?country=XX` URL param, validates it against the alpha-2 regex and
- * normalizes it to upper case. The views own their own URL writes (their setters
- * push different query shapes), so this composable is read-only; it exposes the
- * validated value plus the ready-to-spread `countryQuery` both views need.
- */
+/** Validates ?country=XX param; read-only as each view manages its own URL updates. */
 export function useCountryFilter(): CountryFilter {
   const route = useRoute()
 
