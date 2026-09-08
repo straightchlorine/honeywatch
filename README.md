@@ -10,12 +10,6 @@ SSH honeypot with attack visualization and threat analysis.
   </a>
 </p>
 
-
-|           | Health | Uptime (24h) |
-|-----------|:------:|:------------:|
-| Dashboard | [![](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-dashboard/health/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-dashboard) | [![](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-dashboard/uptimes/24h/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-dashboard) |
-| API       | [![](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-api/health/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-api) | [![](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-api/uptimes/24h/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-api) |
-
 ## Architecture
 
 ```mermaid
@@ -46,6 +40,24 @@ a tinyproxy sidecar (`egress-proxy`).
 The dashboard routes `/api/*` through a Tailscale egress pod across the tailnet
 to the honeypot's nginx. All k8s manifests, including the ArgoCD `Application`,
 live in `k8s/`.
+
+<div align="center">
+
+<table>
+  <tr><th></th><th>Health</th><th>Uptime (24h)</th></tr>
+  <tr>
+    <td>Dashboard</td>
+    <td align="center"><a href="https://status.codextechnologies.org/endpoints/external_honeywatch-dashboard"><img src="https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-dashboard/health/badge.svg" alt="Dashboard health"></a></td>
+    <td align="center"><a href="https://status.codextechnologies.org/endpoints/external_honeywatch-dashboard"><img src="https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-dashboard/uptimes/24h/badge.svg" alt="Dashboard uptime, 24h"></a></td>
+  </tr>
+  <tr>
+    <td>API</td>
+    <td align="center"><a href="https://status.codextechnologies.org/endpoints/external_honeywatch-api"><img src="https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-api/health/badge.svg" alt="API health"></a></td>
+    <td align="center"><a href="https://status.codextechnologies.org/endpoints/external_honeywatch-api"><img src="https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-api/uptimes/24h/badge.svg" alt="API uptime, 24h"></a></td>
+  </tr>
+</table>
+
+</div>
 
 ## What It Does
 
