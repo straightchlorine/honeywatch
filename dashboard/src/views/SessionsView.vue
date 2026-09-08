@@ -836,10 +836,10 @@
        without that allowance it overflowed the cell onto the badges. Icon
        badges are short enough that Story can give up the width. */
     table.data th:nth-child(1) {
-      width: 56%;
+      width: 46%;
     }
     table.data th:nth-child(2) {
-      width: 44%;
+      width: 54%;
     }
     table.data th:nth-child(n + 3),
     table.data :deep(td:nth-child(n + 3)) {

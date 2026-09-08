@@ -193,10 +193,17 @@
     transform: rotate(90deg);
   }
 
+  /* Shrinks before the copy button does, so the button always stays inside the
+     cell instead of spilling onto the story column. The id is decorative - the
+     row's accessible name carries the real description. */
   .srow .sid {
     font-family: var(--font-mono);
     font-size: 12.5px;
     color: var(--accent);
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   .srow.quiet td {
@@ -208,10 +215,17 @@
   }
 
   .sid-wrap {
-    display: inline-flex;
+    display: flex;
+    flex: 1;
     align-items: center;
     gap: 4px;
     min-width: 0;
+  }
+
+  /* Parked at the cell's trailing edge: sitting straight after the id put it
+     under the middle of the row, where a tap meant to expand hit copy instead. */
+  .sid-copy {
+    margin-left: auto;
   }
 
   .sid-copy {

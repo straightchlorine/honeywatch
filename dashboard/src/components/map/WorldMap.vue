@@ -123,7 +123,9 @@
     ro.observe(svgEl.value)
   })
   onBeforeUnmount(() => ro?.disconnect())
-  const minHitR = computed(() => 12 / (cssPerUnit.value * k.value))
+  // 12.2, not 12: the viewBox-to-CSS transform chain rounds the painted circle a
+  // hair under, landing at 23.99997 CSS px and failing the 24px floor outright.
+  const minHitR = computed(() => 12.2 / (cssPerUnit.value * k.value))
 
   // Hi-res geometry loaded past k=3 (base 0.53px at k=1 becomes 8.5px at k=16
   // on 1080p). Skipped on narrow viewports where base data never pixel-limits.

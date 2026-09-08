@@ -488,6 +488,9 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/')
     await dismissIntro(page)
     const scene = page.locator('svg.worldmap > g')
+    // Mobile opens zoomed on Europe, so reset to the world view first - this
+    // test is specifically about the clamp at k = minK.
+    await page.getByRole('button', { name: 'Reset view' }).click()
     const before = await scene.getAttribute('transform')
     await page.locator('svg.worldmap').hover()
     await page.mouse.down()
@@ -595,8 +598,9 @@ test.describe('dashboard accessibility smoke', () => {
     await dismissIntro(page)
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
 
-    // Story badge (interest-score based, not category) renders in the table.
-    await expect(page.getByText('control', { exact: true }).first()).toBeVisible()
+    // Story badges are a count plus an icon, so the visible text is just a
+    // number; assert the accessible name that carries the meaning.
+    await expect(page.getByLabel(/command(s)? typed/).first()).toBeVisible()
 
     // Outcome is a popover of checkboxes behind an "Outcome" trigger, not a
     // row of buttons: open it, then tick the box.
