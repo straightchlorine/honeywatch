@@ -257,19 +257,16 @@
     }))
   }
 
-
   const TOOLTIP_COMB =
     'Rows are the top usernames, columns the top passwords. Darker means more attempts - a ring means the honeypot let that pair in.'
   const TOOLTIP_WORKED =
     'The honeypot lets some logins through on purpose, to watch what an attacker does next. It is not a real weak password.'
   const TOOLTIP_ANATOMY =
     'The length and character types of every password attackers have tried here.'
-  const TOOLTIP_LENGTH =
-    'How many passwords have each length. Click a bar to see them.'
+  const TOOLTIP_LENGTH = 'How many passwords have each length. Click a bar to see them.'
   const TOOLTIP_COMPOSITION =
     'What passwords are made of - digits only, letters only, mixed, or with symbols.'
-  const TOOLTIP_DISTINCT_PASSWORDS =
-    'Every different password ever tried against the honeypot.'
+  const TOOLTIP_DISTINCT_PASSWORDS = 'Every different password ever tried against the honeypot.'
   const TOOLTIP_DISTINCT_USERNAMES =
     'Every different username ever tried, whatever password went with it.'
   const TOOLTIP_AUTH_ATTEMPTS =
@@ -288,17 +285,16 @@
       <div class="page-head">
         <h1>Credentials</h1>
         <span class="sub"
-          >{{ fmtNumber(outcomes.total) }} guesses at the door &middot; what they typed, and what got them in</span
+          >{{ fmtNumber(outcomes.total) }} guesses at the door &middot; what got them in</span
         >
       </div>
-
 
       <div class="stat-row">
         <StatTile label="Distinct passwords" :value="fmtNumber(outcomes.unique_passwords)">
           <template #label-extra>
             <InfoDot title="Distinct passwords" :text="TOOLTIP_DISTINCT_PASSWORDS" />
           </template>
-          <template #meta>{{ shownPasswordCount }} shown in the grid</template>
+          <template #meta>top {{ shownPasswordCount }} shown in the grid below</template>
         </StatTile>
         <StatTile label="Distinct usernames" :value="fmtNumber(outcomes.unique_usernames)">
           <template #label-extra>
@@ -554,7 +550,6 @@
     border: 1.5px solid var(--ok);
     display: inline-block;
   }
-
 
   .stat-row {
     flex: none;
@@ -887,9 +882,14 @@
       flex-direction: column;
     }
 
+    /* Own row under the title, with the ramp and the accepted key pushed apart
+       so they stop reading as one run-on label. */
     .matrix-legend {
       flex-wrap: wrap;
-      gap: 10px;
+      margin-left: 0;
+      flex-basis: 100%;
+      justify-content: space-between;
+      gap: 6px 14px;
     }
 
     .matrix-card :deep(svg.hex-matrix) {
@@ -919,6 +919,14 @@
        the whole (already-scrolling) page. */
     .worked-list {
       max-height: 168px;
+    }
+
+    /* The card title takes the first line, so the chips get a full row and stay
+       side by side instead of stacking. */
+    .toggle-row {
+      margin-left: 0;
+      flex-basis: 100%;
+      flex-wrap: nowrap;
     }
   }
 </style>

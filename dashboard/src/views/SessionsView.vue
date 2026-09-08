@@ -773,6 +773,16 @@
     appearance: textfield;
   }
 
+  @media (max-width: 900px) {
+    /* Baseline-aligned on one line, the count and subtitle wrap around the
+       heading and read as a broken sentence; give each its own line. */
+    .page-head {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 2px;
+    }
+  }
+
   @media (max-width: 760px) {
     .filters {
       flex-direction: column;
@@ -820,15 +830,16 @@
 
     /* Both remaining columns must drop their desktop px widths (340px alone
        would overflow a phone screen) - Session flexes, Story sizes to its badges. */
-    /* Not `auto` for both: under table-layout fixed that splits 50/50, leaving
-       Story ~181px for ~185px of badges, so all three wrapped to a second line
-       and every row grew from 36px to 56px. Session needs 166px (chevron, hex,
-       12-char id, gaps, padding); the rest goes to Story. */
+    /* Not `auto` for both: under table-layout fixed that splits 50/50 and the
+       badges wrap to a second line, growing every row. Session must also fit
+       the copy button, which `@media (hover: none)` pins visible on touch -
+       without that allowance it overflowed the cell onto the badges. Icon
+       badges are short enough that Story can give up the width. */
     table.data th:nth-child(1) {
-      width: 46%;
+      width: 56%;
     }
     table.data th:nth-child(2) {
-      width: 54%;
+      width: 44%;
     }
     table.data th:nth-child(n + 3),
     table.data :deep(td:nth-child(n + 3)) {

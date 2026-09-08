@@ -96,4 +96,20 @@
     display: inline-flex;
     align-items: center;
   }
+
+  /* Chips share a row with a card title on mobile, so they shed padding rather
+     than pushing each other onto separate lines. 24px keeps the WCAG 2.5.8
+     target because the whole pill stays tappable. */
+  @media (max-width: 900px) {
+    .chip {
+      font-size: 12px;
+      padding: 4px 10px;
+      min-height: 26px;
+      gap: 4px;
+    }
+
+    .chip-wrap:has(.chip-trailing) {
+      padding-right: 6px;
+    }
+  }
 </style>

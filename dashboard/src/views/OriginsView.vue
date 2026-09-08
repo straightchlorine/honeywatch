@@ -85,7 +85,6 @@
     () => (fingerprintsQ.data.value as FingerprintRow[] | undefined) ?? [],
   )
 
-
   const netScale = computed(() => cappedFracs((asnsQ.data.value ?? []).map((a) => a.sessions)))
   const networkRows = computed<RankRow[]>(() => {
     const items = asnsQ.data.value ?? []
@@ -151,7 +150,6 @@
     void router.push({ path: '/', query: p.country_code ? { country: p.country_code } : {} })
   }
 
-
   const TOOLTIP_CLIENTS =
     'The software attackers used to connect - most attacks reuse the same few programs.'
   const TOOLTIP_SPRAYED_KEYS =
@@ -194,21 +192,21 @@
       </div>
 
       <div class="stat-row">
-        <StatTile label="Countries seen" :value="fmtNumber(totalCountries)">
+        <StatTile v-if="topCountry" label="Top origin" :value="fmtCompact(topCountry.sessions)">
           <template #meta>
-            <span>{{ fmtNumber(sessionsShown) }} sessions with a known country</span>
-            <InfoDot
-              title="Share of world"
-              :text="`${((totalCountries / WORLD_COUNTRY_COUNT) * 100).toFixed(1)}% of ${WORLD_COUNTRY_COUNT} recognized countries`"
-            />
+            {{ useCountryFlag(topCountry.country_code) }} {{ topCountry.country }}
           </template>
         </StatTile>
         <StatTile label="Located" :value="geoResolvedLabel">
           <template #meta>of sessions have a known country</template>
         </StatTile>
-        <StatTile v-if="topCountry" label="Top origin" :value="fmtCompact(topCountry.sessions)">
+        <StatTile label="Countries seen" :value="fmtNumber(totalCountries)">
           <template #meta>
-            {{ useCountryFlag(topCountry.country_code) }} {{ topCountry.country }}
+            <span>{{ fmtNumber(sessionsShown) }} sessions with a country attributed</span>
+            <InfoDot
+              title="Share of world"
+              :text="`${((totalCountries / WORLD_COUNTRY_COUNT) * 100).toFixed(1)}% of ${WORLD_COUNTRY_COUNT} recognized countries`"
+            />
           </template>
         </StatTile>
       </div>
@@ -366,9 +364,31 @@
       row-gap: 8px;
     }
 
+    /* Full-bleed scroller: negative margin cancels the shell's padding so tiles
+       reach both screen edges, and the padding puts the inset back inside the
+       scroll area where it cannot clip the first or last tile. */
     .stat-row {
-      grid-auto-flow: row;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      margin-inline: -14px;
+      padding-inline: 14px;
+      scroll-padding-inline: 14px;
+      scroll-snap-type: x proximity;
+    }
+
+    .stat-row::-webkit-scrollbar {
+      display: none;
+    }
+
+    /* Capped so a second tile is always partly visible, which is what signals
+       the row scrolls; the meta line wraps instead of stretching the tile. */
+    .stat-row > * {
+      flex: 0 0 auto;
+      min-width: 158px;
+      max-width: 240px;
+      scroll-snap-align: start;
     }
 
     .grid-main {
@@ -388,6 +408,14 @@
 
     .right-col :deep(.card) {
       max-height: 340px;
+    }
+
+    /* The card title takes the first line, so the chips get a full row and stay
+       side by side instead of stacking. */
+    .toggle-row {
+      margin-left: 0;
+      flex-basis: 100%;
+      flex-wrap: nowrap;
     }
   }
 </style>

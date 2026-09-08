@@ -82,11 +82,24 @@
       return undefined
     }
   }
+  // A phone shows the whole world as an unreadable thumbnail, so a first visit
+  // opens over Europe instead. Only the opening view: the home button still
+  // returns to the full world, and a stored view always wins.
+  const MOBILE_OPEN = { lon: 15, lat: 48, k: 6 }
+  function initialView(): PanZoomState | undefined {
+    const saved = loadView()
+    if (saved) return saved
+    if (typeof window === 'undefined' || window.innerWidth > 900) return undefined
+    const [px, py] = geometry.project(MOBILE_OPEN.lon, MOBILE_OPEN.lat)
+    const k = MOBILE_OPEN.k
+    return { k, tx: geometry.width / 2 - k * px, ty: geometry.height / 2 - k * py }
+  }
+
   let saveTimer: ReturnType<typeof setTimeout> | undefined
   const { k, interacting, transform, reset, zoomIn, zoomOut, flyTo, handlers } = usePanZoom(svgEl, {
     minK: 1,
     maxK: 16,
-    initial: loadView(),
+    initial: initialView(),
     onChange: (s) => {
       clearTimeout(saveTimer)
       saveTimer = setTimeout(() => sessionStorage.setItem(VIEW_KEY, JSON.stringify(s)), 250)

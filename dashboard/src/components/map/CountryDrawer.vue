@@ -5,6 +5,7 @@
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { fmtNumber } from '@/utils/format'
   import { ICONS } from '@/components/icons'
+  import InfoDot from '@/components/base/InfoDot.vue'
   import RankList, { type RankRow } from '../base/RankList.vue'
   import Sparkline from '../charts/Sparkline.vue'
   import RoundedButton from '../base/RoundedButton.vue'
@@ -145,103 +146,28 @@
       </div>
       <div class="heading-with-info">
         <h3>Top networks</h3>
-        <button
-          type="button"
-          tabindex="0"
-          class="info-btn"
-          :aria-label="'Top networks: the internet providers attackers from this country use most.'"
-          @pointerenter="
-            tt.show('Top networks', [
-              [
-                '',
-                'The internet providers attackers from this country use most.',
-              ],
-            ])
-          "
-          @pointermove="tt.move($event)"
-          @pointerleave="tt.hide()"
-          @focus="
-            tt.show('Top networks', [
-              [
-                '',
-                'The internet providers attackers from this country use most.',
-              ],
-            ])
-          "
-          @blur="tt.hide()"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path :d="ICONS.info" />
-          </svg>
-        </button>
+        <InfoDot
+          title="Top networks"
+          text="The internet providers attackers from this country use most."
+        />
       </div>
-      <RankList v-if="asnRows.length" :rows="asnRows" label-width="140px" hold-to-show-tooltip />
+      <RankList v-if="asnRows.length" :rows="asnRows" label-width="140px" />
       <p v-else class="empty">No networks recorded.</p>
       <div class="heading-with-info">
         <h3>Top credentials tried</h3>
-        <button
-          type="button"
-          tabindex="0"
-          class="info-btn"
-          :aria-label="'Top credentials tried: the username and password pairs attackers from this country tried most.'"
-          @pointerenter="
-            tt.show('Top credentials tried', [
-              [
-                '',
-                'The most common username:password combinations attackers tried from this country.',
-              ],
-            ])
-          "
-          @pointermove="tt.move($event)"
-          @pointerleave="tt.hide()"
-          @focus="
-            tt.show('Top credentials tried', [
-              [
-                '',
-                'The most common username:password combinations attackers tried from this country.',
-              ],
-            ])
-          "
-          @blur="tt.hide()"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path :d="ICONS.info" />
-          </svg>
-        </button>
+        <InfoDot
+          title="Top credentials tried"
+          text="The most common username:password combinations attackers tried from this country."
+        />
       </div>
-      <RankList v-if="credRows.length" :rows="credRows" label-width="140px" mono hold-to-show-tooltip />
+      <RankList v-if="credRows.length" :rows="credRows" label-width="140px" mono />
       <p v-else class="empty">No login attempts recorded.</p>
       <div class="heading-with-info">
         <h3>Top cities</h3>
-        <button
-          type="button"
-          tabindex="0"
-          class="info-btn"
-          :aria-label="'Top cities: the busiest cities in this country - click one to find it on the map.'"
-          @pointerenter="
-            tt.show('Top cities', [
-              [
-                '',
-                'The busiest cities in this country by session count - click one to locate it on the map.',
-              ],
-            ])
-          "
-          @pointermove="tt.move($event)"
-          @pointerleave="tt.hide()"
-          @focus="
-            tt.show('Top cities', [
-              [
-                '',
-                'The busiest cities in this country by session count - click one to locate it on the map.',
-              ],
-            ])
-          "
-          @blur="tt.hide()"
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path :d="ICONS.info" />
-          </svg>
-        </button>
+        <InfoDot
+          title="Top cities"
+          text="The busiest cities in this country by session count - click one to locate it on the map."
+        />
       </div>
       <ul v-if="detail.top_cities.length" class="cities-list">
         <li v-for="(city, idx) in detail.top_cities" :key="cityKey(city)">
@@ -348,40 +274,9 @@
     color: var(--text-dim);
   }
 
-  .info-btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 1rem;
-    height: 1rem;
-    padding: 0;
-    background: transparent;
-    border: none;
-    border-radius: 0.25rem;
-    color: var(--text-muted);
-    cursor: pointer;
-    transition:
-      color 120ms ease,
-      background 120ms ease;
-    flex-shrink: 0;
-  }
 
-  .info-btn:hover {
-    color: var(--text);
-    background: var(--surface-hover);
-  }
 
-  .info-btn:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-    border-radius: 2px;
-  }
 
-  .info-btn svg {
-    width: 0.75rem;
-    height: 0.75rem;
-    fill: currentColor;
-  }
 
   .mono {
     font-family: var(--font-mono);

@@ -714,8 +714,11 @@
       overflow: visible;
     }
 
+    /* The header now wraps onto two lines, so a max-height alone left only a
+       row or two of the list visible; give it a floor as well. */
     .relay-card {
-      max-height: 320px;
+      min-height: 420px;
+      max-height: none;
     }
   }
 </style>

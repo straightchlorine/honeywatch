@@ -269,10 +269,11 @@
   }
 
   @media (max-width: 900px) {
+    /* Raised to clear the map controls, which sit centred below it on mobile. */
     .feed {
       left: 12px;
       right: 12px;
-      bottom: 12px;
+      bottom: 62px;
       width: auto;
     }
   }

@@ -496,8 +496,19 @@
       grid-template-rows: auto auto;
     }
 
+    /* The card had a min-height but nothing stretched the chart into it, so the
+       svg collapsed to ~60px and the bars were unreadable. Make the flex chain
+       reach the svg and give it a legible floor of its own. */
     .daily-card {
-      min-height: 200px;
+      min-height: 260px;
+    }
+
+    .daily-card :deep(.daily-columns) {
+      flex: 1;
+    }
+
+    .daily-card :deep(.daily-figure svg) {
+      min-height: 170px;
     }
   }
 </style>

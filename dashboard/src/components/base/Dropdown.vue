@@ -265,6 +265,21 @@
     border: 1px solid var(--border-strong);
     border-radius: var(--radius-sm);
     box-shadow: var(--shadow-md);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-strong) transparent;
+  }
+
+  .dd-list::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  .dd-list::-webkit-scrollbar-thumb {
+    background: var(--border-strong);
+    border-radius: 999px;
+  }
+
+  .dd-list::-webkit-scrollbar-track {
+    background: transparent;
   }
 
   .dd-list:focus-visible {

@@ -60,4 +60,18 @@
     margin-left: auto;
     font-size: 12px;
   }
+
+  /* Narrow screens cannot fit title and trailing content on one line; the title
+     keeps the row to itself and everything else drops below it. */
+  @media (max-width: 900px) {
+    .card > h2 {
+      flex-wrap: wrap;
+      row-gap: 6px;
+    }
+
+    .card > h2 .note {
+      margin-left: 0;
+      flex-basis: 100%;
+    }
+  }
 </style>

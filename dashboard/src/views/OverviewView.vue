@@ -441,21 +441,30 @@
   }
 
   @media (max-width: 900px) {
+    /* Full-bleed scroller: the inset lives in the padding, not in the box, so
+       the first and last tiles reach the screen edges instead of being clipped
+       by a narrower scroll container. */
     .kpis {
-      top: 116px;
-      left: 12px;
-      right: 12px;
+      top: 66px;
+      left: 0;
+      right: 0;
       width: auto;
       flex-direction: row;
       overflow-x: auto;
+      overscroll-behavior-x: contain;
       scrollbar-width: none;
-      padding-bottom: 4px;
+      padding: 0 12px 4px;
+      scroll-padding-inline: 12px;
       scroll-snap-type: x proximity;
+    }
+    .kpis::-webkit-scrollbar {
+      display: none;
     }
     .kpis :deep(.stat-tile) {
       min-width: 148px;
       flex: none;
       scroll-snap-align: start;
+      box-shadow: none;
     }
   }
 </style>

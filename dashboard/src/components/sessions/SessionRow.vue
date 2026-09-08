@@ -130,8 +130,17 @@
     </td>
     <td class="story">
       <span class="badges">
-        <HwBadge v-for="(b, i) in story" :key="i" :tone="b.tone" :title="b.title">
+        <HwBadge
+          v-for="(b, i) in story"
+          :key="i"
+          :tone="b.tone"
+          :title="b.title"
+          :aria-label="b.title"
+        >
           {{ b.label }}
+          <svg v-if="b.icon" class="badge-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path :d="ICONS[b.icon]" />
+          </svg>
         </HwBadge>
       </span>
     </td>
@@ -309,6 +318,15 @@
     display: inline-flex;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  /* The count carries the number; the glyph says what was counted, so the badge
+     stays short enough to leave the id column its copy button. */
+  .badge-icon {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+    flex: none;
   }
 
   .origin {

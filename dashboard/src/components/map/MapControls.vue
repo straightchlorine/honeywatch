@@ -78,12 +78,16 @@
   }
 
   @media (max-width: 900px) {
+    /* Centred under the live feed, within thumb reach at the bottom of the screen. */
     .mapctl {
-      /* Live feed uses bottom edge on mobile; position controls between topbar and KPI strip. */
-      right: 12px;
-      bottom: auto;
-      top: 66px;
+      left: 0;
+      right: 0;
+      top: auto;
+      bottom: 12px;
       flex-direction: row;
+      align-items: center;
+      justify-content: center;
+      flex-wrap: wrap;
     }
     .legend-card {
       display: none;

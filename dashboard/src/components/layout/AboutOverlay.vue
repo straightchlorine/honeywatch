@@ -82,25 +82,21 @@
         <HexIcon :size="44" />
         <h2>Honeywatch</h2>
         <p>
-          Honeywatch is a honeypot: a decoy server in Helsinki that lets attackers in on purpose
-          and records everything they do. Nothing here is staged - the passwords they guess, the
-          commands they type and the files they leave behind are all real.
+          Honeywatch is a honeypot monitoring system. Server in Helsinki let's attackers in on
+          purpose and records everything they do.
         </p>
         <p>
-          Watch them land on the map, replay their moves, and see what they were after.
-          Their addresses stay hidden - only what they did is on show.
+          Watch them on map, analyze commands they ran, what they downloaded and see what they were
+          after.
         </p>
-        <!-- Behind a disclosure: the overlay auto-dismisses in 5s, so only the
-             two paragraphs above have to be readable in that window. -->
         <details class="intro-more">
           <summary>About the map</summary>
+          <p>Borders follow the Natural Earth dataset. Dotted lines mark disputed borders.</p>
           <p>
-            Detailed coastlines can feel slow on a big screen. The <strong>Detail</strong>
-            control next to the legend turns them down, and your choice is saved.
-          </p>
-          <p>
-            Borders follow the Natural Earth dataset. Dotted lines mark disputed borders - the
-            map takes no side on them.
+            Detailed coastlines can feel slow on a bigger screens. The
+            <strong>Detail</strong> control allows you to select between <i>Low</i>,
+            <i>Regular</i> and <i>High</i> detail. Select the one that works best for your purpose
+            and device.
           </p>
         </details>
         <div class="intro-authors">
@@ -134,11 +130,24 @@
         </div>
         <button type="button" class="intro-enter" @click="dismiss">
           Enter
-          <svg class="arrow-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+          <svg
+            class="arrow-icon"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2"
+            stroke-linecap="round"
+            stroke-linejoin="round"
+            aria-hidden="true"
+          >
             <path :d="ICONS['chevron-right']" fill="currentColor" />
           </svg>
         </button>
-        <div v-if="autoDismissing" class="intro-hint">Closes on its own - find it again under About.</div>
+        <div v-if="autoDismissing" class="intro-hint">
+          Closes on its own - find it again under About.
+        </div>
       </div>
     </div>
   </Transition>
@@ -236,9 +245,13 @@
     font-weight: 650;
   }
 
+  /* One author per line, each line centred as a unit rather than left-aligned
+     against the widest name. */
   .intro-authors {
     display: flex;
-    gap: 26px;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
     font-size: 12.5px;
     color: var(--text);
     font-weight: 600;

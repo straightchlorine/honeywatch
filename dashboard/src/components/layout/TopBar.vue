@@ -236,6 +236,11 @@
       padding: 0 12px;
     }
 
+    /* The repo link is not worth a slot in a bar this narrow; the nav needs it. */
+    .tb-gh {
+      display: none;
+    }
+
     .nav {
       flex: 1;
       margin: 0;
