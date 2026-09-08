@@ -1,266 +1,470 @@
 <script setup lang="ts">
-  import { computed } from 'vue'
-  import { useRouter } from 'vue-router'
+  import { computed, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
+  import { useRoute, useRouter } from 'vue-router'
   import { useQuery } from '@tanstack/vue-query'
   import {
+    statsMapOptions,
+    statsCountryDetailOptions,
     statsTotalsOptions,
     statsTrendOptions,
-    statsTopPasswordsOptions,
-    statsTopCountriesOptions,
-  } from '@/api/queries'
-  import Card from '@/components/base/Card.vue'
-  import Stat from '@/components/base/Stat.vue'
-  import BarList from '@/components/base/BarList.vue'
-  import PageHeader from '@/components/base/PageHeader.vue'
+    statsActivityOptions,
+    statsAuthOutcomesOptions,
+  } from '@/api/generated/@tanstack/vue-query.gen'
+  import { useHwTooltip } from '@/composables/useHwTooltip'
+  import PageShell from '@/components/layout/PageShell.vue'
+  import TopBar from '@/components/layout/TopBar.vue'
+  import StatTile from '@/components/base/StatTile.vue'
+  import WorldMap from '@/components/map/WorldMap.vue'
+  import CountryDrawer from '@/components/map/CountryDrawer.vue'
+  import LiveFeed from '@/components/map/LiveFeed.vue'
   import { fmtNumber, fmtDelta } from '@/utils/format'
-  import { countryDisplayName } from '@/utils/countries'
-  import { ALPHA2_TO_NUMERIC } from '@/components/map/alpha2-to-numeric'
-  import { lazyComponent } from '@/utils/lazyComponent'
+  import { WORLD_COUNTRY_COUNT } from '@/utils/countries'
+  import { ICONS } from '@/components/icons'
 
-  // The world map lazy-loads its own chunk, so it stays out of the main bundle
-  const WorldMap = lazyComponent(() => import('@/components/map/WorldMap.vue'))
-
+  const route = useRoute()
   const router = useRouter()
 
-  // Clicking a country on the map drills into its full breakdown on the
-  // Countries page (the map's own offscreen list drives the same nav for
-  // keyboard/SR users).
-  function onCountrySelect(code: string): void {
-    void router.push({ name: 'countries', query: { country: code } })
+  const selectedCountry = computed(() => {
+    const q = route.query.country
+    return typeof q === 'string' && q ? q.toUpperCase() : null
+  })
+
+  // DrawerShell owns focus management (WCAG 2.4.3); this drives URL/selection and city-focus side effect
+  function selectCountry(a2: string): void {
+    void router.replace({ query: { ...route.query, country: a2 } })
+    // A focused city from the previous country's drawer would be stale/
+    // confusing once the drawer switches to a different country's data.
+    if (a2 !== selectedCountry.value) mapRef.value?.clearCityFocus()
   }
 
-  // Poll aggregates so the dashboard tracks attacks without SSE. 10s is well
-  // under the 60-req/min per-IP API rate limit (4 queries x 6/min = 24/min) and
-  // is decoupled from attack volume -- a scan storm never raises the poll rate.
-  const POLL_MS = 10_000
+  function closeDrawer(): void {
+    const rest = { ...route.query }
+    delete rest.country
+    void router.replace({ query: rest })
+    mapRef.value?.clearCityFocus()
+  }
+
+  const POLL_MS = 120_000
+  const mapQ = useQuery({ ...statsMapOptions(), refetchInterval: POLL_MS })
   const totalsQ = useQuery({ ...statsTotalsOptions(), refetchInterval: POLL_MS })
   const trendQ = useQuery({
     ...statsTrendOptions({ query: { period_days: 7 } }),
     refetchInterval: POLL_MS,
   })
-  // Overview shows a top-5 summary; the map is the anchor and the full
-  // leaderboards live on their own detail pages (Countries / Credentials).
-  // Capped low so the lists can never grow tall enough to squeeze the map, on
-  // top of the flex:0 0 auto pin below.
-  const topPasswordsQ = useQuery({
-    ...statsTopPasswordsOptions({ query: { top_n: 5 } }),
+  const activityQ = useQuery({
+    ...statsActivityOptions({ query: { bucket: 'day' } }),
     refetchInterval: POLL_MS,
   })
-  const topCountriesQ = useQuery({
-    ...statsTopCountriesOptions({ query: { top_n: 5 } }),
-    refetchInterval: POLL_MS,
-  })
-  // The map consumes the same endpoint at the API's max top_n (100) - a separate
-  // query key, so no cache collision with the top-10 BarList above. 100 covers
-  // every country with meaningful traffic; the long tail beyond rank 100 (1-2
-  // hits each) would be the faintest amber anyway. Same poll cadence.
-  const mapCountriesQ = useQuery({
-    ...statsTopCountriesOptions({ query: { top_n: 100 } }),
-    refetchInterval: POLL_MS,
-  })
+  const authQ = useQuery({ ...statsAuthOutcomesOptions(), refetchInterval: POLL_MS })
+
+  const countryQ = useQuery(
+    computed(() => ({
+      ...statsCountryDetailOptions({ path: { a2: selectedCountry.value ?? '' } }),
+      enabled: !!selectedCountry.value,
+    })),
+  )
+  // `isPending` stays true for a disabled query (no fetch has ever run), so it
+  // alone can't drive the drawer's loading state - gate it on a selection too.
+  const countryLoading = computed(() => !!selectedCountry.value && countryQ.isPending.value)
 
   await Promise.all([
+    mapQ.suspense(),
     totalsQ.suspense(),
     trendQ.suspense(),
-    topPasswordsQ.suspense(),
-    topCountriesQ.suspense(),
-    mapCountriesQ.suspense(),
+    activityQ.suspense(),
+    authQ.suspense(),
   ])
 
-  const totals = computed(() => totalsQ.data.value!)
-  const trend = computed(() => trendQ.data.value!)
-  const passwordItems = computed(() => topPasswordsQ.data.value!)
-  const countryItems = computed(() => topCountriesQ.data.value!)
-
-  // Numeric-ISO id -> count for the choropleth. Join via the committed alpha-2
-  // table as STRINGS; "??"/null and unmappable codes are dropped (not plotted).
-  const mapCounts = computed(() => {
-    const counts = new Map<string, number>()
-    for (const row of mapCountriesQ.data.value ?? []) {
-      if (!row.country_code) continue
-      const id = ALPHA2_TO_NUMERIC[row.country_code]
-      if (id) counts.set(id, row.count)
-    }
-    return counts
+  const countries = computed(() => mapQ.data.value?.countries ?? [])
+  const cities = computed(() => mapQ.data.value?.cities ?? [])
+  const totals = computed(() => totalsQ.data.value)
+  const trend = computed(() => trendQ.data.value)
+  const spark = computed(() => {
+    const vals = (activityQ.data.value ?? []).slice(-7).map((b) => b.count)
+    return vals.length > 1 ? vals : [0, 0]
   })
-
-  const trendLabel = computed(() =>
-    fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change }),
-  )
-
+  const acceptedPct = computed(() => {
+    const r = authQ.data.value?.success_rate
+    return r === null || r === undefined ? 'no data' : `${r.toFixed(2)}% accepted`
+  })
   const trendTone = computed<'up' | 'down' | 'neutral'>(() => {
+    if (!trend.value) return 'neutral'
     if (trend.value.delta > 0) return 'up'
     if (trend.value.delta < 0) return 'down'
     return 'neutral'
   })
+  const trendLabel = computed(() =>
+    trend.value ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change }) : '',
+  )
 
-  function pct(value: number, max: number): string {
-    if (max <= 0) return '0%'
-    return `${Math.max(2, Math.round((value / max) * 100))}%`
+  const tt = useHwTooltip()
+  function showTrendTooltip(e: { clientX?: number; clientY?: number }): void {
+    tt.show('7-day trend', [
+      ['This week', fmtNumber(trend.value?.current ?? 0)],
+      ['Prior week', fmtNumber(trend.value?.previous ?? 0)],
+      [
+        'Change',
+        trend.value
+          ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change })
+          : 'no data',
+        trend.value && trend.value.delta > 0
+          ? 'pos'
+          : trend.value && trend.value.delta < 0
+            ? 'neg'
+            : undefined,
+      ],
+    ])
+    if (e.clientX !== undefined && e.clientY !== undefined) {
+      tt.move({ clientX: e.clientX, clientY: e.clientY })
+    }
   }
 
-  const passwordRows = computed(() => {
-    let max = 0
-    for (const p of passwordItems.value) if (p.count > max) max = p.count
-    return passwordItems.value.map((i, idx) => ({
-      key: i.password || `empty-${idx}`,
-      label: i.password || '‹empty›',
-      count: i.count,
-      widthPct: pct(i.count, max),
-      title: i.password || 'empty password',
-    }))
+  function showAuthTooltip(e: { clientX?: number; clientY?: number }): void {
+    const authData = authQ.data.value
+    const acceptedCount = fmtNumber(authData?.successful ?? 0)
+    const totalCount = fmtNumber(authData?.total ?? 0)
+    tt.show('Login success rate', [['Accepted', `${acceptedCount} of ${totalCount}`]])
+    if (e.clientX !== undefined && e.clientY !== undefined) {
+      tt.move({ clientX: e.clientX, clientY: e.clientY })
+    }
+  }
+
+  function showCountriesToolip(e: { clientX?: number; clientY?: number }): void {
+    tt.show('Share of all countries', [
+      [
+        '',
+        `${((countries.value.length / WORLD_COUNTRY_COUNT) * 100).toFixed(1)}% of ${WORLD_COUNTRY_COUNT} countries`,
+      ],
+    ])
+    if (e.clientX !== undefined && e.clientY !== undefined) {
+      tt.move({ clientX: e.clientX, clientY: e.clientY })
+    }
+  }
+
+  // LiveFeed detects new rows; WorldMap owns the SVG to animate arcs
+  const mapRef = useTemplateRef('map')
+  function onArrive(payload: { a2: string; lat: number | null; lon: number | null }): void {
+    mapRef.value?.fireArc(payload.a2, payload.lat, payload.lon)
+  }
+
+  watch(mapQ.isError, (isError) => {
+    if (isError) console.error('map data failed to load', mapQ.error.value)
   })
 
-  const countryRows = computed(() => {
-    let max = 0
-    for (const c of countryItems.value) if (c.count > max) max = c.count
-    return countryItems.value.map((i, idx) => {
-      const label = countryDisplayName(i.country_code, i.country)
-      return {
-        key: i.country_code ?? i.country ?? `unknown-${idx}`,
-        label,
-        count: i.count,
-        widthPct: pct(i.count, max),
-        title: label,
-      }
-    })
-  })
+  // If detail fetch errors, drawer collapses but ?country= persists; this catches Escape in that half-open state
+  function onKeydown(e: KeyboardEvent): void {
+    if (e.key === 'Escape' && selectedCountry.value) closeDrawer()
+  }
+  onMounted(() => window.addEventListener('keydown', onKeydown))
+  onUnmounted(() => window.removeEventListener('keydown', onKeydown))
 </script>
 
-<!--
-  No per-view ErrorBoundary here: the awaited suspense() above rejects during
-  setup, before any boundary in this template could mount, so a load failure
-  always propagates to the App-level ErrorBoundary (which wraps <Suspense>).
-  Canonical pattern: the boundary lives OUTSIDE Suspense (see App.vue).
--->
 <template>
-  <div class="overview">
-    <PageHeader title="Overview" />
+  <PageShell full-bleed>
+    <template #head>
+      <TopBar current="overview" overlay />
+    </template>
 
-    <section class="stats-grid" aria-label="Key totals">
-      <Card padding="sm">
-        <Stat :value="fmtNumber(totals.total_sessions)" label="Sessions" />
-      </Card>
-      <Card padding="sm">
-        <Stat :value="fmtNumber(totals.unique_ips)" label="Unique IPs" />
-      </Card>
-      <Card padding="sm">
-        <Stat :value="fmtNumber(totals.total_auth_attempts)" label="Auth attempts" />
-      </Card>
-      <Card padding="sm">
-        <Stat
-          :value="fmtNumber(trend.current)"
-          label="Trend (7d)"
-          :trend="trendTone"
-          :delta="trendLabel"
-        />
-      </Card>
-    </section>
+    <div class="overview">
+      <WorldMap
+        ref="map"
+        :countries="countries"
+        :cities="cities"
+        :selected="selectedCountry"
+        :total-sessions="totals?.total_sessions ?? 0"
+        @select="selectCountry"
+        @deselect="closeDrawer"
+      />
 
-    <!-- No Card: the map sits straight on the page so it can be as large as
-         possible (no title row / padding) and the letterbox margins blend into
-         the background. The globe keeps its own sphere outline as a frame; the
-         heading stays for the document outline. -->
-    <section class="map-pane" aria-label="Attack origins">
-      <h2 class="map-eyebrow">Attack origins</h2>
-      <Suspense>
-        <WorldMap :counts="mapCounts" @select="onCountrySelect" />
-        <template #fallback>
-          <div class="map-skeleton" aria-hidden="true" />
-        </template>
-      </Suspense>
-    </section>
+      <div class="kpis" tabindex="0" role="group" aria-label="Overview stats">
+        <StatTile label="Sessions" glass :value="fmtNumber(totals?.total_sessions)" :spark="spark">
+          <template #label-extra>
+            <button
+              type="button"
+              tabindex="0"
+              class="info-btn"
+              :aria-label="'Sessions: One session is one visit to the honeypot, from connecting to leaving.'"
+              @pointerenter="
+                tt.show('Sessions', [
+                  [
+                    '',
+                    'One session is one visit to the honeypot, from connecting to leaving.',
+                  ],
+                ])
+              "
+              @pointermove="tt.move($event)"
+              @pointerleave="tt.hide()"
+              @focus="
+                tt.show('Sessions', [
+                  [
+                    '',
+                    'One session is one visit to the honeypot, from connecting to leaving.',
+                  ],
+                ])
+              "
+              @blur="tt.hide()"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path :d="ICONS.info" />
+              </svg>
+            </button>
+          </template>
+          <template #meta>
+            <span
+              class="trend-delta"
+              :class="`trend-${trendTone}`"
+              role="button"
+              tabindex="0"
+              @pointerenter="showTrendTooltip($event)"
+              @pointermove="tt.move($event)"
+              @pointerleave="tt.hide()"
+              @focus="showTrendTooltip({})"
+              @blur="tt.hide()"
+            >
+              {{ trendLabel }}
+            </span>
+          </template>
+        </StatTile>
+        <StatTile label="Login attempts" glass :value="fmtNumber(totals?.total_auth_attempts)">
+          <template #label-extra>
+            <button
+              type="button"
+              tabindex="0"
+              class="info-btn"
+              :aria-label="'Login attempts: Every username and password tried, across all sessions. One session can try many.'"
+              @pointerenter="
+                tt.show('Login attempts', [
+                  [
+                    '',
+                    'Every username and password tried, across all sessions. One session can try many.',
+                  ],
+                ])
+              "
+              @pointermove="tt.move($event)"
+              @pointerleave="tt.hide()"
+              @focus="
+                tt.show('Login attempts', [
+                  [
+                    '',
+                    'Every username and password tried, across all sessions. One session can try many.',
+                  ],
+                ])
+              "
+              @blur="tt.hide()"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path :d="ICONS.info" />
+              </svg>
+            </button>
+          </template>
+          <template #meta>
+            <span
+              class="trend-delta"
+              role="button"
+              tabindex="0"
+              @pointerenter="showAuthTooltip($event)"
+              @pointermove="tt.move($event)"
+              @pointerleave="tt.hide()"
+              @focus="showAuthTooltip({})"
+              @blur="tt.hide()"
+            >
+              {{ acceptedPct }}
+            </span>
+          </template>
+        </StatTile>
+        <StatTile label="Unique IPs" glass :value="fmtNumber(totals?.unique_ips)">
+          <template #label-extra>
+            <button
+              type="button"
+              tabindex="0"
+              class="info-btn"
+              :aria-label="'Unique IPs: How many different addresses attacked, not how many times they connected.'"
+              @pointerenter="
+                tt.show('Unique IPs', [
+                  [
+                    '',
+                    'How many different addresses attacked, not how many times they connected.',
+                  ],
+                ])
+              "
+              @pointermove="tt.move($event)"
+              @pointerleave="tt.hide()"
+              @focus="
+                tt.show('Unique IPs', [
+                  [
+                    '',
+                    'How many different addresses attacked, not how many times they connected.',
+                  ],
+                ])
+              "
+              @blur="tt.hide()"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path :d="ICONS.info" />
+              </svg>
+            </button>
+          </template>
+          <template #meta>
+            <span
+              role="button"
+              tabindex="0"
+              @pointerenter="showCountriesToolip($event)"
+              @pointermove="tt.move($event)"
+              @pointerleave="tt.hide()"
+              @focus="showCountriesToolip({})"
+              @blur="tt.hide()"
+              class="countries-meta"
+            >
+              {{ countries.length }} countries
+            </span>
+          </template>
+        </StatTile>
+      </div>
 
-    <section class="two-col" aria-label="Top lists">
-      <Card title="Top passwords">
-        <BarList
-          :items="passwordRows"
-          label="Top passwords by attempt count"
-          empty-text="No passwords seen yet"
-        />
-      </Card>
+      <LiveFeed @arrive="onArrive" />
 
-      <Card title="Top countries">
-        <BarList
-          :items="countryRows"
-          label="Top countries by attempt count"
-          empty-text="No country data yet"
-        />
-      </Card>
-    </section>
-  </div>
+      <CountryDrawer
+        :detail="countryQ.data.value ?? null"
+        :loading="countryLoading"
+        @close="closeDrawer"
+        @fly-to-city="
+          (p) =>
+            mapRef?.flyToCity(p.lat, p.lon, {
+              city: p.city,
+              country_code: p.country_code,
+              sessions: p.sessions,
+            })
+        "
+      />
+    </div>
+  </PageShell>
 </template>
 
 <style scoped>
   .overview {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    /* Fill the shell's main column so the map flexes to the leftover height and
-     the page fits the viewport without scrolling on desktop. */
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  /* KPI strip + lists are fixed-height (flex:0 0 auto) so they neither grow nor
-   shrink - the map (.map-pane, the only flex:1 item) always takes exactly the
-   leftover height. */
-  .stats-grid {
-    flex: 0 0 auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--space-3);
-  }
-
-  .two-col {
-    flex: 0 0 auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-    gap: var(--space-3);
-  }
-
-  .map-pane {
-    /* The hero: takes all height left between the KPI strip and the lists. */
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    overflow: clip;
   }
 
-  .map-eyebrow {
+  .kpis {
     position: absolute;
-    top: 0;
-    left: 0;
-    z-index: 1;
-    margin: 0;
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--text-dim);
-    pointer-events: none;
+    z-index: 10;
+    left: 22px;
+    top: 76px;
+    width: fit-content;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
   }
 
-  .map-skeleton {
-    width: 100%;
-    height: 100%;
-    min-height: 240px;
-    border-radius: var(--radius-md);
-    background: var(--map-ocean);
+  .kpis:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
-  @media (max-width: 768px) {
-    /* Below md the KPI strip + two lists would squeeze the flexing map below its
-     legible floor, so the SVG + legend overflowed downward onto the lists. Same
-     play as ActivityView: stop hard-fitting -- pin the hero to a fixed height and
-     let the page scroll. 300px (vs the heatmap's 240) because the wide world map
-     needs more vertical room than the 7-row heatmap to stay readable. */
-    .overview {
-      overflow-y: auto;
+  .kpis :deep(.stat-tile) {
+    min-height: 88px;
+  }
+
+  .trend-up {
+    color: var(--ok);
+  }
+  .trend-down {
+    color: var(--bad);
+  }
+  .trend-neutral {
+    color: var(--text-muted);
+  }
+
+  .trend-delta {
+    cursor: pointer;
+    transition: opacity var(--motion-fast);
+  }
+  .trend-delta:hover {
+    opacity: 0.8;
+  }
+  .trend-delta:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+
+  .countries-meta {
+    cursor: pointer;
+    transition: opacity var(--motion-fast);
+  }
+  .countries-meta:hover {
+    opacity: 0.8;
+  }
+  .countries-meta:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+
+  .info-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    padding: 0;
+    background: transparent;
+    border: none;
+    border-radius: 0.25rem;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition:
+      color 120ms ease,
+      background 120ms ease;
+    flex-shrink: 0;
+  }
+
+  .info-btn:hover {
+    color: var(--text);
+    background: var(--surface-hover);
+  }
+
+  .info-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+    border-radius: 2px;
+  }
+
+  .info-btn svg {
+    width: 0.75rem;
+    height: 0.75rem;
+    fill: currentColor;
+  }
+
+  @media (max-width: 900px) {
+    /* Full-bleed scroller: the inset lives in the padding, not in the box, so
+       the first and last tiles reach the screen edges instead of being clipped
+       by a narrower scroll container. */
+    .kpis {
+      top: 66px;
+      left: 0;
+      right: 0;
+      width: auto;
+      flex-direction: row;
+      overflow-x: auto;
+      overscroll-behavior-x: contain;
+      scrollbar-width: none;
+      padding: 0 12px 4px;
+      scroll-padding-inline: 12px;
+      scroll-snap-type: x proximity;
     }
-    .map-pane {
-      flex: 0 0 auto;
-      min-height: 300px;
+    .kpis::-webkit-scrollbar {
+      display: none;
+    }
+    .kpis :deep(.stat-tile) {
+      min-width: 148px;
+      flex: none;
+      scroll-snap-align: start;
+      box-shadow: none;
     }
   }
 </style>

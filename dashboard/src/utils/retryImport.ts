@@ -52,8 +52,6 @@ export function retryImport<T>(loader: () => Promise<T>, retries = DEFAULT_RETRI
         const wait = jitteredBackoff(n)
         return new Promise<void>((resolve) => setTimeout(resolve, wait)).then(() => attempt(n + 1))
       }
-      // Retries exhausted -- most likely a stale deploy. Reload to the fresh
-      // index.html; if we already reloaded recently, give up and surface.
       if (attemptStaleChunkReload()) {
         // Hold the loading state until the page navigates away.
         return new Promise<T>(() => {})

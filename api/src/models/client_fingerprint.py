@@ -13,11 +13,8 @@ if TYPE_CHECKING:
 
 
 class ClientFingerprint(Base):
-    """A public key offered during authentication.
-
-    From `cowrie.client.fingerprint`, several rows per session. Ties together
-    bots that spray one fixed key even as their IP and username change.
-    """
+    """A public key offered during authentication; multiple rows per session link bots
+    across IPs."""
 
     __tablename__ = "client_fingerprints"
 

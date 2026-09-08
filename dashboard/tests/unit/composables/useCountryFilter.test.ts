@@ -3,10 +3,6 @@ import { describe, expect, it } from 'vitest'
 import { mountWithProviders } from '../../helpers/mount'
 import { isAlpha2, useCountryFilter } from '@/composables/useCountryFilter'
 
-// ---------------------------------------------------------------------------
-// isAlpha2 — pure validation helper
-// ---------------------------------------------------------------------------
-
 describe('isAlpha2', () => {
   it('accepts exactly two ASCII letters (case-insensitive)', () => {
     expect(isAlpha2('us')).toBe(true)
@@ -24,10 +20,6 @@ describe('isAlpha2', () => {
     expect(isAlpha2(undefined)).toBe(false)
   })
 })
-
-// ---------------------------------------------------------------------------
-// useCountryFilter — route-aware composable
-// ---------------------------------------------------------------------------
 
 /**
  * Mount a thin wrapper that calls useCountryFilter() and exposes the result

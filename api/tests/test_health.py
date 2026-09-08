@@ -20,14 +20,9 @@ def test_ready_returns_ok_when_db_up(client: Any) -> None:
 
 
 class _ExplodingSession:
-    """Stand-in for an SQLAlchemy Session whose connection is unreachable.
-
-    A real Postgres outage manifests when the route calls `db.execute(...)`
-    (pool tries to acquire a connection and the driver raises
-    `OperationalError`). Patching `get_session_factory` itself does not
-    reproduce that path -- `get_session_factory` only raises on an
-    uninitialised Flask app, never on a DB outage.
-    """
+    """Unreachable SQLAlchemy Session (execute() raises OperationalError); patching
+    at the session-factory seam (not get_session_factory) reproduces realistic
+    DB outages where pool acquisition fails."""
 
     def __enter__(self) -> "_ExplodingSession":
         return self
@@ -49,9 +44,8 @@ class _ExplodingFactory:
 def test_ready_returns_503_when_db_down(
     app: Any, caplog: pytest.LogCaptureFixture
 ) -> None:
-    """Mocks at the session-factory seam to reproduce realistic DB outage.
-    (factory succeeds, execute() fails)
-    """
+    """Mock at the session-factory seam to reproduce realistic DB outage (factory
+    succeeds, execute() fails)."""
     original = app.extensions.get("db_session_factory")
     app.extensions["db_session_factory"] = _ExplodingFactory()
     try:
@@ -68,15 +62,9 @@ def test_ready_returns_503_when_db_down(
 
 
 def test_attack_data_indexes_present(db_session: Any) -> None:
-    """The migrations' indexes survive an `alembic upgrade head` run.
-
-    `CREATE INDEX [CONCURRENTLY] IF NOT EXISTS` silently skips a duplicate name,
-    so a typo in the migration would not raise. Lock the contract here.
-
-    Includes `ix_auth_attempts_worked_creds`, the partial
-    `(username, password) WHERE success` index that backs the worked-credentials
-    leaderboard (stats.credentials.top_credentials(outcome="success")).
-    """
+    """Verify indexes exist after `alembic upgrade head`; `CREATE INDEX IF NOT
+    EXISTS` silently skips typos, so we lock the contract here (including
+    `ix_auth_attempts_worked_creds` for worked-credentials)."""
     rows = (
         db_session.execute(
             text(

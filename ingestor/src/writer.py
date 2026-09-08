@@ -20,6 +20,7 @@ from src.events import (
     CowrieEvent,
     DirectTcpipRequest,
     FileDownload,
+    FileDownloadFailed,
     LoginFailed,
     LoginSuccess,
     SessionClosed,
@@ -177,6 +178,22 @@ _INSERT_DIRECT_TCPIP = """
          %(src_ip)s, %(src_port)s, %(timestamp)s)
 """
 
+# Sessions explorer sort/filter counters (dashboard/REDESIGN_PLAN.md section
+# 6.5). Run in the same transaction as the child-row insert below, so they
+# never drift from the rows they count; no DB triggers, so the write path
+# stays visible here and testable.
+_INCR_N_COMMANDS = (
+    "UPDATE sessions SET n_commands = n_commands + 1 WHERE id = %(session_id)s"
+)
+_INCR_N_DOWNLOADS = (
+    "UPDATE sessions SET n_downloads = n_downloads + 1 WHERE id = %(session_id)s"
+)
+_INCR_N_TCPIP = "UPDATE sessions SET n_tcpip = n_tcpip + 1 WHERE id = %(session_id)s"
+_SET_AUTH_SUCCESS = (
+    "UPDATE sessions SET auth_success = true "
+    "WHERE id = %(session_id)s AND NOT auth_success"
+)
+
 
 class EventWriter:
     """Persists the subset of cowrie events we care about to PostgreSQL.
@@ -230,6 +247,8 @@ class EventWriter:
                 self._write_command(event)
             case FileDownload():
                 self._write_download(event)
+            case FileDownloadFailed():
+                self._write_download_failed(event)
             case SessionClosed():
                 self._write_session_closed(event)
             case ClientVersion():
@@ -326,14 +345,19 @@ class EventWriter:
                 return
             # Only recorded after a successful upsert - a failed one must
             # not suppress the retry on the next connect from this IP.
-            # Whole-dict flush at cap;
-            # TODO: upgrade to LRU if reset churn shows in geo-upsert rate.
+            # Whole-dict flush at cap to prevent unbounded memory growth.
             if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
                 self._geo_upserted_at.clear()
             self._geo_upserted_at[event.src_ip] = now
 
     def _execute(
-        self, kind: str, session_id: str, sql: LiteralString, params: dict[str, Any]
+        self,
+        kind: str,
+        session_id: str,
+        sql: LiteralString,
+        params: dict[str, Any],
+        *,
+        counter_sql: LiteralString | None = None,
     ) -> None:
         """Run one INSERT/UPSERT, isolating the orphan and poison-event cases.
 
@@ -342,16 +366,25 @@ class EventWriter:
         value" (DataError). `_write_session_connect` and
         `_write_session_closed` have their own control flow (two
         transactions / rowcount check) and don't go through here.
+
+        `counter_sql`, when given, runs in the same pooled-connection
+        transaction as the insert (psycopg commits on a clean `with` exit,
+        rolls back on the exceptions caught below) - the child row and its
+        session counter always land or fail together. It only ever targets
+        `session_id`, which the insert above already proved exists via FK.
         """
         try:
             with self.pool.connection() as conn:
                 conn.execute(sql, params)
+                if counter_sql is not None:
+                    conn.execute(counter_sql, {"session_id": params["session_id"]})
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan(kind, session_id)
         except psycopg.errors.DataError as exc:
             self._drop_bad_event(kind, session_id, exc)
 
     def _write_login_attempt(self, event: LoginSuccess | LoginFailed) -> None:
+        success = isinstance(event, LoginSuccess)
         self._execute(
             "auth",
             event.session_id,
@@ -360,9 +393,10 @@ class EventWriter:
                 "session_id": truncate(event.session_id, _LEN_SESSION_ID),
                 "username": truncate(event.username, _LEN_USERNAME),
                 "password": truncate(event.password, _LEN_PASSWORD),
-                "success": isinstance(event, LoginSuccess),
+                "success": success,
                 "timestamp": event.timestamp,
             },
+            counter_sql=_SET_AUTH_SUCCESS if success else None,
         )
 
     def _write_command(self, event: CommandInput) -> None:
@@ -376,6 +410,7 @@ class EventWriter:
                 "success": True,
                 "timestamp": event.timestamp,
             },
+            counter_sql=_INCR_N_COMMANDS,
         )
 
     def _write_download(self, event: FileDownload) -> None:
@@ -388,6 +423,27 @@ class EventWriter:
                 "url": truncate(event.url, _LEN_URL),
                 "outfile": truncate(event.outfile, _LEN_OUTFILE),
                 "sha256": truncate(event.sha256, _LEN_SHA256),
+                "timestamp": event.timestamp,
+            },
+            counter_sql=_INCR_N_DOWNLOADS,
+        )
+
+    def _write_download_failed(self, event: FileDownloadFailed) -> None:
+        """A fetch the attacker attempted but that captured no file.
+
+        Stored for the URL alone (the only place cowrie records intended
+        payload sources). `sha256 IS NULL` marks failures and gates the
+        Payloads specimen queries.
+        """
+        self._execute(
+            "download_failed",
+            event.session_id,
+            _INSERT_DOWNLOAD,
+            {
+                "session_id": truncate(event.session_id, _LEN_SESSION_ID),
+                "url": truncate(event.url, _LEN_URL),
+                "outfile": None,
+                "sha256": None,
                 "timestamp": event.timestamp,
             },
         )
@@ -468,29 +524,78 @@ class EventWriter:
                 "src_port": event.src_port,
                 "timestamp": event.timestamp,
             },
+            counter_sql=_INCR_N_TCPIP,
         )
+
+        # Enrich destination IP if it parses as a public IP literal, using
+        # the same TTL cache as session connects to avoid repeat lookups.
+        if not event.dst_ip:
+            return
+        try:
+            ipaddress.ip_address(event.dst_ip)
+        except ValueError:
+            return
+
+        now = time.monotonic()
+        last_upserted = self._geo_upserted_at.get(event.dst_ip)
+        if last_upserted is not None and (
+            now - last_upserted < _GEO_UPSERT_TTL_SECONDS
+        ):
+            return
+
+        try:
+            geo = geoip_lookup(event.dst_ip)
+        except Exception:
+            logger.warning(
+                "geoip lookup raised for tcpip dest %s; continuing without enrichment",
+                event.dst_ip,
+                exc_info=True,
+            )
+            geo = None
+        if geo is None:
+            return
+        try:
+            with self.pool.connection() as conn:
+                with conn.transaction():
+                    conn.execute(
+                        _UPSERT_GEO,
+                        {
+                            "ip": event.dst_ip,
+                            "country_code": truncate(
+                                geo.country_code, _LEN_COUNTRY_CODE
+                            ),
+                            "country": truncate(geo.country, _LEN_COUNTRY),
+                            "city": truncate(geo.city, _LEN_CITY),
+                            "latitude": geo.latitude,
+                            "longitude": geo.longitude,
+                            "asn": geo.asn,
+                            "as_org": truncate(geo.as_org, _LEN_AS_ORG),
+                        },
+                    )
+        except psycopg.Error:
+            metrics.geo_upsert_failures_total.inc()
+            logger.warning(
+                "geo upsert failed for tcpip dest %s; request row preserved",
+                event.dst_ip,
+                exc_info=True,
+            )
+            return
+        if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
+            self._geo_upserted_at.clear()
+        self._geo_upserted_at[event.dst_ip] = now
 
     @staticmethod
     def _log_orphan(kind: str, session_id: str) -> None:
-        """Log + meter an event whose session row never landed.
-
-        Happens at startup mid-stream (ingestor restart with tail seeking to
-        EOF, connect event missed) or under sustained DB outages where the
-        connect itself failed.
-        """
+        """Log + meter an event whose session row never landed."""
         metrics.orphan_event_total.labels(kind=kind).inc()
         logger.info("orphan %s event for session_id=%s", kind, session_id)
 
     @staticmethod
     def _drop_bad_event(kind: str, session_id: str, exc: psycopg.Error) -> None:
-        """Skip a row Postgres rejected as malformed (NUL byte, encoding, etc).
+        """Skip a poison event to prevent infinite replay in retry/fuse loop.
 
-        Without this, the writer's retry/fuse keeps replaying the same
-        poison event forever, blocking the queue.
-
-        Logs the SQLSTATE only - never `exc_info`: the DataError message
-        echoes the rejected attacker value verbatim, which would smuggle
-        unsanitized bytes (ANSI/CRLF log forgery) into the operator's log sink.
+        Logs SQLSTATE only (never exc_info) to avoid smuggling unsanitized
+        attacker bytes into log sinks via the DataError message.
         """
         metrics.events_dropped_total.labels(reason="db_data_error").inc()
         logger.warning(

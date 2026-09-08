@@ -32,6 +32,15 @@ fetch-mmdb:
 seed *args:
     cd api && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" ENVIRONMENT=development uv run python scripts/seed_dev.py {{args}}
 
+# Drip synthetic sessions in real time so the Overview live feed and map arcs
+# move; append-only, ctrl-c to stop. `just seed` first for a populated page.
+seed-live *args:
+    cd api && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" ENVIRONMENT=development uv run python scripts/seed_live.py {{args}}
+
+# Force a fresh GeoIP reclassification of known IPs (`--ip <addr>` for one; safe to rerun, safe alongside a running ingestor).
+reclassify-geoip *args:
+    cd ingestor && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" uv run python -m src.reclassify_geoip {{args}}
+
 # Any dashboard pnpm script: `just pnpm dev`, `just pnpm lint`, `just pnpm e2e`.
 pnpm *args:
     cd dashboard && pnpm {{args}}

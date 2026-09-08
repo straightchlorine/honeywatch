@@ -1,8 +1,7 @@
 """Request correlation id.
 
-Reuses an inbound X-Request-Id or mints a UUID4, publishes it on `g.request_id`
-for the log filter, and echoes it on the response. The inbound value is
-attacker-controlled, hence the length cap and character strip.
+Reuses inbound X-Request-Id or mints UUID4. Inbound values are
+attacker-controlled, so length and character set are restricted.
 """
 
 from __future__ import annotations

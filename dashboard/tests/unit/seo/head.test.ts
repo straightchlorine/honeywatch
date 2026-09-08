@@ -14,17 +14,17 @@ describe('applyRouteHead', () => {
 
   it('writes title, description, canonical and social tags for a route', () => {
     applyRouteHead({
-      title: 'Activity · Honeywatch',
+      title: 'Activity - Honeywatch',
       description: 'Time-series activity of SSH honeypot attacks.',
       canonical: `${SITE_URL}/activity`,
     })
 
-    expect(document.title).toBe('Activity · Honeywatch')
+    expect(document.title).toBe('Activity - Honeywatch')
     expect(meta('name', 'description')?.content).toBe(
       'Time-series activity of SSH honeypot attacks.',
     )
     expect(canonical()?.href).toBe(`${SITE_URL}/activity`)
-    expect(meta('property', 'og:title')?.content).toBe('Activity · Honeywatch')
+    expect(meta('property', 'og:title')?.content).toBe('Activity - Honeywatch')
     expect(meta('property', 'og:url')?.content).toBe(`${SITE_URL}/activity`)
     expect(meta('name', 'twitter:description')?.content).toBe(
       'Time-series activity of SSH honeypot attacks.',
@@ -34,7 +34,7 @@ describe('applyRouteHead', () => {
 
   it('marks the route noindex when asked (soft-404 catch-all)', () => {
     applyRouteHead({
-      title: 'Page not found · Honeywatch',
+      title: 'Page not found - Honeywatch',
       description: '',
       canonical: `${SITE_URL}/nope`,
       noindex: true,

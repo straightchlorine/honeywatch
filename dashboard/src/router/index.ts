@@ -1,3 +1,9 @@
+/**
+ * Vue Router configuration: routes, lazy loading (retryImport), and SEO metadata.
+ * All routes lazy-load their components via retryImport to survive transient
+ * chunk-fetch failures and stale deploys (guarded reload). SEO metadata (title,
+ * description) is sourced from routes.json (shared with prerender script).
+ */
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { retryImport, isChunkLoadError, attemptStaleChunkReload } from '@/utils/retryImport'
 import { applyRouteHead, SITE_URL } from '@/seo/head'
@@ -20,19 +26,21 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'overview',
     component: () => retryImport(() => import('../views/OverviewView.vue')),
-    meta: seoMeta('/'),
+    // Owns its own PageShell/TopBar - see App.vue for the migration shim.
+    meta: { ...seoMeta('/'), newShell: true },
   },
+  { path: '/activity', redirect: '/pulse' },
   {
-    path: '/activity',
-    name: 'activity',
-    component: () => retryImport(() => import('../views/ActivityView.vue')),
-    meta: seoMeta('/activity'),
+    path: '/pulse',
+    name: 'pulse',
+    component: () => retryImport(() => import('../views/PulseView.vue')),
+    meta: { ...seoMeta('/pulse'), newShell: true },
   },
   {
     path: '/sessions',
     name: 'sessions',
     component: () => retryImport(() => import('../views/SessionsView.vue')),
-    meta: seoMeta('/sessions'),
+    meta: { ...seoMeta('/sessions'), newShell: true },
   },
   {
     // Title stays generic (no session id) so an opaque identifier never leaks
@@ -43,33 +51,51 @@ const routes: RouteRecordRaw[] = [
     component: () => retryImport(() => import('../views/SessionDetailView.vue')),
     meta: {
       title: 'Session',
-      seoTitle: 'Session · Honeywatch',
-      description: 'Details of a recorded SSH honeypot session.',
+      seoTitle: 'Session - Honeywatch',
+      description: 'One recorded attacker session on the honeypot, replayed command by command.',
+      newShell: true,
     },
   },
   {
     path: '/credentials',
     name: 'credentials',
     component: () => retryImport(() => import('../views/CredentialsView.vue')),
-    meta: seoMeta('/credentials'),
+    meta: { ...seoMeta('/credentials'), newShell: true },
+  },
+  { path: '/countries', redirect: '/origins' },
+  {
+    path: '/origins',
+    name: 'origins',
+    component: () => retryImport(() => import('../views/OriginsView.vue')),
+    meta: { ...seoMeta('/origins'), newShell: true },
   },
   {
-    path: '/countries',
-    name: 'countries',
-    component: () => retryImport(() => import('../views/CountriesView.vue')),
-    meta: seoMeta('/countries'),
+    path: '/payloads',
+    name: 'payloads',
+    component: () => retryImport(() => import('../views/PayloadsView.vue')),
+    meta: { ...seoMeta('/payloads'), newShell: true },
   },
-  // The IP view is still deferred until its data/UX is ready
-  // (see docs/frontend-foundation-plan.md). Unknown paths fall through below.
+  // Dev-only kit component demo; not shipped to production.
+  ...(import.meta.env.DEV
+    ? [
+        {
+          path: '/_kit',
+          name: 'kit',
+          component: () => retryImport(() => import('../views/KitView.vue')),
+          meta: { title: 'Kit', seoTitle: 'Kit - Honeywatch', description: '', noindex: true },
+        },
+      ]
+    : []),
   {
     path: '/:pathMatch(.*)*',
     name: 'not-found',
     component: () => retryImport(() => import('@/views/NotFoundView.vue')),
     meta: {
       title: 'Not found',
-      seoTitle: 'Page not found · Honeywatch',
+      seoTitle: 'Page not found - Honeywatch',
       description: '',
       noindex: true,
+      newShell: true,
     },
   },
 ]
@@ -77,6 +103,9 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(),
   routes,
+  scrollBehavior(to, from, savedPosition) {
+    return savedPosition || { left: 0, top: 0 }
+  },
 })
 
 // Backstop: if a lazy route chunk fails to load past retryImport's own
@@ -86,12 +115,12 @@ router.onError((err) => {
 })
 
 // Keep the document head in sync per route (title, description, canonical, og).
-// AppShell separately announces the change and moves focus to <main> for
+// PageShell separately announces the change and moves focus to <main> for
 // screen-reader / keyboard users (WCAG 4.1.3, 2.4.3).
 router.afterEach((to) => {
   const title = (to.meta.title as string | undefined) ?? ''
   const seoTitle =
-    (to.meta.seoTitle as string | undefined) ?? (title ? `${title} · Honeywatch` : 'Honeywatch')
+    (to.meta.seoTitle as string | undefined) ?? (title ? `${title} - Honeywatch` : 'Honeywatch')
   const description = (to.meta.description as string | undefined) ?? ''
   // Self-canonical per route; drop the trailing slash on sub-paths so it
   // matches the sitemap. Query/hash are excluded on purpose.

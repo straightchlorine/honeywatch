@@ -1,12 +1,11 @@
 import type { ActivityBucketResponse, HeatmapPointResponse } from '@/api/generated/types.gen'
 import { WEEKDAY_LABELS } from './heatmapGrid'
 
-const EMPTY = '—'
+const EMPTY = '-'
 
 export interface Kpi {
-  /** Display value, or the em-dash placeholder when there is no data. */
+  /** Display value; placeholder when no data. */
   value: string
-  /** Session count backing the value (0 when empty). */
   count: number
 }
 
@@ -47,7 +46,6 @@ export function busiestWeekday(points: HeatmapPointResponse[]): Kpi {
   return { value: WEEKDAY_LABELS[idx]!, count }
 }
 
-/** Calendar day with the most sessions, from the daily activity buckets. */
 export function peakDay(buckets: ActivityBucketResponse[]): Kpi {
   let best: ActivityBucketResponse | null = null
   for (const b of buckets) {

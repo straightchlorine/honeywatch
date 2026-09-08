@@ -50,13 +50,11 @@ describe('buildCountryLeaderboardRows', () => {
 
   it('ranks the bar by the chosen sort metric, scaled to the max', () => {
     const bySessions = buildCountryLeaderboardRows(rows, 'sessions')
-    // CN has the most sessions -> full-width bar; US is 400/1200.
     expect(bySessions[0]!.widthPct).toBe('100%')
     expect(bySessions[1]!.widthPct).toBe('33%')
     expect(bySessions[0]!.valueLabel).toBe('1,200')
 
     const byIps = buildCountryLeaderboardRows(rows, 'ips')
-    // US has the most distinct IPs (200 vs 50): its bar is full width here.
     expect(byIps[1]!.widthPct).toBe('100%')
     expect(byIps[1]!.valueLabel).toBe('200')
   })
@@ -70,7 +68,7 @@ describe('buildCountryLeaderboardRows', () => {
       'success_rate',
     )
     expect(out[0]!.valueLabel).toBe('8.50%')
-    expect(out[1]!.valueLabel).toBe('—')
+    expect(out[1]!.valueLabel).toBe('-')
   })
 
   it('marks a real country selectable with an upper-cased code and full name', () => {
@@ -80,7 +78,7 @@ describe('buildCountryLeaderboardRows', () => {
     )
     expect(row!.code).toBe('CN')
     expect(row!.selectable).toBe(true)
-    // Name comes from the code even when the API name is null.
+    // Resolves name from code when API returns null
     expect(row!.label).toBe('China')
   })
 
@@ -111,7 +109,6 @@ describe('countryDisplayName', () => {
   })
 
   it('prefers the resolved name over a stale API name', () => {
-    // API name may be null in prod; the code still yields the real name.
     expect(countryDisplayName('US', null)).toBe('United States')
   })
 })
@@ -126,7 +123,13 @@ describe('countryCodeOf', () => {
 
 describe('buildAsnRows', () => {
   function asn(over: Partial<AsnResponse>): AsnResponse {
-    return { asn: 16276, as_org: 'OVH SAS', sessions: 0, distinct_ips: 0, ...over }
+    return {
+      asn: 16276,
+      as_org: 'OVH SAS',
+      sessions: 0,
+      distinct_ips: 0,
+      ...over,
+    }
   }
 
   it('labels by org, falling back to AS<number> then a generic name', () => {
@@ -145,9 +148,15 @@ describe('buildAsnRows', () => {
       asn({ sessions: 10, distinct_ips: 3 }),
       asn({ sessions: 5, distinct_ips: 1 }),
     ])
-    expect(out[0]!.widthPct).toBe('100%')
+    expect(out[0]!.frac).toBe(1)
     expect(out[0]!.title).toContain('3 IPs')
-    expect(out[1]!.widthPct).toBe('50%')
+    expect(out[1]!.frac).toBe(0.5)
     expect(out[1]!.title).toContain('1 IP')
+  })
+
+  it('does not show a country - ASN country cannot be reliably inferred (dashboard/map-research.md)', () => {
+    const out = buildAsnRows([asn({ as_org: 'OVH SAS', sessions: 10 })])
+    expect(out[0]!.icon).toBeUndefined()
+    expect(out[0]!.title).not.toContain('Country')
   })
 })

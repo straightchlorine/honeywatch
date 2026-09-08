@@ -1,20 +1,14 @@
-// Post-build SEO prerender.
+// Post-build SEO prerender: stamp per-route metadata into static HTML files.
 //
-// The app is a client-rendered SPA, so a crawler that does not execute JS sees
-// the same index.html for every route. Google renders JS, but to make the
-// correct per-route <title>/description/canonical available in the *raw* HTML
-// (and to give every route a real static document), we stamp a per-route
-// index.html into dist/<path>/index.html after `vite build`. nginx's
-// `try_files $uri $uri/ /index.html` then serves dist/activity/index.html for
-// /activity before falling back to the SPA shell.
+// The app is a client-rendered SPA - crawlers see only the shell. We generate
+// per-route static HTML (dist/activity.html, etc.) so crawlers find the correct
+// <title>, description, canonical, and og: tags in raw HTML before JS runs.
 //
-// Routes are written as FLAT files (dist/activity.html, not dist/activity/
-// index.html): nginx's `try_files $uri $uri.html ...` then serves them without
-// the 301-to-trailing-slash that a directory index would trigger, so the live
-// URL (/activity) matches the canonical and sitemap (no trailing slash).
+// Routes written as flat files (not dirs) to avoid trailing-slash redirects;
+// nginx try_files $uri $uri.html ... serves them directly so /activity matches
+// the canonical and sitemap (no redirect).
 //
-// The sitemap is generated from the same source (src/seo/routes.json), so the
-// route list, sitemap, and in-app head all stay in lockstep.
+// Sitemap and route list sourced from src/seo/routes.json - they stay in sync.
 import { readFileSync, writeFileSync } from 'node:fs'
 import { join, resolve } from 'node:path'
 
@@ -27,8 +21,7 @@ const escAttr = (s) =>
 
 const urlFor = (path) => (path === '/' ? `${SITE_URL}/` : `${SITE_URL}${path}`)
 
-// Replace a whole tag matched by `re` with `replacement`. Throws if the tag is
-// missing so a template drift fails the build instead of shipping stale meta.
+// Throws if tag missing so template drift fails the build instead of shipping stale meta.
 function replaceTag(html, re, replacement, label) {
   if (!re.test(html)) throw new Error(`prerender: <${label}> tag not found in built index.html`)
   return html.replace(re, replacement)

@@ -129,6 +129,49 @@ export type CountriesResponse = {
     total_countries: number;
 };
 
+export type CountryDetailResponse = {
+    /**
+     * ISO 3166-1 alpha-2 country code.
+     */
+    a2: string;
+    /**
+     * Auth attempts from this country.
+     */
+    attempts: number;
+    /**
+     * Session counts for the trailing 14 days.
+     */
+    daily: Array<DailyPointResponse>;
+    /**
+     * Distinct source IPs from this country.
+     */
+    ips: number;
+    /**
+     * Human-readable country name.
+     */
+    name: string;
+    /**
+     * Distinct sessions from this country.
+     */
+    sessions: number;
+    /**
+     * Accepted percentage (null when no attempts).
+     */
+    success_rate: number | null;
+    /**
+     * Top source networks for this country.
+     */
+    top_asns: Array<AsnResponse>;
+    /**
+     * Top 5 cities by session count for this country, empty if none resolved.
+     */
+    top_cities: Array<MapCityResponse>;
+    /**
+     * Top attempted credentials for this country.
+     */
+    top_credentials: Array<TopCredentialResponse>;
+};
+
 export type CountryRowResponse = {
     /**
      * Auth attempts from this country.
@@ -179,15 +222,22 @@ export type CredentialLengthResponse = {
     length: number;
 };
 
+export type DailyPointResponse = {
+    /**
+     * ISO 8601 date (YYYY-MM-DD).
+     */
+    date: string;
+    /**
+     * Sessions on this date.
+     */
+    sessions: number;
+};
+
 export type DownloadResponse = {
     /**
      * Download row id.
      */
     id: number;
-    /**
-     * Local path where the honeypot saved the captured payload.
-     */
-    outfile: string | null;
     /**
      * SHA-256 hex digest of the captured payload.
      */
@@ -223,6 +273,33 @@ export type Error = {
     status?: string;
 };
 
+export type FingerprintResponse = {
+    /**
+     * SSH public key fingerprint (hex digest).
+     */
+    fingerprint: string;
+    /**
+     * Fingerprint algorithm (e.g. 'ssh-rsa', 'ssh-ed25519').
+     */
+    fingerprint_type: string | null;
+    /**
+     * ISO 8601 timestamp of the first observation (or null).
+     */
+    first_seen: string | null;
+    /**
+     * Number of distinct source IPs offering this fingerprint.
+     */
+    ips: number;
+    /**
+     * ISO 8601 timestamp of the most recent observation (or null).
+     */
+    last_seen: string | null;
+    /**
+     * Number of distinct sessions offering this fingerprint.
+     */
+    sessions: number;
+};
+
 export type HealthResponse = {
     /**
      * Liveness status string.
@@ -243,6 +320,86 @@ export type HeatmapPointResponse = {
      * Day of week, Postgres dow (0=Sunday, 6=Saturday).
      */
     weekday: number;
+};
+
+export type MapCityResponse = {
+    /**
+     * City name.
+     */
+    city: string;
+    /**
+     * ISO 3166-1 alpha-2 country code.
+     */
+    country_code: string;
+    /**
+     * Latitude (jittered, rounded to 0.1 deg).
+     */
+    lat: number;
+    /**
+     * Longitude (jittered, rounded to 0.1 deg).
+     */
+    lon: number;
+    /**
+     * Distinct sessions from this marker.
+     */
+    sessions: number;
+};
+
+export type MapCountryResponse = {
+    /**
+     * ISO 3166-1 alpha-2 country code.
+     */
+    a2: string;
+    /**
+     * Distinct source IPs from this country.
+     */
+    ips: number;
+    /**
+     * Distinct sessions from this country.
+     */
+    sessions: number;
+    /**
+     * Accepted percentage (null when no attempts).
+     */
+    success_rate: number | null;
+};
+
+export type MapResponse = {
+    /**
+     * Top city markers by session count.
+     */
+    cities: Array<MapCityResponse>;
+    /**
+     * Every resolved country, choropleth-ready.
+     */
+    countries: Array<MapCountryResponse>;
+};
+
+export type OutcomeCountsResponse = {
+    /**
+     * Sessions with at least one executed command.
+     */
+    commands: number;
+    /**
+     * Sessions with at least one download.
+     */
+    downloads: number;
+    /**
+     * Sessions with none of the above (interest == 0) - the complement of the other four buckets, not an overlap member.
+     */
+    none: number;
+    /**
+     * Sessions with an accepted login (auth_success).
+     */
+    shell: number;
+    /**
+     * Sessions with at least one direct-tcpip request.
+     */
+    tcpip: number;
+    /**
+     * Every session in scope.
+     */
+    total: number;
 };
 
 export type PaginationMeta = {
@@ -314,6 +471,83 @@ export type PasswordCompositionResponse = {
     total: number;
 };
 
+export type PayloadCountryRowResponse = {
+    /**
+     * Human-readable country name.
+     */
+    country: string | null;
+    /**
+     * ISO 3166-1 alpha-2 country code.
+     */
+    country_code: string | null;
+    /**
+     * Distinct sessions downloading from this country.
+     */
+    sessions: number;
+};
+
+export type PayloadDetailResponse = {
+    /**
+     * All countries ranked by session count, descending.
+     */
+    countries: Array<PayloadCountryRowResponse>;
+    /**
+     * ISO 8601 timestamp of first download.
+     */
+    first_seen: string | null;
+    /**
+     * ISO 8601 timestamp of last download.
+     */
+    last_seen: string | null;
+    /**
+     * Filename parsed from the most common download URL (never the honeypot's local storage path); null if no URL was recorded.
+     */
+    name: string | null;
+    /**
+     * Distinct sessions that downloaded this payload.
+     */
+    sessions: number;
+    /**
+     * SHA256 hash of the downloaded file.
+     */
+    sha256: string;
+};
+
+export type PayloadDownloadResponse = {
+    /**
+     * Top 3 country alpha-2 codes by session count.
+     */
+    countries: Array<string>;
+    /**
+     * ISO 8601 timestamp of first download.
+     */
+    first_seen: string | null;
+    /**
+     * Host the payload was fetched from, or null when cowrie recorded no URL or its host was a bare IP. Never an IP, and never a stand-in for one.
+     */
+    host: string | null;
+    /**
+     * ISO 8601 timestamp of last download.
+     */
+    last_seen: string | null;
+    /**
+     * Distinct source machines behind those sessions. A count, never an address. Sessions close to machines means a distributed botnet; sessions well above machines means one operator fetching repeatedly.
+     */
+    machines: number;
+    /**
+     * Filename parsed from the most common download URL (never the honeypot's local storage path); null if no URL was recorded.
+     */
+    name: string | null;
+    /**
+     * Distinct sessions that downloaded this payload.
+     */
+    sessions: number;
+    /**
+     * SHA256 hash of the downloaded file.
+     */
+    sha256: string;
+};
+
 export type ReadyResponse = {
     /**
      * Readiness status string.
@@ -326,6 +560,10 @@ export type SessionDetailResponse = {
      * Authentication attempts recorded during the session.
      */
     auth_attempts: Array<AuthAttemptResponse>;
+    /**
+     * City name of the source IP, when resolved.
+     */
+    city: string | null;
     /**
      * Commands executed during the session.
      */
@@ -355,6 +593,14 @@ export type SessionDetailResponse = {
      */
     id: string;
     /**
+     * Latitude of the source IP, when resolved.
+     */
+    lat: number | null;
+    /**
+     * Longitude of the source IP, when resolved.
+     */
+    lon: number | null;
+    /**
      * Application protocol observed.
      */
     protocol: string;
@@ -374,13 +620,29 @@ export type SessionDetailResponse = {
 
 export type SessionSummaryResponse = {
     /**
+     * Source network organisation.
+     */
+    asn_org: string | null;
+    /**
      * Number of authentication attempts in this session.
      */
     auth_attempt_count: number;
     /**
+     * Whether any auth attempt in the session succeeded (maintained flag).
+     */
+    auth_success: boolean;
+    /**
      * Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.
      */
     category: 'active' | 'login' | 'failed' | 'probe';
+    /**
+     * City name of the source IP, when resolved.
+     */
+    city: string | null;
+    /**
+     * SSH client version string, when captured.
+     */
+    client_version: string | null;
     /**
      * Number of shell commands recorded in this session.
      */
@@ -410,6 +672,30 @@ export type SessionSummaryResponse = {
      */
     id: string;
     /**
+     * DB-computed interest score: 2*commands + 5*downloads + 2*tcpip + 3*auth_success.
+     */
+    interest: number;
+    /**
+     * Latitude of the source IP, when resolved.
+     */
+    lat: number | null;
+    /**
+     * Longitude of the source IP, when resolved.
+     */
+    lon: number | null;
+    /**
+     * Maintained commands counter.
+     */
+    n_commands: number;
+    /**
+     * Maintained downloads counter.
+     */
+    n_downloads: number;
+    /**
+     * Maintained direct-tcpip-request counter.
+     */
+    n_tcpip: number;
+    /**
      * Application protocol observed.
      */
     protocol: string;
@@ -429,9 +715,51 @@ export type SessionsListResponse = {
      */
     items: Array<SessionSummaryResponse>;
     /**
+     * Highest interest value across all sessions (unfiltered) - the ceiling row-level interest scores are normalized against for display.
+     */
+    max_interest: number;
+    /**
      * Pagination metadata for the response page.
      */
     meta: PaginationMeta;
+};
+
+export type SshClientResponse = {
+    /**
+     * SSH client version string (banner or key exchange).
+     */
+    client_version: string;
+    /**
+     * Number of sessions using this client version.
+     */
+    sessions: number;
+};
+
+export type TcpipDestinationResponse = {
+    /**
+     * Human-readable country name for the destination network, or null if unresolved.
+     */
+    country: string | null;
+    /**
+     * ISO 3166-1 alpha-2 country code for the destination network, or null if unresolved.
+     */
+    country_code: string | null;
+    /**
+     * Distinct destination hosts behind this network and port.
+     */
+    hosts: number;
+    /**
+     * Destination network: the AS org, or the destination itself when it is a DNS name. Null when neither is known. Never an IP.
+     */
+    network: string | null;
+    /**
+     * Destination port.
+     */
+    port: number;
+    /**
+     * Distinct sessions attempting this network and port.
+     */
+    sessions: number;
 };
 
 export type TopCountryResponse = {
@@ -537,6 +865,10 @@ export type ListSessionsData = {
          */
         per_page?: number;
         /**
+         * Session id prefix, lowercase hex only (2-64 chars). Matched with a leading-anchor search, so it never carries a LIKE wildcard.
+         */
+        q?: string | null;
+        /**
          * Scope to a single ISO 3166-1 alpha-2 source country.
          */
         country?: string | null;
@@ -545,9 +877,17 @@ export type ListSessionsData = {
          */
         category?: 'active' | 'login' | 'failed' | 'probe' | null;
         /**
-         * Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first).
+         * Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first), 'interest' (highest interest score first), 'duration' (longest session first).
          */
-        sort?: 'recent' | 'country' | 'active';
+        sort?: 'recent' | 'country' | 'active' | 'interest' | 'duration';
+        /**
+         * Comma-separated filters, all must match: 'commands' (n_commands > 0), 'downloads' (n_downloads > 0), 'success' (auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, did nothing at all - mutually exclusive with the others).
+         */
+        has?: string | null;
+        /**
+         * Only sessions that captured this payload. Lowercase hex; the pattern is the whole defence, so the value can never reach SQL as anything but a digest.
+         */
+        sha256?: string | null;
     };
     url: '/api/v1/sessions/';
 };
@@ -775,6 +1115,166 @@ export type StatsCountriesResponses = {
 
 export type StatsCountriesResponse = StatsCountriesResponses[keyof StatsCountriesResponses];
 
+export type StatsCountryDetailData = {
+    body?: never;
+    path: {
+        /**
+         * ISO 3166-1 alpha-2 country code.
+         */
+        a2: string;
+    };
+    query?: never;
+    url: '/api/v1/stats/countries/{a2}';
+};
+
+export type StatsCountryDetailErrors = {
+    /**
+     * The requested resource was not found.
+     */
+    404: Error;
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsCountryDetailError = StatsCountryDetailErrors[keyof StatsCountryDetailErrors];
+
+export type StatsCountryDetailResponses = {
+    /**
+     * OK
+     */
+    200: CountryDetailResponse;
+};
+
+export type StatsCountryDetailResponse = StatsCountryDetailResponses[keyof StatsCountryDetailResponses];
+
+export type StatsDownloadsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/downloads';
+};
+
+export type StatsDownloadsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsDownloadsError = StatsDownloadsErrors[keyof StatsDownloadsErrors];
+
+export type StatsDownloadsResponses = {
+    /**
+     * OK
+     */
+    200: Array<PayloadDownloadResponse>;
+};
+
+export type StatsDownloadsResponse = StatsDownloadsResponses[keyof StatsDownloadsResponses];
+
+export type StatsDownloadDetailData = {
+    body?: never;
+    path: {
+        /**
+         * SHA256 hash of the payload.
+         */
+        sha256: string;
+    };
+    query?: never;
+    url: '/api/v1/stats/downloads/{sha256}';
+};
+
+export type StatsDownloadDetailErrors = {
+    /**
+     * The requested resource was not found.
+     */
+    404: Error;
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsDownloadDetailError = StatsDownloadDetailErrors[keyof StatsDownloadDetailErrors];
+
+export type StatsDownloadDetailResponses = {
+    /**
+     * OK
+     */
+    200: PayloadDetailResponse;
+};
+
+export type StatsDownloadDetailResponse = StatsDownloadDetailResponses[keyof StatsDownloadDetailResponses];
+
+export type StatsFingerprintsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/fingerprints';
+};
+
+export type StatsFingerprintsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsFingerprintsError = StatsFingerprintsErrors[keyof StatsFingerprintsErrors];
+
+export type StatsFingerprintsResponses = {
+    /**
+     * OK
+     */
+    200: Array<FingerprintResponse>;
+};
+
+export type StatsFingerprintsResponse = StatsFingerprintsResponses[keyof StatsFingerprintsResponses];
+
 export type StatsHeatmapData = {
     body?: never;
     path?: never;
@@ -812,6 +1312,73 @@ export type StatsHeatmapResponses = {
 };
 
 export type StatsHeatmapResponse = StatsHeatmapResponses[keyof StatsHeatmapResponses];
+
+export type StatsMapData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/v1/stats/map';
+};
+
+export type StatsMapErrors = {
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsMapError = StatsMapErrors[keyof StatsMapErrors];
+
+export type StatsMapResponses = {
+    /**
+     * OK
+     */
+    200: MapResponse;
+};
+
+export type StatsMapResponse = StatsMapResponses[keyof StatsMapResponses];
+
+export type StatsOutcomesData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country.
+         */
+        country?: string | null;
+    };
+    url: '/api/v1/stats/outcomes';
+};
+
+export type StatsOutcomesErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsOutcomesError = StatsOutcomesErrors[keyof StatsOutcomesErrors];
+
+export type StatsOutcomesResponses = {
+    /**
+     * OK
+     */
+    200: OutcomeCountsResponse;
+};
+
+export type StatsOutcomesResponse = StatsOutcomesResponses[keyof StatsOutcomesResponses];
 
 export type StatsPasswordCompositionData = {
     body?: never;
@@ -883,6 +1450,82 @@ export type StatsPasswordsByLengthResponses = {
 };
 
 export type StatsPasswordsByLengthResponse = StatsPasswordsByLengthResponses[keyof StatsPasswordsByLengthResponses];
+
+export type StatsSshClientsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/ssh-clients';
+};
+
+export type StatsSshClientsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsSshClientsError = StatsSshClientsErrors[keyof StatsSshClientsErrors];
+
+export type StatsSshClientsResponses = {
+    /**
+     * OK
+     */
+    200: Array<SshClientResponse>;
+};
+
+export type StatsSshClientsResponse = StatsSshClientsResponses[keyof StatsSshClientsResponses];
+
+export type StatsTcpipDestinationsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        /**
+         * Number of top entries to return (max 100).
+         */
+        top_n?: number;
+    };
+    url: '/api/v1/stats/tcpip-destinations';
+};
+
+export type StatsTcpipDestinationsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type StatsTcpipDestinationsError = StatsTcpipDestinationsErrors[keyof StatsTcpipDestinationsErrors];
+
+export type StatsTcpipDestinationsResponses = {
+    /**
+     * OK
+     */
+    200: Array<TcpipDestinationResponse>;
+};
+
+export type StatsTcpipDestinationsResponse = StatsTcpipDestinationsResponses[keyof StatsTcpipDestinationsResponses];
 
 export type StatsTopCountriesData = {
     body?: never;

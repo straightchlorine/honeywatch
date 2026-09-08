@@ -64,11 +64,8 @@ def _log_drift(line: str, exc: ValidationError) -> None:
 
 
 def _extract_eventid(line: str) -> str | None:
-    """Safely pull `eventid` from a possibly-malformed JSON line.
-
-    Uses `json.loads` so JSON escape sequences resolve correctly. If the
-    line isn't valid JSON or `eventid` is missing/non-str, returns None.
-    """
+    """Extract eventid from JSON, using json.loads to correctly handle escape
+    sequences."""
     try:
         obj = json.loads(line)
     except (ValueError, TypeError):

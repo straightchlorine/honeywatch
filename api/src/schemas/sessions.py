@@ -1,9 +1,10 @@
 from __future__ import annotations
 
-from marshmallow import fields, validate
+from marshmallow import ValidationError, fields, validate
 
 from src.schemas.common import BaseSchema, PaginationMeta, country_filter_field
 from src.services.categories import CATEGORY_DESCRIPTION, SESSION_CATEGORIES
+from src.services.sessions import VALID_HAS_FILTERS
 
 
 class AuthAttemptResponse(BaseSchema):
@@ -87,14 +88,6 @@ class DownloadResponse(BaseSchema):
             "example": "http://example.invalid/payload.sh",
         },
     )
-    outfile = fields.Str(
-        required=True,
-        allow_none=True,
-        metadata={
-            "description": "Local path where the honeypot saved the captured payload.",
-            "example": "/data/downloads/abc123",
-        },
-    )
     sha256 = fields.Str(
         required=True,
         allow_none=True,
@@ -117,8 +110,6 @@ class DownloadResponse(BaseSchema):
 
 
 class _SessionResponseBase(BaseSchema):
-    """Fields shared by the list and detail session shapes."""
-
     id = fields.Str(
         required=True,
         metadata={"description": "Honeypot session identifier.", "example": "abc123"},
@@ -155,6 +146,30 @@ class _SessionResponseBase(BaseSchema):
         metadata={
             "description": "Human-readable country name of the source IP.",
             "example": "United States",
+        },
+    )
+    city = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "City name of the source IP, when resolved.",
+            "example": "Amsterdam",
+        },
+    )
+    lat = fields.Float(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Latitude of the source IP, when resolved.",
+            "example": 52.4,
+        },
+    )
+    lon = fields.Float(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Longitude of the source IP, when resolved.",
+            "example": 4.9,
         },
     )
     started_at = fields.DateTime(
@@ -208,6 +223,53 @@ class SessionSummaryResponse(_SessionResponseBase):
         validate=validate.OneOf(list(SESSION_CATEGORIES)),
         metadata={"description": CATEGORY_DESCRIPTION, "example": "active"},
     )
+    n_commands = fields.Int(
+        required=True,
+        metadata={"description": "Maintained commands counter.", "example": 3},
+    )
+    n_downloads = fields.Int(
+        required=True,
+        metadata={"description": "Maintained downloads counter.", "example": 0},
+    )
+    n_tcpip = fields.Int(
+        required=True,
+        metadata={
+            "description": "Maintained direct-tcpip-request counter.",
+            "example": 0,
+        },
+    )
+    auth_success = fields.Bool(
+        required=True,
+        metadata={
+            "description": (
+                "Whether any auth attempt in the session succeeded (maintained flag)."
+            ),
+            "example": True,
+        },
+    )
+    interest = fields.Int(
+        required=True,
+        metadata={
+            "description": (
+                "DB-computed interest score: "
+                "2*commands + 5*downloads + 2*tcpip + 3*auth_success."
+            ),
+            "example": 9,
+        },
+    )
+    asn_org = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Source network organisation.", "example": "OVH SAS"},
+    )
+    client_version = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "SSH client version string, when captured.",
+            "example": "SSH-2.0-libssh2_1.10.0",
+        },
+    )
 
 
 class SessionDetailResponse(_SessionResponseBase):
@@ -251,18 +313,60 @@ class SessionsListResponse(BaseSchema):
         required=True,
         metadata={"description": "Pagination metadata for the response page."},
     )
+    max_interest = fields.Int(
+        required=True,
+        metadata={
+            "description": (
+                "Highest interest value across all sessions (unfiltered) - the "
+                "ceiling row-level interest scores are normalized against for "
+                "display."
+            ),
+            "example": 56,
+        },
+    )
+
+
+def _validate_has(value: str) -> None:
+    """Reject 'none' combined with other filters (would yield empty set)."""
+    tokens = value.split(",")
+    unknown = [t for t in tokens if t not in VALID_HAS_FILTERS]
+    if unknown:
+        raise ValidationError(
+            "has= must be a comma-separated list of: "
+            f"{', '.join(sorted(VALID_HAS_FILTERS))}."
+        )
+    if "none" in tokens and len(tokens) > 1:
+        raise ValidationError(
+            "has=none (no activity at all) cannot be combined with other filters."
+        )
 
 
 class SessionsListQuery(BaseSchema):
     page = fields.Int(
         load_default=1,
-        validate=validate.Range(min=1, max=10_000),
+        validate=validate.Range(min=1, max=50_000),
         metadata={"description": "Page number to fetch (1-indexed).", "example": 1},
     )
     per_page = fields.Int(
         load_default=20,
         validate=validate.Range(min=1, max=100),
         metadata={"description": "Number of items per page (max 100).", "example": 20},
+    )
+    q = fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=[
+            validate.Length(min=2, max=64),
+            validate.Regexp(r"^[0-9a-f]+$"),
+        ],
+        metadata={
+            "description": (
+                "Session id prefix, lowercase hex only (2-64 chars). Matched "
+                "with a leading-anchor search, so it never carries a LIKE "
+                "wildcard."
+            ),
+            "example": "a1b2c3",
+        },
     )
     country = country_filter_field()
     category = fields.Str(
@@ -273,13 +377,46 @@ class SessionsListQuery(BaseSchema):
     )
     sort = fields.Str(
         load_default="recent",
-        validate=validate.OneOf(["recent", "country", "active"]),
+        validate=validate.OneOf(
+            ["recent", "country", "active", "interest", "duration"]
+        ),
         metadata={
             "description": (
                 "Result ordering: 'recent' (newest first, default), 'country' "
-                "(source country A-Z), 'active' (most commands first)."
+                "(source country A-Z), 'active' (most commands first), "
+                "'interest' (highest interest score first), 'duration' "
+                "(longest session first)."
             ),
             "example": "country",
+        },
+    )
+    has = fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=_validate_has,
+        metadata={
+            "description": (
+                "Comma-separated filters, all must match: 'commands' "
+                "(n_commands > 0), 'downloads' (n_downloads > 0), 'success' "
+                "(auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, "
+                "did nothing at all - mutually exclusive with the others)."
+            ),
+            "example": "commands,success",
+        },
+    )
+    sha256 = fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.Regexp(r"^[0-9a-f]{64}$"),
+        metadata={
+            "description": (
+                "Only sessions that captured this payload. Lowercase hex; the "
+                "pattern is the whole defence, so the value can never reach SQL "
+                "as anything but a digest."
+            ),
+            "example": (
+                "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+            ),
         },
     )
 

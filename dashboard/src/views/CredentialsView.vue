@@ -1,4 +1,8 @@
 <script setup lang="ts">
+  /**
+   * Credentials page: combination comb (HexMatrix) of top usernames x top
+   * passwords with acceptance status, plus password-anatomy histogram.
+   */
   import { computed, ref } from 'vue'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
   import {
@@ -6,61 +10,59 @@
     statsPasswordCompositionOptions,
     statsPasswordsByLengthOptions,
     statsTopCredentialsOptions,
-  } from '@/api/queries'
-  import Card from '@/components/base/Card.vue'
-  import Stat from '@/components/base/Stat.vue'
-  import BarList from '@/components/base/BarList.vue'
-  import PageHeader from '@/components/base/PageHeader.vue'
+  } from '@/api/generated/@tanstack/vue-query.gen'
+  import PageShell from '@/components/layout/PageShell.vue'
+  import TopBar from '@/components/layout/TopBar.vue'
+  import StatTile from '@/components/base/StatTile.vue'
+  import HwCard from '@/components/base/HwCard.vue'
+  import ChipButton from '@/components/base/ChipButton.vue'
+  import InfoDot from '@/components/base/InfoDot.vue'
+  import SeqLegend from '@/components/base/SeqLegend.vue'
+  import InsightNote from '@/components/base/InsightNote.vue'
   import EmptyState from '@/components/base/EmptyState.vue'
-  import Tooltip from '@/components/base/Tooltip.vue'
-  import { useTooltip } from '@/components/base/useTooltip'
-  import { fmtNumber } from '@/utils/format'
+  import RankList, { type RankRow } from '@/components/base/RankList.vue'
+  import DrawerShell from '@/components/base/DrawerShell.vue'
+  import HexMatrix, { type MatrixCellSelection } from '@/components/charts/HexMatrix.vue'
+  import MeterBar from '@/components/charts/MeterBar.vue'
+  import { useHwTooltip } from '@/composables/useHwTooltip'
+  import { fmtCompact, fmtNumber } from '@/utils/format'
   import {
     buildCharsetRows,
-    buildCredentialRows,
     buildLengthBars,
+    buildMatrixEntities,
+    buildMatrixPairs,
     buildPairBarRows,
     buildPasswordRows,
     fmtSuccessRate,
-    type CredMetric,
+    type BarRow,
   } from '@/utils/credentials'
 
-  // Interactive cadence matches the 30s Cache-Control on these endpoints (a
-  // faster poll just re-serves the cached body), so it never fights the cache.
-  // The all-time composition + outcomes aggregates barely move and are the
-  // heaviest (double full-scan + per-row regex), so they poll on the slow loop
-  // -- mirrors ActivityView's heatmap split.
+  // Fast lenses (matrix rows/cols/pairs): 30s (matches endpoint Cache-Control);
+  // full-scan aggregates: 60s.
   const POLL_MS = 30_000
   const POLL_SLOW_MS = 60_000
-  const HERO_TOP_N = 12
+  const MATRIX_USERS = 8
+  // API max is 100 (validate.Range in common.py); HexMatrix reports actual
+  // drawn count via @shown, so fetch conservatively.
+  const MATRIX_PASSWORDS_TOP_N = 100
 
-  // The hero leaderboard is one endpoint with three "lenses". Pairs is the
-  // botnet-fingerprint view; IP fan-out swaps the ranking to distinct source IPs
-  // (distributed botnet vs lone brute-forcer); usernames collapses the password.
-  type Mode = 'pairs' | 'fanout' | 'usernames' | 'passwords'
-  const MODES = [
-    { id: 'pairs', label: 'Pairs' },
-    { id: 'fanout', label: 'IP fan-out' },
-    { id: 'usernames', label: 'Usernames' },
-    { id: 'passwords', label: 'Passwords' },
-  ] as const
-  const HERO_QUERIES = {
-    pairs: { by: 'pair', metric: 'attempts' },
-    fanout: { by: 'pair', metric: 'ip_fanout' },
-    usernames: { by: 'username', metric: 'attempts' },
-    passwords: { by: 'password', metric: 'attempts' },
-  } as const
-
-  const mode = ref<Mode>('pairs')
-  const heroQuery = computed(() => ({ ...HERO_QUERIES[mode.value], top_n: HERO_TOP_N }))
-
-  const heroQ = useQuery(
-    computed(() => ({
-      ...statsTopCredentialsOptions({ query: heroQuery.value }),
-      refetchInterval: POLL_MS,
-      placeholderData: keepPreviousData,
-    })),
-  )
+  const usersQ = useQuery({
+    ...statsTopCredentialsOptions({ query: { by: 'username', top_n: MATRIX_USERS } }),
+    refetchInterval: POLL_MS,
+  })
+  const passwordsQ = useQuery({
+    ...statsTopCredentialsOptions({ query: { by: 'password', top_n: MATRIX_PASSWORDS_TOP_N } }),
+    refetchInterval: POLL_MS,
+  })
+  // Top pairs overall (any outcome); matrix cells use real counts, not estimates.
+  const pairsQ = useQuery({
+    ...statsTopCredentialsOptions({ query: { by: 'pair', top_n: 100 } }),
+    refetchInterval: POLL_MS,
+  })
+  const workedQ = useQuery({
+    ...statsTopCredentialsOptions({ query: { by: 'pair', outcome: 'success', top_n: 10 } }),
+    refetchInterval: POLL_MS,
+  })
   const outcomesQ = useQuery({
     ...statsAuthOutcomesOptions(),
     refetchInterval: POLL_SLOW_MS,
@@ -71,36 +73,120 @@
     refetchInterval: POLL_SLOW_MS,
     staleTime: POLL_SLOW_MS,
   })
-  const workedQ = useQuery({
-    ...statsTopCredentialsOptions({ query: { by: 'pair', outcome: 'success', top_n: 5 } }),
-    refetchInterval: POLL_MS,
-  })
 
   await Promise.all([
-    heroQ.suspense(),
+    usersQ.suspense(),
+    passwordsQ.suspense(),
+    pairsQ.suspense(),
+    workedQ.suspense(),
     outcomesQ.suspense(),
     compositionQ.suspense(),
-    workedQ.suspense(),
   ])
-
-  const heroMetric = computed<CredMetric>(() =>
-    mode.value === 'fanout' ? 'ip_fanout' : 'attempts',
-  )
-  const heroRows = computed(() => buildCredentialRows(heroQ.data.value ?? [], heroMetric.value))
 
   const outcomes = computed(() => outcomesQ.data.value!)
   const composition = computed(() => compositionQ.data.value!)
+
+  const matrixUsers = computed(() => buildMatrixEntities(usersQ.data.value ?? [], 'username'))
+  const matrixPasswords = computed(() =>
+    buildMatrixEntities(passwordsQ.data.value ?? [], 'password'),
+  )
+  const matrixPairs = computed(() =>
+    buildMatrixPairs(pairsQ.data.value ?? [], workedQ.data.value ?? []),
+  )
+  // Legend hot end uses top pair count (already sorted) as proxy for matrix max.
+  const legendMax = computed(() => pairsQ.data.value?.[0]?.count ?? 0)
+
+  // Init to fetch size for sane meta text before ResizeObserver first callback.
+  const shownPasswordCount = ref(matrixPasswords.value.length)
+
+  const workedRows = computed<RankRow[]>(() =>
+    toRankRows(buildPairBarRows(workedQ.data.value ?? [])),
+  )
+
+  // Drill-down built from page data only (no by-pair endpoint); uses marginals
+  // for context.
+  const selectedCell = ref<MatrixCellSelection | null>(null)
+  const selectedCellKey = computed(() =>
+    selectedCell.value ? `${selectedCell.value.username}|${selectedCell.value.password}` : null,
+  )
+  const cellTitle = computed(() =>
+    selectedCell.value ? `${selectedCell.value.username}:${selectedCell.value.password}` : '',
+  )
+
+  function selectCell(cell: MatrixCellSelection): void {
+    selectedCell.value = cell
+  }
+  function closeCellDrawer(): void {
+    selectedCell.value = null
+  }
+
+  // Rank within the observed universe only (pairsQ top 100 + accepted-only);
+  // avoid false precision.
+  const observedPairsByCount = computed(() =>
+    [...matrixPairs.value].sort((a, b) => b.count - a.count),
+  )
+  const cellRank = computed(() => {
+    if (!selectedCell.value?.observed) return null
+    const idx = observedPairsByCount.value.findIndex(
+      (p) =>
+        p.username === selectedCell.value!.username && p.password === selectedCell.value!.password,
+    )
+    return idx === -1 ? null : idx + 1
+  })
+  const cellSharePct = computed(() => {
+    if (!selectedCell.value || outcomes.value.total <= 0) return null
+    return (selectedCell.value.count / outcomes.value.total) * 100
+  })
+  // Row/column marginals come from the username/password endpoints, which
+  // aggregate across *every* counterpart - not just the ones that made the
+  // matrix - so these totals hold even when the matrix can't show the pair.
+  const cellRowTotal = computed(
+    () => matrixUsers.value.find((u) => u.label === selectedCell.value?.username)?.count ?? 0,
+  )
+  const cellColTotal = computed(
+    () => matrixPasswords.value.find((p) => p.label === selectedCell.value?.password)?.count ?? 0,
+  )
+  const cellRowFrac = computed(() =>
+    selectedCell.value && cellRowTotal.value > 0
+      ? selectedCell.value.count / cellRowTotal.value
+      : 0,
+  )
+  const cellColFrac = computed(() =>
+    selectedCell.value && cellColTotal.value > 0
+      ? selectedCell.value.count / cellColTotal.value
+      : 0,
+  )
+
+  const topUser = computed(() => matrixUsers.value[0] ?? null)
+  const topUserSharePct = computed(() => {
+    if (!topUser.value || outcomes.value.total <= 0) return null
+    return (topUser.value.count / outcomes.value.total) * 100
+  })
+
+  const acceptFrac = computed(() =>
+    outcomes.value.total > 0 ? outcomes.value.successful / outcomes.value.total : 0,
+  )
+
+  // Password anatomy: KPIs and charts must use same query for consistency.
   const lengthBars = computed(() =>
     buildLengthBars(composition.value.lengths, composition.value.capped_at),
   )
-  const charsetRows = computed(() => buildCharsetRows(composition.value.classes))
-  const workedRows = computed(() => buildPairBarRows(workedQ.data.value ?? []))
+  const modeBar = computed(() => {
+    let best: (typeof lengthBars.value)[number] | null = null
+    for (const b of lengthBars.value) {
+      if (!best || b.count > best.count) best = b
+    }
+    return best
+  })
+  const charsetRows = computed<RankRow[]>(() =>
+    toRankRows(buildCharsetRows(composition.value.classes)),
+  )
 
-  // Histogram drill-down: click a length bar to list its passwords. The query is
-  // lazy (enabled only once a bar is selected) and never part of the initial
-  // suspense, so the page paints without it.
+  type AnatomyTab = 'length' | 'composition'
+  const anatomyTab = ref<AnatomyTab>('length')
+
   const selectedLength = ref<number | null>(null)
-  const passwordsQ = useQuery(
+  const passwordsByLengthQ = useQuery(
     computed(() => ({
       ...statsPasswordsByLengthOptions({ query: { length: selectedLength.value ?? 0, top_n: 25 } }),
       enabled: selectedLength.value !== null,
@@ -108,625 +194,452 @@
       placeholderData: keepPreviousData,
     })),
   )
-  const drillRows = computed(() => buildPasswordRows(passwordsQ.data.value ?? []))
+  const drillRows = computed<RankRow[]>(() =>
+    toRankRows(buildPasswordRows(passwordsByLengthQ.data.value ?? [])),
+  )
   const selectedLabel = computed(() => {
     if (selectedLength.value === null) return ''
     return selectedLength.value >= composition.value.capped_at
       ? `${composition.value.capped_at}+`
       : String(selectedLength.value)
   })
-  // The <Transition out-in> swap unmounts the control the user just activated
-  // (the histogram bar on drill-in, the back-btn on drill-out), dropping focus
-  // to <body>. Move it to a sensible control in the new view once it mounts so
-  // keyboard users keep their place (WCAG 2.4.3). after-enter (not nextTick)
-  // because out-in mounts the entering view only after the leave transition.
+
+  // Transition out-in unmounts the old control before mounting the new one,
+  // dropping focus to body. Restore focus to a sensible control (WCAG 2.4.3)
+  // in after-enter, not nextTick: out-in only mounts the entering view once the
+  // leave transition has finished, so at nextTick there is nothing to focus yet.
   const backBtnRef = ref<HTMLButtonElement | null>(null)
   const histBarsRef = ref<HTMLElement | null>(null)
   type FocusTarget = 'back' | 'hist' | null
   const pendingFocus = ref<FocusTarget>(null)
 
-  function onCompEntered(): void {
+  function onAnatomyEntered(): void {
     const target = pendingFocus.value
     pendingFocus.value = null
     if (target === 'back') backBtnRef.value?.focus()
     else if (target === 'hist') histBarsRef.value?.focus()
   }
 
-  // Hide the tooltip on any view swap: the hovered trigger (a histogram bar /
-  // hero row) unmounts during the transition without firing mouseleave, so the
+  const tooltip = useHwTooltip()
+
+  // Hide the tooltip on any view swap: the hovered trigger (a histogram bar)
+  // unmounts during the transition without firing a leave event, so the
   // bubble would otherwise stay frozen on screen.
   function selectLength(length: number): void {
-    tt.hide()
+    tooltip.hide(true)
     pendingFocus.value = 'back'
     selectedLength.value = length
   }
   function clearLength(): void {
-    tt.hide()
+    tooltip.hide(true)
     pendingFocus.value = 'hist'
     selectedLength.value = null
   }
-  function setMode(next: Mode): void {
-    tt.hide()
-    mode.value = next
+
+  // Switching tabs always lands back on the histogram - resuming a drilled-in
+  // state after a detour through Composition would be a surprise, not a feature.
+  function setAnatomyTab(tab: AnatomyTab): void {
+    if (tab === anatomyTab.value) return
+    tooltip.hide(true)
+    anatomyTab.value = tab
+    selectedLength.value = null
   }
 
-  const acceptRate = computed(() => fmtSuccessRate(outcomes.value.success_rate))
-  const acceptedStyle = computed(() => {
-    const { successful, total } = outcomes.value
-    if (total <= 0) return { width: '0%' }
-    // Floor a non-zero accepted slice to 2% so a rare success stays visible.
-    return { width: `${Math.max(successful > 0 ? 2 : 0, (successful / total) * 100)}%` }
-  })
-  const splitLabel = computed(() => {
-    const { successful, failed } = outcomes.value
-    return `${fmtNumber(successful)} accepted, ${fmtNumber(failed)} rejected`
-  })
+  /** RankRow adapter for the count/bar rows credentials.ts already builds. */
+  function toRankRows(rows: BarRow[]): RankRow[] {
+    let max = 0
+    for (const r of rows) if (r.count > max) max = r.count
+    return rows.map((r) => ({
+      label: r.label,
+      value: fmtNumber(r.count),
+      frac: max > 0 ? r.count / max : 0,
+      title: r.title,
+    }))
+  }
 
-  // After the first successful load, keepPreviousData / cached data stays on
-  // screen even if a background poll fails; surface that so the numbers are not
-  // silently stale (the queries keep retrying on their interval). Mirrors
-  // SessionsView / ActivityView.
-  const isStale = computed(
-    () =>
-      heroQ.isError.value ||
-      outcomesQ.isError.value ||
-      compositionQ.isError.value ||
-      workedQ.isError.value,
-  )
-
-  const tt = useTooltip()
+  const TOOLTIP_COMB =
+    'Rows are the top usernames, columns the top passwords. Darker means more attempts - a ring means the honeypot let that pair in.'
+  const TOOLTIP_WORKED =
+    'The honeypot lets some logins through on purpose, to watch what an attacker does next. It is not a real weak password.'
+  const TOOLTIP_ANATOMY =
+    'The length and character types of every password attackers have tried here.'
+  const TOOLTIP_LENGTH = 'How many passwords have each length. Click a bar to see them.'
+  const TOOLTIP_COMPOSITION =
+    'What passwords are made of - digits only, letters only, mixed, or with symbols.'
+  const TOOLTIP_DISTINCT_PASSWORDS = 'Every different password ever tried against the honeypot.'
+  const TOOLTIP_DISTINCT_USERNAMES =
+    'Every different username ever tried, whatever password went with it.'
+  const TOOLTIP_AUTH_ATTEMPTS =
+    'Every login attempt this honeypot has logged, successful or not, since it started collecting.'
+  const TOOLTIP_ACCEPTED =
+    'Share of attempts the honeypot let through on purpose, to watch what an attacker does next. Not a real weakness.'
 </script>
 
 <template>
-  <div class="credentials">
-    <PageHeader title="Credentials" />
+  <PageShell>
+    <template #head>
+      <TopBar current="credentials" />
+    </template>
 
-    <p v-if="isStale" class="stale" role="status">⚠ data may be stale — retrying</p>
+    <div class="cred-page">
+      <div class="page-head">
+        <h1>Credentials</h1>
+        <span class="sub"
+          >{{ fmtNumber(outcomes.total) }} guesses at the door &middot; what got them in</span
+        >
+      </div>
 
-    <section class="stats-grid" aria-label="Credential totals">
-      <!-- Top row = credential vocabulary; bottom row = volume + outcome. -->
-      <Card padding="sm">
-        <Stat :value="fmtNumber(outcomes.unique_passwords)" label="Passwords" />
-      </Card>
-      <Card padding="sm">
-        <Stat :value="fmtNumber(outcomes.unique_usernames)" label="Usernames" />
-      </Card>
-      <Card padding="sm">
-        <Stat :value="fmtNumber(outcomes.total)" label="Attempts" />
-      </Card>
-      <Card padding="sm">
-        <Stat :value="acceptRate" label="Accepted" />
-      </Card>
-    </section>
+      <div class="stat-row">
+        <StatTile label="Distinct passwords" :value="fmtNumber(outcomes.unique_passwords)">
+          <template #label-extra>
+            <InfoDot title="Distinct passwords" :text="TOOLTIP_DISTINCT_PASSWORDS" />
+          </template>
+          <template #meta>top {{ shownPasswordCount }} shown in the grid below</template>
+        </StatTile>
+        <StatTile label="Distinct usernames" :value="fmtNumber(outcomes.unique_usernames)">
+          <template #label-extra>
+            <InfoDot title="Distinct usernames" :text="TOOLTIP_DISTINCT_USERNAMES" />
+          </template>
+          <template #meta>
+            <template v-if="topUser">
+              {{ topUser.label }} alone: {{ fmtNumber(topUser.count) }} attempts
+            </template>
+          </template>
+        </StatTile>
+        <StatTile label="Login attempts" :value="fmtNumber(outcomes.total)">
+          <template #label-extra>
+            <InfoDot title="Login attempts" :text="TOOLTIP_AUTH_ATTEMPTS" />
+          </template>
+          <template #meta>all time</template>
+        </StatTile>
+        <StatTile label="Accepted" :value="fmtSuccessRate(outcomes.success_rate)">
+          <template #label-extra>
+            <InfoDot title="Accepted" :text="TOOLTIP_ACCEPTED" />
+          </template>
+          <template #meta>{{ fmtNumber(outcomes.successful) }} accepted attempts</template>
+        </StatTile>
+      </div>
 
-    <div class="body">
-      <Card fill class="hero-pane">
-        <template #title>
-          <div class="hero-head">
-            <h2 class="hero-title">Top credentials</h2>
-            <div class="seg" role="group" aria-label="Leaderboard ranking">
-              <button
-                v-for="m in MODES"
-                :key="m.id"
-                type="button"
-                class="seg-btn"
-                :class="{ 'seg-btn-active': mode === m.id }"
-                :aria-pressed="mode === m.id"
-                @click="setMode(m.id)"
-              >
-                {{ m.label }}
-              </button>
+      <div class="grid-main">
+        <HwCard class="matrix-card" title="Username and password pairs">
+          <template #head-extra>
+            <InfoDot title="Username and password pairs" :text="TOOLTIP_COMB" />
+            <div class="matrix-legend">
+              <SeqLegend min="rare" :max="`${fmtCompact(legendMax)} attempts`" />
+              <span class="accept-legend"><span class="ring" aria-hidden="true" />accepted</span>
             </div>
+          </template>
+          <HexMatrix
+            :users="matrixUsers"
+            :passwords="matrixPasswords"
+            :pairs="matrixPairs"
+            :selected-key="selectedCellKey"
+            @select="selectCell"
+            @shown="shownPasswordCount = $event"
+          />
+          <InsightNote v-if="topUser && topUserSharePct !== null" class="matrix-insight">
+            The username <b>{{ topUser.label }}</b> alone drives {{ topUserSharePct.toFixed(1) }}%
+            of all attempts ({{ fmtNumber(topUser.count) }}
+            attempts).
+          </InsightNote>
+        </HwCard>
+
+        <div class="right-col">
+          <HwCard class="worked-card" title="What worked">
+            <template #head-extra>
+              <InfoDot title="What worked" :text="TOOLTIP_WORKED" />
+            </template>
+            <MeterBar :frac="acceptFrac" fill="var(--ok)" />
+            <div class="cap">
+              <span
+                ><b>{{ fmtNumber(outcomes.successful) }} accepted</b> &middot;
+                {{ fmtSuccessRate(outcomes.success_rate) }}</span
+              >
+              <span>{{ fmtNumber(outcomes.failed) }} rejected</span>
+            </div>
+            <RankList
+              v-if="workedRows.length"
+              class="worked-list"
+              :rows="workedRows"
+              label-width="138px"
+              mono
+              fill="var(--ok)"
+            />
+            <EmptyState v-else class="worked-list" title="Nothing accepted yet" />
+          </HwCard>
+
+          <HwCard title="Password anatomy" class="anatomy-card">
+            <template #head-extra>
+              <InfoDot title="Password anatomy" :text="TOOLTIP_ANATOMY" />
+              <span class="toggle-row">
+                <ChipButton :pressed="anatomyTab === 'length'" @toggle="setAnatomyTab('length')">
+                  Length
+                  <template #trailing>
+                    <InfoDot title="Length" :text="TOOLTIP_LENGTH" />
+                  </template>
+                </ChipButton>
+                <ChipButton
+                  :pressed="anatomyTab === 'composition'"
+                  @toggle="setAnatomyTab('composition')"
+                >
+                  Composition
+                  <template #trailing>
+                    <InfoDot title="Composition" :text="TOOLTIP_COMPOSITION" />
+                  </template>
+                </ChipButton>
+              </span>
+            </template>
+
+            <template v-if="anatomyTab === 'length'">
+              <Transition name="anatomy-fade" mode="out-in" @after-enter="onAnatomyEntered">
+                <div v-if="selectedLength === null" key="hist" class="anatomy-body">
+                  <div
+                    class="hist"
+                    role="group"
+                    aria-label="Password lengths. Click a bar to see its passwords."
+                  >
+                    <div ref="histBarsRef" class="hist-bars" tabindex="-1">
+                      <button
+                        v-for="bar in lengthBars"
+                        :key="bar.key"
+                        type="button"
+                        class="hist-col"
+                        :class="{ peak: modeBar && bar.key === modeBar.key }"
+                        :disabled="bar.count === 0"
+                        :aria-label="`Show the ${bar.count} passwords of ${bar.label || bar.length} characters`"
+                        @click="selectLength(bar.length)"
+                        @mouseenter="tooltip.show(bar.title)"
+                        @mousemove="tooltip.move($event)"
+                        @mouseleave="tooltip.hide()"
+                        @focus="tooltip.show(bar.title)"
+                        @blur="tooltip.hide()"
+                      >
+                        <span class="hist-bar" :style="{ height: bar.heightPct }" />
+                      </button>
+                    </div>
+                    <div class="hist-axis" aria-hidden="true">
+                      <span v-for="bar in lengthBars" :key="`x-${bar.key}`" class="hist-tick">
+                        {{ bar.label }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Drill-down: fixed-height list of passwords at chosen length; no reflow on swap. -->
+                <div v-else key="drill" class="drill">
+                  <div class="drill-head">
+                    <button ref="backBtnRef" type="button" class="back-btn" @click="clearLength">
+                      <span aria-hidden="true">&#8592;</span> Anatomy
+                    </button>
+                    <span class="drill-title">{{ selectedLabel }} characters</span>
+                  </div>
+                  <div class="drill-scroll">
+                    <p v-if="passwordsByLengthQ.isError.value" class="drill-error" role="status">
+                      Couldn't load passwords for this length - retrying.
+                    </p>
+                    <RankList v-else :rows="drillRows" label-width="200px" mono />
+                  </div>
+                </div>
+              </Transition>
+            </template>
+            <template v-else>
+              <div class="anatomy-body">
+                <RankList class="comp-list" :rows="charsetRows" label-width="122px" />
+              </div>
+            </template>
+          </HwCard>
+        </div>
+      </div>
+
+      <DrawerShell :open="!!selectedCell" :title="cellTitle" @close="closeCellDrawer">
+        <template v-if="selectedCell" #head-extra>
+          <span v-if="selectedCell.accepted" class="pd-badge ok">accepted</span>
+          <span v-else-if="!selectedCell.observed" class="pd-badge dim">never tried</span>
+        </template>
+        <template v-if="selectedCell">
+          <div class="pd-hero">
+            <span class="n">{{ fmtNumber(selectedCell.count) }}</span>
+            <span class="l">attempts<br />at this exact pair</span>
+          </div>
+
+          <InsightNote v-if="selectedCell.observed">
+            Ranks <b>#{{ cellRank ?? '?' }}</b> of
+            {{ fmtNumber(observedPairsByCount.length) }} pairs tried &middot;
+            <b>{{ cellSharePct !== null ? cellSharePct.toFixed(2) : '-' }}%</b> of all attempts.
+            <span v-if="selectedCell.accepted">The honeypot accepted this exact combination.</span>
+          </InsightNote>
+          <InsightNote v-else>
+            This exact pair has never been tried against the honeypot.
+          </InsightNote>
+
+          <div class="pd-grid">
+            <div>
+              <span class="k">{{ selectedCell.username }}, all passwords</span>
+              <span class="v">{{ fmtNumber(cellRowTotal) }}</span>
+            </div>
+            <div>
+              <span class="k">{{ selectedCell.password }}, all usernames</span>
+              <span class="v">{{ fmtNumber(cellColTotal) }}</span>
+            </div>
+          </div>
+
+          <div class="pd-share">
+            <span class="pd-share-label">Share of {{ selectedCell.username }}'s attempts</span>
+            <MeterBar :frac="cellRowFrac" />
+          </div>
+          <div class="pd-share">
+            <span class="pd-share-label">Share of {{ selectedCell.password }}'s attempts</span>
+            <MeterBar :frac="cellColFrac" />
           </div>
         </template>
-
-        <div class="hero-body">
-          <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
-          <ul v-if="heroRows.length" class="cred-list" aria-label="Top attempted credentials">
-            <li
-              v-for="row in heroRows"
-              :key="row.key"
-              class="cred-row"
-              @mouseenter="tt.show(row.title, $event)"
-              @mousemove="tt.show(row.title, $event)"
-              @mouseleave="tt.hide()"
-            >
-              <span class="cred-cred" :title="row.title">
-                <span class="cred-user" :class="{ 'cred-user-solo': !row.sub }">{{
-                  row.label
-                }}</span>
-                <span v-if="row.sub" class="cred-pass">{{ row.sub }}</span>
-              </span>
-              <span class="cred-track" aria-hidden="true">
-                <span class="cred-fill" :style="{ '--bar-w': row.widthPct }" />
-              </span>
-              <span class="cred-value" :class="{ 'cred-value-hot': row.emphasis }">
-                {{ row.valueLabel }}
-              </span>
-            </li>
-          </ul>
-          <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
-          <EmptyState v-else title="No credentials seen yet" />
-        </div>
-      </Card>
-
-      <div class="side">
-        <Card title="Outcomes" padding="sm">
-          <div class="split" role="img" :aria-label="splitLabel">
-            <span class="split-accepted" :style="acceptedStyle" />
-          </div>
-          <div class="split-legend">
-            <span class="legend-accepted">{{ fmtNumber(outcomes.successful) }} accepted</span>
-            <span>{{ fmtNumber(outcomes.failed) }} rejected</span>
-          </div>
-          <h3 class="side-sub">Credentials that worked</h3>
-          <BarList
-            :items="workedRows"
-            label="Credentials cowrie accepted"
-            empty-text="Nothing accepted yet"
-          />
-        </Card>
-
-        <Card title="Password composition" padding="sm" class="comp-card" fill>
-          <Transition name="comp-fade" mode="out-in" @after-enter="onCompEntered">
-            <!-- Default view: length histogram + charset breakdown. -->
-            <div v-if="selectedLength === null" key="hist" class="comp-body">
-              <div
-                class="hist"
-                role="group"
-                aria-label="Password length distribution; activate a bar to list its passwords"
-              >
-                <div ref="histBarsRef" class="hist-bars" tabindex="-1">
-                  <button
-                    v-for="bar in lengthBars"
-                    :key="bar.key"
-                    type="button"
-                    class="hist-col"
-                    :disabled="bar.count === 0"
-                    :aria-label="`Show the ${bar.count} passwords of ${bar.label || bar.length} characters`"
-                    @click="selectLength(bar.length)"
-                    @mouseenter="tt.show(bar.title, $event)"
-                    @mousemove="tt.show(bar.title, $event)"
-                    @mouseleave="tt.hide()"
-                    @focus="tt.show(bar.title, $event)"
-                    @blur="tt.hide()"
-                  >
-                    <span class="hist-bar" :style="{ height: bar.heightPct }" />
-                  </button>
-                </div>
-                <div class="hist-axis" aria-hidden="true">
-                  <span v-for="bar in lengthBars" :key="`x-${bar.key}`" class="hist-tick">
-                    {{ bar.label }}
-                  </span>
-                </div>
-              </div>
-
-              <div class="comp-list">
-                <BarList
-                  :items="charsetRows"
-                  label="Password character classes"
-                  empty-text="No passwords yet"
-                />
-              </div>
-            </div>
-
-            <!-- Drill-down: the whole card becomes a scrollable list of the
-                 passwords at the chosen length; size is fixed so nothing reflows. -->
-            <div v-else key="drill" class="comp-drill">
-              <div class="drill-head">
-                <button ref="backBtnRef" type="button" class="back-btn" @click="clearLength">
-                  <span aria-hidden="true">←</span> Composition
-                </button>
-                <span class="drill-title">{{ selectedLabel }} chars</span>
-              </div>
-              <div class="drill-scroll">
-                <!-- A failed lazy fetch must read differently from a genuinely
-                     empty bucket, otherwise "No passwords of this length" hides
-                     the error and looks like real data. -->
-                <p v-if="passwordsQ.isError.value" class="drill-error" role="status">
-                  Couldn't load passwords for this length — retrying.
-                </p>
-                <BarList
-                  v-else
-                  :items="drillRows"
-                  label="Passwords of the selected length"
-                  empty-text="No passwords of this length"
-                />
-              </div>
-            </div>
-          </Transition>
-        </Card>
-      </div>
+      </DrawerShell>
     </div>
-
-    <Tooltip v-bind="tt.state" />
-  </div>
+  </PageShell>
 </template>
 
 <style scoped>
-  .credentials {
+  .cred-page {
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-3);
-    flex: 1 1 auto;
-    min-height: 0;
+    gap: 14px;
   }
 
-  .stale {
-    flex: 0 0 auto;
-    margin: 0;
-    font-size: var(--type-xs);
-    color: var(--warning);
-  }
-
-  .stats-grid {
-    flex: 0 0 auto;
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--space-3);
-  }
-
-  /* Body fills the viewport leftover (locked, no page scroll on desktop). Both
-     columns stretch to that height; inside the side, the histogram stays a fixed
-     dense height and the charset list spreads to fill, so nothing reads empty. */
-  .body {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: grid;
-    grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-    gap: var(--space-3);
-  }
-
-  .hero-pane {
-    min-height: 0;
-  }
-
-  .hero-head {
+  .page-head {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: var(--space-3);
+    align-items: baseline;
+    gap: 16px;
+    flex: none;
     flex-wrap: wrap;
   }
 
-  .hero-title {
+  .page-head h1 {
     margin: 0;
-    font-size: var(--type-lg);
-    line-height: var(--type-lg-lh);
-    font-weight: 600;
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: 0.005em;
     color: var(--text);
-    letter-spacing: -0.01em;
   }
 
-  .seg {
+  .sub {
+    color: var(--text-dim);
+    font-size: 13px;
+  }
+
+  .matrix-legend {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-left: auto;
+  }
+
+  .accept-legend {
     display: inline-flex;
-    gap: 2px;
-    background: var(--bg-2);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    padding: 2px;
-  }
-
-  .seg-btn {
-    border: 0;
-    background: transparent;
-    color: var(--text-muted);
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    font-weight: 500;
-    /* Meet the project's 44px coarse-pointer target (--control-h scales up on
-       touch); padding stays for the visual size. */
-    min-height: var(--control-h);
-    padding: 4px 10px;
-    border-radius: calc(var(--radius-sm) - 1px);
-    cursor: pointer;
-    transition:
-      color var(--motion-fast) ease,
-      background var(--motion-fast) ease;
-  }
-
-  .seg-btn:hover {
-    color: var(--text);
-  }
-
-  .seg-btn-active {
-    background: var(--surface);
-    color: var(--accent);
-  }
-
-  .seg-btn:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  .hero-body {
-    height: 100%;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .cred-list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: space-between;
-    gap: var(--space-2);
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  .cred-row {
-    display: grid;
-    /* Value is a fixed last column (not auto) so every row's bar starts and ends
-       at the same x -- otherwise each row is its own grid and a longer value
-       (e.g. "2 IPs" vs "1 IP") would stretch that row's bar out of line. */
-    grid-template-columns: minmax(0, 1.3fr) minmax(60px, 1.4fr) 5rem;
     align-items: center;
-    gap: var(--space-3);
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-  }
-
-  .cred-cred {
-    display: flex;
-    min-width: 0;
-    font-family: var(--font-mono);
-  }
-
-  /* In Pairs mode the username is the (short) identity and stays full; the
-     password sub takes the ellipsis. */
-  .cred-user {
-    flex: 0 0 auto;
-    color: var(--text);
-    white-space: nowrap;
-  }
-
-  /* In Usernames / Passwords mode the label IS the value (no sub) and can be a
-     long string, so it must truncate instead of spilling across the bar track. */
-  .cred-user-solo {
-    flex: 0 1 auto;
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-
-  /* The password takes the ellipsis when a pair is too long to fit. */
-  .cred-pass {
-    flex: 0 1 auto;
-    min-width: 0;
-    color: var(--text-dim);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cred-track {
-    height: 6px;
-    background: var(--bg-2);
-    border-radius: 999px;
-    overflow: hidden;
-  }
-
-  .cred-fill {
-    display: block;
-    height: 100%;
-    width: var(--bar-w);
-    background: var(--accent);
-    border-radius: 999px;
-    transition: width var(--motion-base) ease;
-  }
-
-  .cred-value {
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-    text-align: right;
-    white-space: nowrap;
-  }
-
-  /* High IP fan-out (botnet-distributed credential) -- gold, no layout shift. */
-  .cred-value-hot {
-    color: var(--warning);
-    font-weight: 600;
-  }
-
-  .side {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-    min-height: 0;
-  }
-
-  /* Fills the side column. Inside, the histogram is fixed (dense) and the
-     charset list spreads to take the remaining height -- so the card fills with
-     no empty gap, while the spiky histogram never stretches tall. */
-  .comp-card {
-    flex: 1 1 auto;
-    min-height: 0;
-  }
-
-  .comp-card :deep(.card-body) {
-    display: flex;
-    flex-direction: column;
-    min-height: 0;
-  }
-
-  .comp-body {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-3);
-  }
-
-  /* Charset list takes the leftover height and distributes its rows to fill it.
-     overflow-y:auto + scrollbar-gutter:stable reserve the same gutter the drill
-     list reserves, so the two swap-states are exactly the same width (the list
-     fits/spreads, so it never actually shows a scrollbar). */
-  .comp-list {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-  }
-
-  .comp-list :deep(.bar-list) {
-    flex: 1 1 auto;
-    justify-content: space-between;
-  }
-
-  .comp-drill {
-    flex: 1 1 auto;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    /* Match the regular view's hist <-> charset gap (breathing room under the
-       "<- Composition" header). */
-    gap: var(--space-3);
-  }
-
-  /* Lock the count column to a fixed width in the composition lists so every
-     row's bar track is identical and the bar right-edges line up (BarList's
-     default trailing track is `auto`, which varies with the count's digits).
-     Scoped, so Overview's BarLists are untouched. */
-  .comp-list :deep(.bar-row),
-  .drill-scroll :deep(.bar-row) {
-    grid-template-columns: minmax(0, 1fr) minmax(60px, 2fr) 3.5rem;
-  }
-  .comp-list :deep(.bar-value),
-  .drill-scroll :deep(.bar-value) {
-    min-width: 0;
-  }
-
-  .drill-head {
-    flex: 0 0 auto;
-    display: flex;
-    align-items: center;
-    gap: var(--space-3);
-  }
-
-  .back-btn {
-    border: 1px solid var(--border);
-    background: var(--surface);
-    color: var(--text);
-    cursor: pointer;
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    /* Coarse-pointer target floor (--control-h scales up on touch). */
-    min-height: var(--control-h);
-    padding: var(--space-1) var(--space-2);
-    border-radius: var(--radius-sm);
-    transition:
-      color var(--motion-fast) ease,
-      background var(--motion-fast) ease,
-      border-color var(--motion-fast) ease;
-  }
-
-  .back-btn:hover {
-    background: var(--surface-hover);
-    border-color: var(--border-strong);
-  }
-
-  .back-btn:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-  }
-
-  .drill-title {
-    font-family: var(--font-mono);
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    gap: 5px;
+    font: 500 11px var(--font-mono);
     color: var(--text-dim);
   }
 
-  /* Scrolls within the filled card (it can be up to 25 rows). Reserve the
-     scrollbar gutter so the list width is the same whether it scrolls or not
-     (and matches the non-scrolling charset list). */
-  .drill-scroll {
-    flex: 1 1 auto;
-    min-height: 0;
-    overflow-y: auto;
-    scrollbar-gutter: stable;
-  }
-
-  .drill-error {
-    margin: 0;
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    color: var(--warning);
-  }
-
-  /* Cross-fade the two card states (out-in) so the swap reads as one surface
-     changing, never as content jumping. */
-  .comp-fade-enter-active,
-  .comp-fade-leave-active {
-    transition: opacity var(--motion-fast) ease;
-    /* While a view fades out it stays in the DOM ~120ms. Without this, a
-       mousemove over a leaving histogram bar re-fires the tooltip *after* the
-       click hid it, freezing the bubble on screen. Make transitioning content
-       inert so no stray hover events fire mid-swap. */
-    pointer-events: none;
-  }
-
-  .comp-fade-enter-from,
-  .comp-fade-leave-to {
-    opacity: 0;
-  }
-
-  .split {
-    display: flex;
+  .accept-legend .ring {
+    width: 10px;
     height: 10px;
-    border-radius: 999px;
-    overflow: hidden;
-    background: color-mix(in srgb, var(--text-dim) 22%, transparent);
+    border-radius: 3px;
+    border: 1.5px solid var(--ok);
+    display: inline-block;
   }
 
-  .split-accepted {
-    height: 100%;
-    background: var(--accent);
-    border-radius: 999px;
+  .stat-row {
+    flex: none;
+    display: grid;
+    grid-auto-flow: column;
+    grid-auto-columns: 1fr;
+    gap: 12px;
   }
 
-  .split-legend {
+  /* Full-width comb clips "What worked" and "Password anatomy" cards. Grid
+     with near-square comb (1.2fr/1fr) gives both columns proper space. */
+  .grid-main {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr);
+    gap: 14px;
+  }
+
+  .matrix-card :deep(svg.hex-matrix) {
+    flex: 1;
+    min-height: 0;
+  }
+
+  .matrix-insight {
+    margin-top: 8px;
+  }
+
+  .right-col {
+    display: grid;
+    grid-template-rows: 1fr 1fr;
+    gap: 14px;
+    min-height: 0;
+  }
+
+  .worked-card {
+    min-height: 0;
+  }
+
+  .cap {
     display: flex;
     justify-content: space-between;
-    margin-top: var(--space-2);
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    color: var(--text-muted);
-    font-variant-numeric: tabular-nums;
-  }
-
-  .legend-accepted {
-    color: var(--accent);
-  }
-
-  .side-sub {
-    margin: var(--space-3) 0 var(--space-2);
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+    font: 500 11.5px var(--font-mono);
     color: var(--text-dim);
+    margin: 6px 0 8px;
   }
 
-  /* Fixed, compact height: a dense little histogram. Letting it flex-grow made
-     it a tall, mostly-empty chart with one lonely spike. The charset list below
-     absorbs the leftover space so the card still fills. */
-  .hist {
-    flex: 0 0 auto;
-    height: 180px;
+  .cap b {
+    color: var(--ok);
+    font-weight: 600;
+  }
+
+  /* min-height:0 lets RankList scroll inside the card instead of overflowing it. */
+  .worked-list {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .anatomy-card {
+    min-height: 0;
+  }
+
+  /* h2's uppercase/letter-spacing are inherited - reset so labels render as typed. */
+  .toggle-row {
+    display: flex;
+    gap: 6px;
+    margin-left: auto;
+    text-transform: none;
+    letter-spacing: normal;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .anatomy-body,
+  .drill {
+    flex: 1 1 auto;
+    min-height: 0;
     display: flex;
     flex-direction: column;
-    gap: var(--space-1);
+    gap: 10px;
+  }
+
+  /* flex:1 works because .right-col height chain to PageShell is definite,
+     giving bars' percentage heights a base to resolve against. */
+  .hist {
+    flex: 1 1 auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
   }
 
   .hist-bars {
@@ -737,15 +650,13 @@
     gap: 2px;
   }
 
-  /* Programmatic focus target after the drill-out swap (WCAG 2.4.3). Show a ring
-     only for keyboard-visible focus so the silent .focus() never paints one. */
   .hist-bars:focus {
     outline: none;
   }
   .hist-bars:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-hot);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
   }
 
   .hist-col {
@@ -753,7 +664,6 @@
     height: 100%;
     display: flex;
     align-items: flex-end;
-    /* button reset */
     border: 0;
     padding: 0;
     background: transparent;
@@ -765,22 +675,24 @@
   }
 
   .hist-col:focus-visible {
-    outline: 2px solid var(--accent);
+    outline: 2px solid var(--accent-hot);
     outline-offset: 2px;
-    border-radius: var(--radius-sm);
+    border-radius: 4px;
   }
 
   .hist-bar {
     width: 100%;
+    background: var(--series-1);
+    border-radius: 2.5px 2.5px 0 0;
+    transition: background var(--motion-fast);
+  }
+
+  .hist-col.peak .hist-bar {
     background: var(--accent);
-    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-    transition:
-      height var(--motion-base) ease,
-      background var(--motion-fast) ease;
   }
 
   .hist-col:hover:not(:disabled) .hist-bar {
-    background: var(--accent-strong);
+    filter: brightness(1.2);
   }
 
   .hist-axis {
@@ -791,18 +703,12 @@
   .hist-tick {
     flex: 1 1 0;
     text-align: center;
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
+    font: 500 9.5px var(--font-mono);
     color: var(--text-dim);
-    /* Labels can be wider than their thin cell ("16+"); let them spill into the
-       adjacent (empty) cells instead of clipping. */
     overflow: visible;
     white-space: nowrap;
-    font-variant-numeric: tabular-nums;
   }
 
-  /* Pin the first/last axis labels to the histogram edges so the "16+" tail
-     stays fully visible inside the card instead of being clipped at the edge. */
   .hist-tick:first-child {
     text-align: left;
   }
@@ -810,62 +716,217 @@
     text-align: right;
   }
 
-  @media (max-width: 768px) {
-    /* The hero + two side cards can't all fit one short viewport; stack and let
-     the page scroll (same play as Overview/Activity below md). */
-    .credentials {
+  .comp-list {
+    flex: 1 1 auto;
+    min-height: 0;
+  }
+
+  .drill-head {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .back-btn {
+    border: 1px solid var(--border-strong);
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 12px;
+    padding: 5px 10px;
+    border-radius: var(--radius-md);
+    transition:
+      color var(--motion-fast),
+      border-color var(--motion-fast);
+  }
+
+  .back-btn:hover {
+    color: var(--text);
+    border-color: var(--accent-dim);
+  }
+
+  .back-btn:focus-visible {
+    outline: 2px solid var(--accent-hot);
+    outline-offset: 2px;
+  }
+
+  .drill-title {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+  }
+
+  .drill-scroll {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+  }
+
+  .drill-error {
+    margin: 0;
+    font-size: 12px;
+    color: var(--warning);
+  }
+
+  .anatomy-fade-enter-active,
+  .anatomy-fade-leave-active {
+    transition: opacity var(--motion-fast) ease;
+    pointer-events: none;
+  }
+  .anatomy-fade-enter-from,
+  .anatomy-fade-leave-to {
+    opacity: 0;
+  }
+
+  /* Comb-cell drawer content (DrawerShell owns the chrome). */
+  .pd-hero {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .pd-hero .n {
+    font-family: var(--font-mono);
+    font-size: 36px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+    color: var(--text);
+  }
+
+  .pd-hero .l {
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+
+  .pd-badge {
+    font: 600 10px var(--font-mono);
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 999px;
+    border: 1px solid transparent;
+  }
+
+  .pd-badge.ok {
+    color: var(--ok);
+    background: rgba(132, 204, 22, 0.1);
+    border-color: rgba(132, 204, 22, 0.28);
+  }
+
+  .pd-badge.dim {
+    color: var(--text-dim);
+    background: var(--surface-2);
+    border-color: var(--border);
+  }
+
+  .pd-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+  }
+
+  .pd-grid > div {
+    min-width: 0;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .pd-grid .k {
+    font: 600 10px var(--font-sans);
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .pd-grid .v {
+    font: 620 16px var(--font-sans);
+    color: var(--text);
+  }
+
+  .pd-share {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+
+  .pd-share-label {
+    font-size: 11.5px;
+    color: var(--text-muted);
+  }
+
+  @media (max-width: 900px) {
+    .cred-page {
       overflow-y: auto;
     }
-    /* Stack as a plain content-height flex column (not the desktop grid, whose
-       definite height + min-height:0 let the hero shrink and clip its rows).
-       Children below are flex:0 0 auto so they keep full height and the page
-       scrolls. */
-    .body {
-      display: flex;
-      flex-direction: column;
-      flex: 0 0 auto;
-    }
-    .side {
-      flex: 0 0 auto;
-    }
-    /* 2x2 grid (same play as ActivityView's 4 KPIs): two columns give each big
-       number ~half the width, so "42.6%" fits comfortably with no clipping or
-       sideways scroll. minmax(0,1fr) keeps the tracks shrinkable. */
-    .stats-grid {
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-    }
-    /* The 4-button toggle can't fit one row on a phone and a wrapping flex
-       segmented control looks broken. Lay it out as a tidy full-width 2x2 grid
-       (echoes the KPI 2x2 above). */
-    .seg {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      width: 100%;
-    }
-    /* Hero: content-size so the whole list is displayed (no inner scroll) and
-       the card is only as tall as its rows; the page scrolls. flex:0 0 auto
-       keeps it from shrinking/clipping inside the flex column. */
-    .body .hero-pane {
-      flex: 0 0 auto;
-      height: auto;
-    }
-    .body .hero-pane :deep(.card-body) {
-      display: block;
-    }
-    .hero-body {
-      height: auto;
-    }
-    .cred-list {
-      justify-content: flex-start;
+
+    .stat-row {
+      grid-auto-flow: row;
+      grid-template-columns: 1fr 1fr;
     }
 
-    /* Composition: a fixed-height card so it stays the SAME size when you drill
-       into the password list (matches the regular view). The desktop fill/scroll
-       rules then run inside this fixed height -- charset spreads to fill, drill
-       list scrolls -- so both states are identical in size, with no overflow. */
-    .side .comp-card {
-      flex: 0 0 auto;
-      height: clamp(420px, 60vh, 560px);
+    .grid-main {
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* Own row under the title, with the ramp and the accepted key pushed apart
+       so they stop reading as one run-on label. */
+    .matrix-legend {
+      flex-wrap: wrap;
+      margin-left: 0;
+      flex-basis: 100%;
+      justify-content: space-between;
+      gap: 6px 14px;
+    }
+
+    .matrix-card :deep(svg.hex-matrix) {
+      min-height: 260px;
+    }
+
+    .right-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .anatomy-card,
+    .worked-card {
+      flex: none;
+      height: auto;
+    }
+
+    /* Card is height:auto on mobile; fall back to fixed height so bars'
+       percentage heights don't collapse. */
+    .hist {
+      flex: none;
+      height: 180px;
+    }
+
+    /* The card is height:auto on mobile, so flex:1 on the list has nothing
+       to grow into; cap it so it scrolls internally instead of stretching
+       the whole (already-scrolling) page. */
+    .worked-list {
+      max-height: 168px;
+    }
+
+    /* The card title takes the first line, so the chips get a full row and stay
+       side by side instead of stacking. */
+    .toggle-row {
+      margin-left: 0;
+      flex-basis: 100%;
+      flex-wrap: nowrap;
     }
   }
 </style>

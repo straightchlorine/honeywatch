@@ -24,5 +24,10 @@ export default defineConfig({
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    // Mobile invariant: every page usable at 390px; Pixel 7 (not iPhone) keeps tests on installed chromium.
+    {
+      name: 'mobile-chromium',
+      use: { ...devices['Pixel 7'], viewport: { width: 390, height: 844 } },
+    },
   ],
 })

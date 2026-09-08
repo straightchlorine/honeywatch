@@ -79,8 +79,6 @@ class BaseSchema(Schema):
 
 
 class PaginationMeta(BaseSchema):
-    """Reusable pagination envelope embedded in list responses."""
-
     page = fields.Int(
         required=True,
         metadata={"description": "Current page number (1-indexed).", "example": 1},
@@ -103,8 +101,6 @@ class PaginationMeta(BaseSchema):
 
 
 class HealthResponse(BaseSchema):
-    """Liveness payload."""
-
     status = fields.Str(
         required=True,
         metadata={"description": "Liveness status string.", "example": "ok"},
@@ -112,8 +108,6 @@ class HealthResponse(BaseSchema):
 
 
 class ReadyResponse(BaseSchema):
-    """Readiness payload (200 path)."""
-
     status = fields.Str(
         required=True,
         metadata={"description": "Readiness status string.", "example": "ready"},
@@ -121,8 +115,6 @@ class ReadyResponse(BaseSchema):
 
 
 class UnavailableResponse(BaseSchema):
-    """Readiness payload (503 path)."""
-
     status = fields.Str(
         required=True,
         metadata={"description": "Readiness status string.", "example": "unavailable"},

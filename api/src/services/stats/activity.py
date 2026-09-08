@@ -29,9 +29,7 @@ _BUCKET_WINDOWS = {
 
 def totals(db: DbSession) -> TotalsDict:
     """The three headline counters, in one round trip."""
-    # Loose index scan for the distinct src_ip count: walk the
-    # sessions(src_ip) index one value at a time instead of aggregating
-    # every row.
+    # Loose index scan: walk sessions(src_ip) index instead of aggregating all rows.
     skip = (
         select(Session.src_ip)
         .order_by(Session.src_ip)

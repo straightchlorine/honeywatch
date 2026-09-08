@@ -32,6 +32,9 @@ def _base(s: Session, geo: GeoLocation | None) -> SessionBaseDict:
         "protocol": s.protocol,
         "country_code": geo.country_code if geo else None,
         "country": geo.country if geo else None,
+        "city": geo.city if geo else None,
+        "lat": geo.latitude if geo else None,
+        "lon": geo.longitude if geo else None,
         "started_at": s.started_at,
         "ended_at": s.ended_at,
     }
@@ -44,12 +47,12 @@ def session_summary(
     command_count: int,
     auth_attempt_count: int,
     login_success: bool,
+    client_version: str | None,
 ) -> SessionSummaryDict:
     """Build a list-row summary.
 
-    The counters are passed in because get_sessions_paginated aggregates
-    them in SQL; reading them off the ORM relationships would load every
-    command and auth attempt on the page.
+    SQL-aggregated counters passed to avoid ORM N+1 loads. Other counters
+    come from Session row (ingestor-maintained, never recalculated).
     """
     return {
         **_base(s, geo),
@@ -57,6 +60,13 @@ def session_summary(
         "command_count": command_count,
         "has_successful_login": login_success,
         "category": classify_category(command_count, login_success, auth_attempt_count),
+        "n_commands": s.n_commands,
+        "n_downloads": s.n_downloads,
+        "n_tcpip": s.n_tcpip,
+        "auth_success": s.auth_success,
+        "interest": s.interest,
+        "asn_org": geo.as_org if geo else None,
+        "client_version": redact_ips(client_version, numeric_hosts=False),
     }
 
 
@@ -66,15 +76,21 @@ def session_detail(s: Session, geo: GeoLocation | None) -> SessionDetailDict:
         "sensor": s.sensor or None,
         "auth_attempts": [_dump_auth_attempt(a) for a in s.auth_attempts],
         "commands": [_dump_command(c) for c in s.commands],
-        "downloads": [_dump_download(d) for d in s.downloads],
+        # sha256 IS NULL means the fetch failed and captured nothing; the row
+        # exists only to keep the attacker's URL. There is nothing to show
+        # for it, so it stays out of the transcript.
+        "downloads": [_dump_download(d) for d in s.downloads if d.sha256],
     }
 
 
 def _dump_auth_attempt(a: AuthAttempt) -> AuthAttemptDict:
+    # Credentials are attacker-typed free text like a command is, so they get
+    # the same blotting. numeric_hosts=False: "123456789" is a password, not a
+    # host, and blotting it would corrupt the credential analytics.
     return {
         "id": a.id,
-        "username": a.username,
-        "password": a.password,
+        "username": redact_ips(a.username, numeric_hosts=False),
+        "password": redact_ips(a.password, numeric_hosts=False),
         "success": a.success,
         "timestamp": a.timestamp,
     }
@@ -93,7 +109,6 @@ def _dump_download(d: Download) -> DownloadDict:
     return {
         "id": d.id,
         "url": redact_ips(d.url),
-        "outfile": d.outfile,
         "sha256": d.sha256,
         "timestamp": d.timestamp,
     }

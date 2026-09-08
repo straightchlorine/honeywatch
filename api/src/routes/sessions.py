@@ -35,9 +35,12 @@ def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
         get_db(),
         query_args["page"],
         query_args["per_page"],
+        q=query_args.get("q"),
         country=query_args.get("country"),
         category=query_args.get("category"),
         sort=query_args.get("sort", "recent"),
+        has=query_args.get("has"),
+        sha256=query_args.get("sha256"),
     )
     return {
         "items": result["sessions"],
@@ -47,6 +50,7 @@ def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
             "pages": result["pages"],
             "total": result["total"],
         },
+        "max_interest": result["max_interest"],
     }
 
 

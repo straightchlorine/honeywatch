@@ -16,11 +16,7 @@ export default defineConfig({
     include: ['tests/unit/**/*.{test,spec}.ts'],
     coverage: {
       provider: 'v8',
-      // Unit-coverage scope = pure logic + presentational components. The
-      // integration shells (App, AppShell, router, the page-level views) and
-      // thin glue (generated client, client interceptor, query barrel) are
-      // exercised by the Playwright/axe e2e suite instead, so they are excluded
-      // here to keep the unit gate meaningful rather than aspirational.
+      // Components and logic only; App/router/views are tested by Playwright/axe e2e.
       exclude: [
         'src/api/generated/**',
         'src/api/client.ts',

@@ -45,7 +45,7 @@ def _lines() -> list[str]:
 
 @pytest.fixture
 def populated_db(writer: EventWriter, db_connection: DbConn) -> DbConn:
-    """Replay every fixture line through the production parser + writer."""
+    """Parse and write every fixture line using production code."""
     lines = _lines()
     assert lines, "fixture is empty; regenerate via scripts/regen_cowrie_fixture.py"
     for raw in lines:
@@ -210,7 +210,7 @@ def _columns_referenced(sql: str) -> set[str]:
 def test_writer_columns_match_table_schema(
     db_connection: DbConn, table: str, sql_fragments: tuple[str, ...]
 ) -> None:
-    """Writer columns ⊆ schema columns; NOT-NULL-no-default columns ⊆ writer columns."""
+    """Writer covers all required NOT NULL columns and references no missing columns."""
     writer_cols: set[str] = set()
     for fragment in sql_fragments:
         writer_cols |= _columns_referenced(fragment)
@@ -276,7 +276,7 @@ _WRITER_LENGTH_CAPS: tuple[tuple[str, str, int], ...] = (
 def test_writer_length_caps_match_schema(
     db_connection: DbConn, table: str, column: str, writer_cap: int
 ) -> None:
-    """Writer `_LEN_*` must equal `information_schema.character_maximum_length`."""
+    """Writer truncation caps match the database column width."""
     row = db_connection.execute(
         "SELECT character_maximum_length FROM information_schema.columns "
         "WHERE table_schema = current_schema() "
@@ -292,13 +292,9 @@ def test_writer_length_caps_match_schema(
 
 
 def test_consumed_event_schemas_parse() -> None:
-    """All consumed client.*/direct-tcpip events must keep parsing as cowrie evolves.
-
-    `client.version`/`kex`/`fingerprint` and `direct-tcpip.request` are persisted
-    (see the `*_written` tests); `client.size` is intentionally not. A field
-    rename upstream would silently break capture, so the contract test catches it
-    at PR time instead of in production.
-    """
+    """Consumed client.*/direct-tcpip events must parse to catch upstream schema
+    changes. Models client.version/kex/fingerprint and direct-tcpip.request
+    (persisted); client.size (intentionally not persisted)."""
     parsed = [parse_event(line) for line in _lines()]
     kinds = {type(event) for event in parsed if event is not None}
     assert ClientVersion in kinds

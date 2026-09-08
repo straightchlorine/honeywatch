@@ -1,5 +1,3 @@
-"""Swagger UI and ReDoc routes must render after the static asset move."""
-
 from __future__ import annotations
 
 from typing import Any

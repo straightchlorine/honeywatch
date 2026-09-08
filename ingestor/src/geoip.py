@@ -159,14 +159,14 @@ def _lookup_cached(ip: str) -> GeoData | None:
         latitude = c.location.latitude
         longitude = c.location.longitude
     except geoip2.errors.AddressNotFoundError:
-        pass  # city DB doesn't cover this IP - still try ASN
+        pass  # still try ASN
 
     try:
         a = asn_reader.asn(ip)
         asn = a.autonomous_system_number
         as_org = a.autonomous_system_organization
     except geoip2.errors.AddressNotFoundError:
-        pass  # ASN DB doesn't cover this IP - return whatever the city DB gave
+        pass  # return whatever the city DB gave
 
     if country_code is None and asn is None:
         return None

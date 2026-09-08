@@ -1,12 +1,5 @@
 /**
- * Turn a captured session into an ordered list of terminal lines for the replay.
- *
- * Honesty contract: we render ONLY what cowrie captured -- attacker-typed input,
- * login outcomes, and download events. Cowrie stores no command stdout, so the
- * transcript never fabricates output. Annotations (banner / login / download /
- * close) are tagged with their own line kinds so the renderer can mark them as
- * NOT attacker output. Every attacker string is run through `sanitizeAttackerText`
- * and command/URL text through `redactIps` (always blot).
+ * Render session transcript from cowrie data, with sanitization and IP redaction.
  */
 import type { SessionDetailResponse } from '@/api/generated/types.gen'
 import { sanitizeAttackerText } from '@/utils/sanitize'
@@ -17,14 +10,10 @@ const DEFAULT_USER = 'root'
 const HOST = 'honeypot'
 const MAX_FIELD_BYTES = 8192
 
-// Auth lines surface the captured credential: `pre` + the attacker's password
-// (rendered as a highlighted chip by the view) + `post`. Passwords are the
-// honeypot's core public data (cf. the Overview top-passwords board), so unlike
-// IPs they are shown verbatim, only sanitized. `password === ''` => no password
-// supplied; the view shows an explicit empty marker.
-// `time` is the captured event clock (HH:MM:SS UTC), rendered in a left gutter
-// so the replay reads like a real terminal log. Synthetic banner/close lines
-// borrow the session start/end time; lines with no timestamp leave it blank.
+// Auth lines: `pre` + password + `post` as flat strings, not RedactSegment[] like commands;
+// IPs embedded in the password are still replaced with the literal text `<ip>`.
+// Empty password string means no password supplied.
+// `time` is captured clock (HH:MM:SS UTC); synthetic banner/close lines use session times.
 export type TerminalLine =
   | { id: string; kind: 'banner'; text: string; time?: string }
   | { id: string; kind: 'auth-ok'; pre: string; password: string; post: string; time?: string }
@@ -48,7 +37,6 @@ function parseTs(iso: string | null): number | null {
   return Number.isNaN(t) ? null : t
 }
 
-// HH:MM:SS in UTC (the capture clock). Empty when there is no timestamp.
 function fmtClock(ts: number | null): string {
   if (ts === null) return ''
   return new Date(ts).toLocaleTimeString('en-GB', {
@@ -78,20 +66,19 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
   const lastAttempt = session.auth_attempts.at(-1)
   const sessionUser = clean(firstSuccess?.username ?? lastAttempt?.username ?? DEFAULT_USER)
 
-  // 1. synthetic connect banner (borrows the session start time)
   const proto = clean(session.protocol).toUpperCase()
   const where = session.country ? ` from ${clean(session.country)}` : ''
   lines.push({
     id: 'banner',
     kind: 'banner',
-    text: `Connecting to ${HOST} over ${proto}${where}…`,
+    text: `Connecting to ${HOST} over ${proto}${where}...`,
     time: fmtClock(parseTs(session.started_at)),
   })
 
-  // 2. merge auth + commands + downloads, stable-sorted by timestamp. On an
-  //    exact tie (cowrie expands a compound one-liner into sub-commands at the
-  //    same millisecond) order by type then row id, so the compound line and
-  //    its expansions keep capture order.
+  // Merge auth + commands + downloads, stable-sorted by timestamp. On an
+  // exact tie (cowrie expands a compound one-liner into sub-commands at the
+  // same millisecond) order by type then row id, so the compound line and
+  // its expansions keep capture order.
   const events: Event[] = []
   for (const a of session.auth_attempts)
     events.push({ ts: parseTs(a.timestamp), pri: 0, rowId: a.id, type: 'auth', v: a })
@@ -102,19 +89,23 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
 
   events.sort((x, y) => {
     if (x.ts === null && y.ts === null) return cmp(x.pri, y.pri) || cmp(x.rowId, y.rowId)
-    if (x.ts === null) return 1 // nulls last
+    if (x.ts === null) return 1
     if (y.ts === null) return -1
     return cmp(x.ts, y.ts) || cmp(x.pri, y.pri) || cmp(x.rowId, y.rowId)
   })
 
-  // 3. emit one line per event
   for (const e of events) {
     const time = fmtClock(e.ts)
     if (e.type === 'auth') {
-      const user = clean(e.v.username)
-      const password = clean(e.v.password)
+      // Credentials are attacker-supplied, exactly like a command, so they go
+      // through the same blotting. Without this an IP typed into a username or
+      // password rendered verbatim here while SessionExpansion's own facts
+      // panel redacted the identical field.
+      const user = redactIps(clean(e.v.username), undefined, { numericHosts: false }).text
+      const password = redactIps(clean(e.v.password), undefined, {
+        numericHosts: false,
+      }).text
       if (e.v.success) {
-        // "Accepted password ‹pw› for root."
         lines.push({
           id: `auth-${e.v.id}`,
           kind: 'auth-ok',
@@ -124,14 +115,12 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
           time,
         })
       } else {
-        // "root@honeypot's password: ‹pw› — Permission denied (password)." The
-        // password sits exactly where the attacker typed it before the denial.
         lines.push({
           id: `auth-${e.v.id}`,
           kind: 'auth-fail',
           pre: `${user}@${HOST}'s password: `,
           password,
-          post: ' — Permission denied (password).',
+          post: ' - Permission denied (password).',
           time,
         })
       }
@@ -139,24 +128,23 @@ export function buildTranscript(session: SessionDetailResponse): TerminalLine[] 
       const { segments } = redactIps(clean(e.v.input))
       lines.push({ id: `cmd-${e.v.id}`, kind: 'command', user: sessionUser, segments, time })
     } else {
-      const urlText = e.v.url ? redactIps(clean(e.v.url)).text : '(in-band capture)'
-      const sha = e.v.sha256 ? ` · sha256 ${e.v.sha256.slice(0, 12)}…` : ''
+      const urlText = e.v.url ? redactIps(clean(e.v.url)).text : '(no link - sent directly)'
+      const sha = e.v.sha256 ? ` - sha256 ${e.v.sha256.slice(0, 12)}...` : ''
       lines.push({
         id: `dl-${e.v.id}`,
         kind: 'download',
-        text: `downloaded payload: ${urlText}${sha}`,
+        text: `downloaded file: ${urlText}${sha}`,
         time,
       })
     }
   }
 
-  // 4. closing line (borrows the session end time)
   const dur = humanizeDuration(session.started_at, session.ended_at)
   lines.push({
     id: 'closed',
     kind: 'closed',
     text:
-      dur === '—'
+      dur === '-'
         ? `Connection to ${HOST} closed.`
         : `Connection to ${HOST} closed. Session lasted ${dur}.`,
     time: fmtClock(parseTs(session.ended_at)),

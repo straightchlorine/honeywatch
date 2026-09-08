@@ -10,21 +10,16 @@ import { fmtNumber } from './format'
 
 export type CredMetric = 'attempts' | 'ip_fanout'
 
-const EMPTY = '‹empty›'
+const EMPTY = '(blank)'
 
 /**
- * Neutralize one attacker-controlled credential string for display. Usernames
- * and passwords are captured verbatim, so they can hide a C2 host (e.g.
- * `http://1.2.3.4/x` in a password) or bidi/control code points that visually
- * spoof the credential. Compose order mirrors useTerminalTranscript: sanitize
- * first (escape control/bidi as \xHH), then blot IP literals. allowWhitespace
- * is false -- credentials are single-line tokens. Blank stays blank so callers
- * can swap in the empty-marker, which is never run through the sanitizer.
+ * Blank stays blank so callers can swap in the empty-marker without re-sanitizing.
  */
 function cleanCred(raw: string): string {
   if (raw === '') return ''
   const escaped = sanitizeAttackerText(raw, { mode: 'escape', allowWhitespace: false })
-  return redactIps(escaped).text
+  // numericHosts off: "123456789" here is a password, not an integer-encoded host.
+  return redactIps(escaped, undefined, { numericHosts: false }).text
 }
 
 /**
@@ -42,7 +37,7 @@ export function pctWidth(value: number, max: number): string {
 
 interface CredRow {
   key: string
-  /** Username (or the empty-marker). */
+  /** Username or password (or the empty-marker). */
   label: string
   /** ":password" for pair rows, null when grouping by username. */
   sub: string | null
@@ -54,7 +49,6 @@ interface CredRow {
   title: string
 }
 
-/** Build the hero leaderboard rows for the chosen ranking metric. */
 export function buildCredentialRows(items: TopCredentialResponse[], metric: CredMetric): CredRow[] {
   const fanout = metric === 'ip_fanout'
   let max = 0
@@ -67,19 +61,16 @@ export function buildCredentialRows(items: TopCredentialResponse[], metric: Cred
     const hasPass = it.password !== null && it.password !== undefined
     const user = cleanCred(it.username ?? '')
     const pass = cleanCred(it.password ?? '')
-    // Primary label is the username, except in the password-only view (no
-    // username) where the password itself is the label. The ":password" sub
-    // shows only in the pair view (both present).
     const label = hasUser ? user || EMPTY : pass || EMPTY
     const sub = hasUser && hasPass ? `:${pass || EMPTY}` : null
     const cred = sub ? `${label}${sub}` : label
     const ips = it.distinct_ips ?? 0
     const value = fanout ? ips : it.count
     const emphasis = fanout && ips >= DISTRIBUTED_IP_MIN
-    const valueLabel = fanout ? `${fmtNumber(ips)} IP${ips === 1 ? '' : 's'}` : fmtNumber(it.count)
+    const valueLabel = fanout ? `${fmtNumber(ips)} address${ips === 1 ? '' : 'es'}` : fmtNumber(it.count)
     const title = fanout
-      ? `${cred} — tried by ${fmtNumber(ips)} IP${ips === 1 ? '' : 's'} (${fmtNumber(it.count)} attempts)`
-      : `${cred} — ${fmtNumber(it.count)} attempts`
+      ? `${cred} - tried from ${fmtNumber(ips)} address${ips === 1 ? '' : 'es'} (${fmtNumber(it.count)} attempts)`
+      : `${cred} - ${fmtNumber(it.count)} attempts`
     return {
       key: `${it.username ?? ''}|${it.password ?? ''}|${idx}`,
       label,
@@ -101,7 +92,6 @@ export interface BarRow {
   title: string
 }
 
-/** Flat "user:pass" leaderboard rows (the accepted-credentials mini list). */
 export function buildPairBarRows(items: TopCredentialResponse[]): BarRow[] {
   let max = 0
   for (const it of items) if (it.count > max) max = it.count
@@ -112,18 +102,11 @@ export function buildPairBarRows(items: TopCredentialResponse[]): BarRow[] {
       label,
       count: it.count,
       widthPct: pctWidth(it.count, max),
-      title: `${label} — ${fmtNumber(it.count)} attempts`,
+      title: `${label} - ${fmtNumber(it.count)} attempts`,
     }
   })
 }
 
-/**
- * Single-field credential rows (username-only or password-only), sanitized.
- * Used by the Countries detail panel, which scopes `/top-credentials` to one
- * country with `by=password` / `by=username`; the unused field is null. Shares
- * cleanCred so per-country creds get the same control/bidi + IP-literal scrub
- * as the Credentials page.
- */
 export function buildCredentialFieldRows(
   items: TopCredentialResponse[],
   field: 'username' | 'password',
@@ -138,7 +121,7 @@ export function buildCredentialFieldRows(
       label,
       count: it.count,
       widthPct: pctWidth(it.count, max),
-      title: `${label} — ${fmtNumber(it.count)} attempts`,
+      title: `${label} - ${fmtNumber(it.count)} attempts`,
     }
   })
 }
@@ -152,7 +135,6 @@ const CHARSET_LABELS: Record<string, string> = {
   alnum: 'Letters + digits',
 }
 
-/** Map top-passwords (the length drill-down) onto display-ready bar rows. */
 export function buildPasswordRows(items: TopPasswordResponse[]): BarRow[] {
   let max = 0
   for (const it of items) if (it.count > max) max = it.count
@@ -163,12 +145,11 @@ export function buildPasswordRows(items: TopPasswordResponse[]): BarRow[] {
       label,
       count: it.count,
       widthPct: pctWidth(it.count, max),
-      title: `${label} — ${fmtNumber(it.count)} attempts`,
+      title: `${label} - ${fmtNumber(it.count)} attempts`,
     }
   })
 }
 
-/** Map the charset-class breakdown onto display-ready bar rows. */
 export function buildCharsetRows(classes: CharsetClassResponse[]): BarRow[] {
   let max = 0
   for (const c of classes) if (c.count > max) max = c.count
@@ -179,7 +160,7 @@ export function buildCharsetRows(classes: CharsetClassResponse[]): BarRow[] {
       label,
       count: c.count,
       widthPct: pctWidth(c.count, max),
-      title: `${label} — ${fmtNumber(c.count)}`,
+      title: `${label} - ${fmtNumber(c.count)}`,
     }
   })
 }
@@ -219,7 +200,7 @@ export function buildLengthBars(
       label: labelAt.has(n) ? lenLabel : '',
       count,
       heightPct,
-      title: `${lenLabel} chars — ${fmtNumber(count)}`,
+      title: `${lenLabel} chars - ${fmtNumber(count)}`,
     })
   }
   return bars
@@ -227,6 +208,54 @@ export function buildLengthBars(
 
 /** Accept-rate label; a dash when there is nothing to divide. */
 export function fmtSuccessRate(rate: number | null): string {
-  if (rate === null) return '—'
+  if (rate === null) return '-'
   return `${rate.toFixed(rate < 10 ? 2 : 1)}%`
+}
+
+export interface MatrixEntity {
+  label: string
+  count: number
+}
+
+export function buildMatrixEntities(
+  items: TopCredentialResponse[],
+  field: 'username' | 'password',
+): MatrixEntity[] {
+  return items.map((it) => ({
+    label: cleanCred((field === 'username' ? it.username : it.password) ?? '') || EMPTY,
+    count: it.count,
+  }))
+}
+
+export interface MatrixPair {
+  username: string
+  password: string
+  count: number
+  accepted: boolean
+}
+
+/**
+ * Merge top and accepted pairs; `accepted` wins the flag. If a pair only
+ * appears in the accepted set, its count is the only available observation.
+ */
+export function buildMatrixPairs(
+  topPairs: TopCredentialResponse[],
+  acceptedPairs: TopCredentialResponse[],
+): MatrixPair[] {
+  const byKey = new Map<string, MatrixPair>()
+  const upsert = (it: TopCredentialResponse, accepted: boolean): void => {
+    const username = cleanCred(it.username ?? '') || EMPTY
+    const password = cleanCred(it.password ?? '') || EMPTY
+    const key = `${username} ${password}`
+    const prev = byKey.get(key)
+    byKey.set(key, {
+      username,
+      password,
+      count: Math.max(it.count, prev?.count ?? 0),
+      accepted: accepted || (prev?.accepted ?? false),
+    })
+  }
+  for (const it of topPairs) upsert(it, false)
+  for (const it of acceptedPairs) upsert(it, true)
+  return [...byKey.values()]
 }

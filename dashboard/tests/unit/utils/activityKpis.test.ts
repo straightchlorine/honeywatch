@@ -9,7 +9,7 @@ describe('activityKpis', () => {
       { weekday: 1, hour: 14, count: 4 },
       { weekday: 2, hour: 9, count: 5 },
     ])
-    expect(r.value).toBe('14:00') // 3+4 > 5
+    expect(r.value).toBe('14:00')
     expect(r.count).toBe(7)
   })
 
@@ -40,9 +40,9 @@ describe('activityKpis', () => {
     expect(r.value).toBe('May 24')
   })
 
-  it('returns the em-dash placeholder for empty inputs', () => {
-    expect(busiestHour([]).value).toBe('—')
-    expect(busiestWeekday([]).value).toBe('—')
-    expect(peakDay([]).value).toBe('—')
+  it('returns the dash placeholder for empty inputs', () => {
+    expect(busiestHour([]).value).toBe('-')
+    expect(busiestWeekday([]).value).toBe('-')
+    expect(peakDay([]).value).toBe('-')
   })
 })

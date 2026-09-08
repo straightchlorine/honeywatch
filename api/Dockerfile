@@ -1,4 +1,4 @@
-FROM python:3.14-slim@sha256:d7a925f9eb9639a93e455b9f12c167569358818c0f62b51b88edbc8fcf34c421
+FROM python:3.14-slim@sha256:cad9a2c871761c413caa6fdd6441c783451e740a48aaeba60ae62a8b53525ef6
 
 COPY --from=ghcr.io/astral-sh/uv:0.11.12@sha256:3a59a3cdd5f7c217faa36e32dbc7fddbb0412889c2a0a5229f6d790e5a019dd7 /uv /uvx /bin/
 
@@ -14,6 +14,15 @@ RUN uv sync --frozen --no-dev
 
 # Keeping Rust uv deps out of scans
 RUN rm -f /bin/uv /bin/uvx && rm -rf /root/.cache/uv
+
+# The venv is prebuilt and nothing installs at runtime.
+# Images bundled stuff contribute to CVE scan.
+RUN rm -rf /usr/local/lib/python3.*/site-packages/pip \
+    /usr/local/lib/python3.*/site-packages/pip-* \
+    /usr/local/lib/python3.*/site-packages/setuptools \
+    /usr/local/lib/python3.*/site-packages/setuptools-* \
+    /usr/local/lib/python3.*/site-packages/pkg_resources \
+    /usr/local/bin/pip /usr/local/bin/pip3 /usr/local/bin/pip3.*
 
 RUN chown -R honeywatch:honeywatch /app
 

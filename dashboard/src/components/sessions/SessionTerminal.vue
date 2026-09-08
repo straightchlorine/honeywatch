@@ -27,18 +27,16 @@
   const title = computed(() => {
     const parts = ['honeypot', proto.value, country.value]
     if (startedUtc.value) parts.push(startedUtc.value)
-    if (duration.value !== '—') parts.push(duration.value)
-    return parts.join(' · ')
+    if (duration.value !== '-') parts.push(duration.value)
+    return parts.join(' - ')
   })
 
-  // Mobile renders the chrome metadata as two controlled lines (identity, then
-  // time) instead of one ellipsis-truncated string -- see the term-meta block.
-  const idLine = computed(() => ['honeypot', proto.value, country.value].join(' · '))
+  const idLine = computed(() => ['honeypot', proto.value, country.value].join(' - '))
   const timeLine = computed(() => {
     const parts: string[] = []
     if (startedUtc.value) parts.push(startedUtc.value)
-    if (duration.value !== '—') parts.push(duration.value)
-    return parts.join(' · ')
+    if (duration.value !== '-') parts.push(duration.value)
+    return parts.join(' - ')
   })
 
   const copied = ref(false)
@@ -55,7 +53,7 @@
         // Auth lines carry the credential as pre/password/post, not a flat string;
         // re-assemble it so the copied transcript matches what is on screen.
         if (l.kind === 'auth-ok' || l.kind === 'auth-fail') {
-          return `${at}# ${l.pre}${l.password || '‹empty›'}${l.post}`
+          return `${at}# ${l.pre}${l.password || '(blank)'}${l.post}`
         }
         return `${at}# ${l.text}`
       })
@@ -97,15 +95,10 @@
 </script>
 
 <template>
-  <!-- A named <section> implicitly exposes role="region" (no explicit role
-       needed); the aria-label gives assistive tech a meaningful landmark name. -->
-  <section class="terminal" :aria-label="`Terminal replay — ${proto} session from ${country}`">
+  <section class="terminal" :aria-label="`Replay of the ${proto} session from ${country}`">
     <header class="term-bar">
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
-      <!-- Mobile-only two-line metadata; on desktop the single-line term-title
-           shows instead (each is the displayed copy at its breakpoint, so screen
-           readers only ever announce one). -->
       <span class="term-meta">
         <span class="term-id">{{ idLine }}</span>
         <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
@@ -141,9 +134,7 @@
     <details class="term-note">
       <summary>About this replay</summary>
       <p class="note-body">
-        Honeywatch reconstructs this session from captured events. Lines marked ‹…› are annotations,
-        not attacker output. Highlighted values are the credentials the attacker supplied. IP
-        addresses are redacted; no command output was recorded.
+        Rebuilt from what the honeypot recorded. Lines in &lt;...&gt; are our notes, not the attacker's. Highlighted text is what they typed to log in. Addresses are hidden, and the honeypot's replies were not recorded.
       </p>
     </details>
   </section>
@@ -207,7 +198,6 @@
     white-space: nowrap;
   }
 
-  /* The two-line variant is mobile-only; desktop uses the single-line title. */
   .term-meta {
     display: none;
   }
@@ -231,7 +221,6 @@
       border-color var(--motion-fast) ease;
   }
 
-  /* Desktop keeps the text button; the icon is the mobile-only affordance. */
   .copy-icon {
     display: none;
     width: 1rem;
@@ -287,9 +276,7 @@
     padding: 0 var(--space-3) var(--space-2);
   }
 
-  /* Desktop: the disclaimer is short enough to always show -- hide the toggle and
-   force the body open regardless of the details state. On mobile it stays a
-   real <details> (collapsed by default) so it does not eat the terminal hero. */
+  /* Desktop always shows the note; mobile keeps it collapsible to preserve space. */
   @media (min-width: 769px) {
     .term-note > summary {
       display: none;
@@ -300,14 +287,10 @@
     }
   }
 
-  /* Mobile: row 1 is the window dots + a compact copy icon (the joined title
-     won't fit beside a full text button); the two-line metadata (identity, then
-     time/duration) drops to its own full-width rows beneath. */
   @media (max-width: 768px) {
     .term-bar {
       flex-wrap: wrap;
       align-items: center;
-      /* tighten the wrap gap between the dots/copy row and the metadata below */
       row-gap: var(--space-1);
     }
     .term-title {
@@ -316,8 +299,7 @@
     .copy-btn {
       order: 2;
       margin-left: auto;
-      /* Bare glyph, no card chrome: just the copy icon up by the window dots.
-         5px padding keeps a >=24px tap target (WCAG 2.5.8) without a button box. */
+      /* Icon only; 5px padding maintains >=24px tap target (WCAG 2.5.8). */
       min-height: auto;
       padding: 5px;
       background: transparent;

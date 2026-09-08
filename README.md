@@ -79,3 +79,5 @@ See `justfile` for the full command list.
 ## Attributions
 
 This product includes GeoLite Data created by MaxMind, available from https://www.maxmind.com.
+
+Country boundaries are made with Natural Earth.

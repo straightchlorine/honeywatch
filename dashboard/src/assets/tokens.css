@@ -10,6 +10,11 @@
 
     --surface: #2b201a;
     --surface-hover: #362820;
+    /* Recessed well inside a card: empty heat cells, meter tracks, rank bars,
+       dim badges. Consumed in six components but never defined until now - an
+       undefined var() computes to black in `fill` and to transparent in
+       `background`, so every one of those rendered wrong. */
+    --surface-2: #221a14;
 
     --border: #3a2c22;
     --border-strong: #54402f;
@@ -88,6 +93,109 @@
     /* Min height for interactive controls (buttons, dropdown, options). Bumped
        to a 44px touch target on coarse pointers below (WCAG 2.5.5). */
     --control-h: 32px;
+
+    --bg-0: #120d09;
+    --glass: rgba(22, 16, 11, 0.78);
+    --glass-border: rgba(245, 158, 11, 0.16);
+    --accent-hot: #fbbf24;
+
+    /* Amber at two weights below --accent-glow, for the fills and hairlines
+       that were seven hardcoded rgba(245,158,11,...) literals across
+       PayloadsView - the only view that had more than two. */
+    --accent-wash: rgba(245, 158, 11, 0.1);
+    --accent-edge: rgba(245, 158, 11, 0.22);
+
+    /* The honeycomb mask. Percent-encoded because an unquoted url() token may
+       not contain quotes or spaces, and this is consumed from inline styles as
+       well as stylesheets. Cell is 28x48; consumers set their own mask-size. */
+    --comb: url(data:image/svg+xml,%3Csvg%20xmlns=%27http://www.w3.org/2000/svg%27%20width=%2728%27%20height=%2748%27%20viewBox=%270%200%2028%2048%27%3E%3Cpath%20d=%27M14%200%20L28%208%20V24%20L14%2032%20L0%2024%20V8%20Z%20M14%2048%20L28%2040%20V24%20M14%2048%20L0%2040%20V24%27%20fill=%27none%27%20stroke=%27%23000%27%20stroke-width=%271.5%27/%3E%3C/svg%3E);
+
+    /* sequential ramp (magnitude): dark recedes, bright = hot */
+    --seq-1: #78350f;
+    --seq-2: #92400e;
+    --seq-3: #b45309;
+    --seq-4: #d97706;
+    --seq-5: #f59e0b;
+    --seq-6: #fbbf24;
+    --seq-7: #fde68a;
+
+    /* validated 2-series categorical pair (dark band, surface #221a14) */
+    --series-1: #d97706;
+    --series-2: #3987e5;
+
+    /* auth outcome only - never a series color */
+    --ok: #84cc16;
+    --bad: #f87171;
+
+    --map-ocean: #0e0a07;
+    /* 1.24:1 against the ocean read as background, not as a clickable country. */
+    --map-land: #3a2b1c;
+    --map-border: rgba(245, 158, 11, 0.38);
+    --grid-line: #2c2118;
+
+    --radius-lg: 14px;
+    --shadow-lift: 0 12px 40px rgba(0, 0, 0, 0.55);
+    --glow: 0 0 24px var(--accent-glow);
+
+    --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  }
+}
+
+@layer components {
+  /* Singleton imperative tooltip (composables/useHwTooltip.ts) - a raw DOM
+     node outside Vue's tree, so its styling must be global, not scoped. */
+  .hw-tooltip {
+    position: fixed;
+    pointer-events: none;
+    z-index: 100;
+    background: var(--glass);
+    border: 1px solid var(--glass-border);
+    backdrop-filter: blur(12px);
+    border-radius: var(--radius-md);
+    padding: 9px 12px;
+    box-shadow: var(--shadow-lift);
+    min-width: 150px;
+    max-width: min(280px, calc(100vw - 16px));
+    opacity: 0;
+    transition: opacity var(--motion-fast);
+  }
+
+  .hw-tooltip.show {
+    opacity: 1;
+  }
+
+  .hw-tooltip .tt-title {
+    font-weight: 650;
+    font-size: 13px;
+    margin-bottom: 4px;
+    display: flex;
+    gap: 7px;
+    align-items: center;
+  }
+
+  .hw-tooltip .tt-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 18px;
+    font-size: 12px;
+    color: var(--text-muted);
+    line-height: 1.6;
+  }
+
+  .hw-tooltip .tt-row b {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--text);
+  }
+
+  .hw-tooltip .tt-row b.tt-pos {
+    color: var(--ok);
+  }
+
+  .hw-tooltip .tt-row b.tt-neg {
+    color: var(--bad);
   }
 }
 

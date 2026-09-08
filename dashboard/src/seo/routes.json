@@ -3,15 +3,15 @@
     "path": "/",
     "title": "Overview",
     "seoTitle": "Honeywatch · SSH honeypot dashboard",
-    "description": "Live overview of SSH brute-force attacks captured by a Cowrie honeypot: attack volume, top sources, and a world map of attack origins.",
+    "description": "Live dashboard for an SSH honeypot, a decoy server that lets attackers in and records what they do: attack volume, top origins, and a world map.",
     "priority": "1.0",
     "changefreq": "daily"
   },
   {
-    "path": "/activity",
-    "title": "Activity",
-    "seoTitle": "Activity · Honeywatch",
-    "description": "Time-series activity of SSH honeypot attacks: hourly and daily login attempts recorded by the Cowrie sensor.",
+    "path": "/pulse",
+    "title": "Pulse",
+    "seoTitle": "Pulse - Honeywatch",
+    "description": "When attacks on the honeypot happen: by hour, by weekday, and day by day over the last month.",
     "priority": "0.8",
     "changefreq": "daily"
   },
@@ -19,7 +19,7 @@
     "path": "/sessions",
     "title": "Sessions",
     "seoTitle": "Sessions · Honeywatch",
-    "description": "Recorded SSH honeypot sessions: attacker commands, login attempts, and SSH client fingerprints from the Cowrie sensor.",
+    "description": "Recorded attacker sessions on the honeypot: the commands they typed, the logins they tried, and the software they connected with.",
     "priority": "0.8",
     "changefreq": "daily"
   },
@@ -27,15 +27,23 @@
     "path": "/credentials",
     "title": "Credentials",
     "seoTitle": "Credentials · Honeywatch",
-    "description": "Top usernames and passwords attackers tried against the SSH honeypot, ranked by frequency.",
+    "description": "The usernames and passwords attackers try most often against the honeypot.",
     "priority": "0.8",
     "changefreq": "daily"
   },
   {
-    "path": "/countries",
-    "title": "Countries",
-    "seoTitle": "Countries · Honeywatch",
-    "description": "Geographic breakdown of SSH honeypot attacks by country, with per-country top credentials.",
+    "path": "/origins",
+    "title": "Origins",
+    "seoTitle": "Origins - Honeywatch",
+    "description": "Where attacks on the honeypot come from: countries, cities and networks.",
+    "priority": "0.8",
+    "changefreq": "daily"
+  },
+  {
+    "path": "/payloads",
+    "title": "Payloads",
+    "seoTitle": "Payloads - Honeywatch",
+    "description": "Files attackers left on the honeypot, where they were hosted, and the relay attempts the honeypot blocked.",
     "priority": "0.8",
     "changefreq": "daily"
   }

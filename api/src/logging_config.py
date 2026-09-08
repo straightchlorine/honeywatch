@@ -12,11 +12,8 @@ from flask import g, has_request_context
 
 
 class RequestIdFilter(logging.Filter):
-    """Make `%(request_id)s` usable in every format string.
-
-    Falls back to "-" outside a request so CLI and boot-time records do not
-    blow up on the missing field.
-    """
+    """Inject %(request_id)s for log formats, falling back to "-" outside request
+    contexts."""
 
     def filter(self, record: logging.LogRecord) -> bool:
         if has_request_context():
@@ -43,10 +40,7 @@ class JsonFormatter(logging.Formatter):
 
 
 def build_logging_config() -> dict[str, Any]:
-    """Build the logging dictConfig.
-
-    Returned for gunicorn reuse rather than applied here.
-    """
+    """Build logging config for gunicorn (not applied directly)."""
     resolved = os.environ.get("LOG_LEVEL", "INFO").upper()
     env = os.environ.get("ENVIRONMENT", "production").strip().lower()
     log_format = (
@@ -98,9 +92,6 @@ def build_logging_config() -> dict[str, Any]:
 
 
 def configure_logging() -> None:
-    """Apply the logging config.
-
-    Safe to call more than once: dictConfig replaces the handler list instead
-    of appending, so create_app, tests and the CLI cannot double up handlers.
-    """
+    """Apply logging config; safe to call multiple times (dictConfig replaces
+    handlers)."""
     logging.config.dictConfig(build_logging_config())

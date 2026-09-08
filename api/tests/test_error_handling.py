@@ -1,10 +1,6 @@
-"""Unhandled-exception path: a clean 500 envelope, no internals leaked.
-
-Under `TESTING` Flask propagates exceptions by default, so the
-`@errorhandler(Exception)` 500 branch is bypassed in the test client. We
-force `PROPAGATE_EXCEPTIONS=False` to actually exercise it (the real
-production behavior), mirroring how `test_health.py` simulates a DB outage.
-"""
+"""Unhandled exceptions must return clean 500 envelopes with no internals leaked; Flask
+under TESTING propagates exceptions by default (bypassing @errorhandler), so we force
+PROPAGATE_EXCEPTIONS=False to exercise the real production behavior."""
 
 from __future__ import annotations
 

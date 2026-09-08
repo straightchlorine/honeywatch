@@ -75,7 +75,7 @@ def test_404_envelope_matches_smorest_shape(client: Any) -> None:
 
 
 def test_unmapped_path_returns_json_404(client: Any) -> None:
-    """Old errorhandler(404) removed; replacement must keep JSON shape."""
+    """Replacement must keep JSON 404 shape."""
     response = client.get("/api/v9/does-not-exist")
     assert response.status_code == 404
     assert response.mimetype == "application/json"

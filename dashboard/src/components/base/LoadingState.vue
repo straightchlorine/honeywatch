@@ -11,7 +11,7 @@
       variant?: Variant
       size?: Size
     }>(),
-    { label: 'Loading…', variant: 'block', size: 'md' },
+    { label: 'Loading...', variant: 'block', size: 'md' },
   )
 
   const rootClass = computed(() => `loading loading-${props.variant}`)

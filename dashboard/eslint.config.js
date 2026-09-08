@@ -18,7 +18,7 @@ export default [
   ...vueTsConfig(),
   ...pluginA11y.configs['flat/recommended'],
   {
-    files: ['src/components/base/**/*.vue'],
+    files: ['src/components/base/**/*.vue', 'src/components/charts/**/*.vue'],
     rules: {
       'vue/multi-word-component-names': 'off',
     },

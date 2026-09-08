@@ -20,8 +20,8 @@ describe('humanizeDuration', () => {
   })
 
   it('returns the placeholder for missing or negative ranges', () => {
-    expect(humanizeDuration(null, '2026-05-31T13:41:50Z')).toBe('—')
-    expect(humanizeDuration('2026-05-31T13:41:50Z', null)).toBe('—')
-    expect(humanizeDuration('2026-05-31T13:41:50Z', '2026-05-31T13:40:00Z')).toBe('—')
+    expect(humanizeDuration(null, '2026-05-31T13:41:50Z')).toBe('-')
+    expect(humanizeDuration('2026-05-31T13:41:50Z', null)).toBe('-')
+    expect(humanizeDuration('2026-05-31T13:41:50Z', '2026-05-31T13:40:00Z')).toBe('-')
   })
 })

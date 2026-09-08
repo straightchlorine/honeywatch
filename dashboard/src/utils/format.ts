@@ -1,21 +1,15 @@
 /**
- * The single number formatter for the whole dashboard -- every count goes
- * through here, never a raw `.toLocaleString`. Non-finite input (undefined /
- * null / NaN, e.g. a field a stale API hasn't sent yet) renders as an em dash
- * instead of throwing, so one missing field can never blank the page.
+ * Format numbers with locale-aware separators; render '-' for non-finite values to prevent layout breaks.
  */
 export function fmtNumber(n: number | null | undefined): string {
-  return typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('en') : '—'
+  return typeof n === 'number' && Number.isFinite(n) ? n.toLocaleString('en') : '-'
 }
 
 /**
- * Compact form for tight spots (the KPI trend delta): 16,132 -> "16.1k",
- * 1,822,800 -> "1.8M". Below 1000 it defers to `fmtNumber` so small counts
- * keep their thousands separators. Used so the trend delta stays on one line
- * instead of wrapping the percentage onto its own row and stretching the card.
+ * Compact notation for numbers (e.g. '16.1k', '1.8M'), preserving thousands separators below 1000.
  */
 export function fmtCompact(n: number | null | undefined): string {
-  if (typeof n !== 'number' || !Number.isFinite(n)) return '—'
+  if (typeof n !== 'number' || !Number.isFinite(n)) return '-'
   const abs = Math.abs(n)
   if (abs < 1000) return fmtNumber(n)
   let value: number

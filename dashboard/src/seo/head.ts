@@ -1,8 +1,5 @@
-// Client-side head sync for SPA navigation. The build-time prerender
-// (scripts/prerender-seo.mjs) bakes the correct title/description/canonical
-// into each route's index.html for crawlers that read raw HTML; this keeps
-// them in sync once the SPA takes over and the user navigates between routes.
-// Single source of the per-route values: src/seo/routes.json.
+// Client-side head sync for SPA navigation. Prerender bakes static HTML for
+// crawlers; this keeps meta tags current as users navigate.
 export const SITE_URL = 'https://honey.piotrkrzysztof.dev'
 
 function setMeta(attr: 'name' | 'property', key: string, content: string): void {

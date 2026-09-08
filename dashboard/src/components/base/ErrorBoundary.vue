@@ -37,7 +37,7 @@
   })
 
   // Strip control chars + bidi overrides from attacker-derived messages and cap
-  // length. Shared rule lives in utils/sanitize.
+  // length.
   const safeMessage = computed(() => {
     const cleaned = sanitizeAttackerText(error.value?.message ?? '', {
       mode: 'strip',

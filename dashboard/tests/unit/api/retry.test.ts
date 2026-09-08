@@ -6,7 +6,7 @@ describe('shouldRetry', () => {
     const err = { code: 503, status: 'Service Unavailable' }
     expect(shouldRetry(0, err)).toBe(true)
     expect(shouldRetry(1, err)).toBe(true)
-    expect(shouldRetry(2, err)).toBe(false) // cap reached
+    expect(shouldRetry(2, err)).toBe(false)
   })
 
   it('does not retry 4xx client errors', () => {
@@ -21,7 +21,6 @@ describe('shouldRetry', () => {
   })
 
   it('reads the numeric code, not the string status reason phrase', () => {
-    // Regression guard: the bug was reading `status` (a string) as a number.
     expect(shouldRetry(0, { code: 500, status: 'Internal Server Error' })).toBe(true)
   })
 })

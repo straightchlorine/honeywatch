@@ -74,12 +74,8 @@ def test_parse_session_closed(sample_session_closed: str) -> None:
 
 
 def test_parse_session_connect_missing_src_ip_rejected() -> None:
-    """`sessions.src_ip` is NOT NULL; a connect missing it must fail parsing.
-
-    Otherwise it would reach the writer as a valid `SessionConnect(src_ip=None)`,
-    fail the INSERT with a NotNullViolation the writer's DataError handler
-    doesn't catch, and get retried forever instead of counted as parser drift.
-    """
+    """Missing src_ip must fail early; writer's DataError handler won't catch
+    NotNullViolation."""
     line = (
         '{"eventid": "cowrie.session.connect", "session": "abc123",'
         ' "dst_ip": "10.0.0.1", "dst_port": 2222, "protocol": "ssh",'
@@ -103,12 +99,7 @@ def test_parse_malformed_json() -> None:
 def test_drift_log_sanitizes_control_chars(
     caplog: pytest.LogCaptureFixture,
 ) -> None:
-    """Attacker-crafted control chars in cowrie payload must not reach logs raw.
-
-    Cowrie's `input` field captures attacker bytes verbatim. If an attacker
-    can produce a drifted event (e.g. malformed JSON, unknown eventid), the
-    raw excerpt that lands in operator logs must be defanged.
-    """
+    """Attacker-controlled input in drift logs must be sanitized."""
     _seen_drift.clear()
     line = (
         '{"eventid":"cowrie.unknown.\\u001b[31mfake",'
@@ -121,7 +112,7 @@ def test_drift_log_sanitizes_control_chars(
     msg = " ".join(r.message for r in caplog.records)
     assert "\x1b" not in msg
     assert "\n" not in msg
-    # Keep escaped form for operator visibility, but defang raw bytes.
+    # Escaped form is visible to operators; raw bytes are defanged.
     assert "\\x1b" in msg
 
 

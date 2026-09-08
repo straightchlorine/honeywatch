@@ -45,7 +45,7 @@ describe('Dropdown', () => {
   })
 
   it('selects via keyboard (ArrowDown then Enter)', async () => {
-    const w = mountDd() // active starts at selected index 0
+    const w = mountDd()
     await w.find('.dd-button').trigger('click')
     const list = w.find('[role=listbox]')
     await list.trigger('keydown', { key: 'ArrowDown' })
@@ -65,7 +65,6 @@ describe('Dropdown', () => {
     const w = mountDd()
     await w.find('.dd-button').trigger('click')
     const list = w.find('[role=listbox]')
-    // "p" -> "Probe" (index 2) becomes the active descendant.
     await list.trigger('keydown', { key: 'p' })
     expect(list.attributes('aria-activedescendant')).toBe('f-opt-2')
     await list.trigger('keydown', { key: 'Enter' })
