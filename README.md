@@ -2,6 +2,15 @@
 
 SSH honeypot with attack visualization and threat analysis.
 
+<p align="center">
+  <a href="https://honey.piotrkrzysztof.dev">
+    <img src="https://honeywatch.docs.codextechnologies.org/github/honeywatch.gif"
+         alt="Honeywatch dashboard: live world map of SSH attacks."
+         width="800">
+  </a>
+</p>
+
+
 |           | Health | Uptime (24h) |
 |-----------|:------:|:------------:|
 | Dashboard | [![](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-dashboard/health/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-dashboard) | [![](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-dashboard/uptimes/24h/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-dashboard) |
