@@ -14,6 +14,7 @@
   import { useMapDetail } from '@/composables/useMapDetail'
   import { fmtNumber } from '@/utils/format'
   import { hexPoints } from '@/utils/hex'
+  import { readStored, writeStored } from '@/utils/safeStorage'
   import MapControls from './MapControls.vue'
   import type { MapQualityLevel } from './MapQuality.vue'
   import CityDot from './CityDot.vue'
@@ -76,7 +77,7 @@
   const VIEW_KEY = 'hw-map-view'
   function loadView(): PanZoomState | undefined {
     try {
-      const raw = sessionStorage.getItem(VIEW_KEY)
+      const raw = readStored('sessionStorage', VIEW_KEY)
       return raw ? (JSON.parse(raw) as PanZoomState) : undefined
     } catch {
       return undefined
@@ -102,7 +103,7 @@
     initial: initialView(),
     onChange: (s) => {
       clearTimeout(saveTimer)
-      saveTimer = setTimeout(() => sessionStorage.setItem(VIEW_KEY, JSON.stringify(s)), 250)
+      saveTimer = setTimeout(() => writeStored('sessionStorage', VIEW_KEY, JSON.stringify(s)), 250)
     },
     viewSize: () => ({ w: geometry.width, h: geometry.height }),
   })
@@ -134,11 +135,11 @@
     regular: `${import.meta.env.BASE_URL}geo/countries-mid.json`,
     high: `${import.meta.env.BASE_URL}geo/countries-detail.json`,
   }
-  const stored = localStorage.getItem(QUALITY_KEY) as MapQualityLevel | null
+  const stored = readStored('localStorage', QUALITY_KEY) as MapQualityLevel | null
   const quality = ref<MapQualityLevel>(
     stored && stored in QUALITY_URL ? stored : 'high',
   )
-  watch(quality, (q) => localStorage.setItem(QUALITY_KEY, q))
+  watch(quality, (q) => writeStored('localStorage', QUALITY_KEY, q))
   const detail = useMapDetail(k, geometry.fit, {
     threshold: 3,
     url: () => QUALITY_URL[quality.value],

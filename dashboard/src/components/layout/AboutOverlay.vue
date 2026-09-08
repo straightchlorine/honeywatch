@@ -6,6 +6,7 @@
   import HexIcon from '../base/HexIcon.vue'
   import IconLink from '../IconLink.vue'
   import { ICONS } from '../icons'
+  import { readStored, writeStored } from '@/utils/safeStorage'
 
   const open = defineModel<boolean>({ default: false })
 
@@ -46,7 +47,7 @@
   }
 
   onMounted(() => {
-    const firstVisit = !localStorage.getItem(SEEN_KEY)
+    const firstVisit = !readStored('localStorage', SEEN_KEY)
     if (location.hash === '#about') {
       open.value = true // deep link: stays open, no timer
     } else if (firstVisit) {
@@ -54,7 +55,7 @@
       autoDismissing.value = true
       autoTimer = setTimeout(dismiss, AUTO_DISMISS_MS)
     }
-    if (firstVisit) localStorage.setItem(SEEN_KEY, '1')
+    if (firstVisit) writeStored('localStorage', SEEN_KEY, '1')
     window.addEventListener('hashchange', onHashChange)
     window.addEventListener('keydown', onKeydown)
   })

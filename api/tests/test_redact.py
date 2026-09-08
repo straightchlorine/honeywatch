@@ -1,6 +1,7 @@
 """IP redaction for attacker free text (mirror of the frontend redactIps tests)."""
 
 import re
+import time
 
 from src.services.redact import IP_BLOT, redact_ips, safe_host
 
@@ -108,3 +109,16 @@ def test_safe_host_keeps_real_names_and_as_orgs() -> None:
         assert safe_host(good) == good
     assert safe_host(None) is None
     assert safe_host("") is None
+
+
+def test_numeric_host_pattern_does_not_backtrack_on_adversarial_input() -> None:
+    """Attacker text is redacted inline, so the numeric-host pattern must stay linear.
+
+    "9." followed by many "00." repetitions used to hit exponential backtracking
+    (a 69-char string already cost ~0.6s), which made any command or credential
+    field a denial-of-service lever.
+    """
+    payload = "9." + "00." * 400 + "!"
+    start = time.perf_counter()
+    redact_ips(payload)
+    assert time.perf_counter() - start < 1.0

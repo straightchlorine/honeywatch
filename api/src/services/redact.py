@@ -83,9 +83,11 @@ _IP_RE_LITERAL = re.compile(_LITERAL_ALTS)
 
 # Detects numeric-only hosts (including 0.0.0.1) that bypass the range gate,
 # while leaving real DNS names alone.
+# No separate octal branch: `0[0-7]+` is a subset of `\d+`, so listing both made
+# the alternation ambiguous and "9." + "00."*n backtracked exponentially. This
+# only tests shape, never value, so `\d+` alone matches the same language.
 _NUMERIC_HOST_ONLY = re.compile(
-    r"^(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d+)"
-    r"(?:\.(?:0[xX][0-9A-Fa-f]+|0[0-7]+|\d+))*\.?$"
+    r"^(?:0[xX][0-9A-Fa-f]+|\d+)(?:\.(?:0[xX][0-9A-Fa-f]+|\d+))*\.?$"
 )
 
 # Valid IPv4-as-integer range with the first octet >= 1 (0.x.x.x is not a
