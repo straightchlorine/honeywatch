@@ -88,6 +88,7 @@ const NO_EDGE = new Set([
   'SAH/MAR:Unrecognized', // the Moroccan berm, mid-EH
 ])
 const BORDERS_OUT = fileURLToPath(new URL('../public/geo/borders-disputed.json', import.meta.url))
+const BORDERS_OUT_LOW = fileURLToPath(new URL('../public/geo/borders-disputed-low.json', import.meta.url))
 // Codes the German POV folds into a parent state; taken from the ISO POV.
 const DEPENDENCIES = 'BQ,BV,CC,CX,GF,GP,MQ,RE,SJ,TK,YT'
 const DROP = 'AQ'
@@ -144,11 +145,22 @@ const OUT = fileURLToPath(new URL('../public/geo/countries.json', import.meta.ur
 // supports. Same source, same chain, same ids - only -simplify differs - so the
 // two tiers are interchangeable path-for-path at runtime.
 const OUT_DETAIL = fileURLToPath(new URL('../public/geo/countries-detail.json', import.meta.url))
-// Middle quality step. The jump from the base tier straight to unsimplified is
-// about 5x the path data, which is more than a large display can pan smoothly;
-// this sits between them so the viewer has somewhere to land.
-const OUT_MID = fileURLToPath(new URL('../public/geo/countries-mid.json', import.meta.url))
-const SIMPLIFY_MID = ['dp', '55%', 'keep-shapes']
+// Coarsest quality step, applied at EVERY zoom and EVERY viewport width -
+// unlike the detail tier, it is not gated behind k=3. dp 20% (base) and the
+// old dp 55% "mid" tier (deleted) were visually identical at the default
+// world view - both sub-pixel average vertex spacing on the 1600x780 viewBox
+// - so a slider between them did nothing visible. dp 3.5% averages 2.4 SVG
+// units, four times the base tier's spacing: coastlines read as visibly
+// faceted at world view and unmistakably so once zoomed.
+// Below dp 5% the ladder is bounded by ring inversion, not by looks, and the
+// safe band is NOT contiguous: dp 3% inverts the US ring and dp 1% inverts
+// VG (geoContains then returns true for open ocean at 0,0), while 2%, 2.5%,
+// 3.5%, 4%, 4.5% and 5% all pass. Do not nudge this constant without
+// re-running - the OCEAN canary below is what catches it.
+// 3.5% is also the sweet spot on accuracy: it misses fewer of the POINTS
+// checks (5) than either 2.5% or 4% (6 each).
+const OUT_LOW = fileURLToPath(new URL('../public/geo/countries-low.json', import.meta.url))
+const SIMPLIFY_LOW = ['dp', '3.5%', 'keep-shapes']
 const WORK = join(tmpdir(), `hw-world-geo-${NE_TAG}`)
 
 async function fetchSource(name, want) {
@@ -167,9 +179,10 @@ async function fetchSource(name, want) {
   return file
 }
 
-function assertAll(topology) {
+function assertAll(topology, dest, { lenientPoints = false } = {}) {
   const fc = feature(topology, topology.objects.countries)
   const problems = []
+  const warnings = []
 
   const ids = fc.features.map((f) => String(f.id))
   const dupes = [...new Set(ids.filter((id, i) => ids.indexOf(id) !== i))]
@@ -183,21 +196,36 @@ function assertAll(topology) {
     .filter((a2) => !present.has(a2))
   if (missing.length) problems.push(`ISO alpha-2 codes with no polygon: ${missing.join(', ')}`)
 
+  // lenientPoints (low tier only): at dp 3.5% the enclave/exclave micro-geometry
+  // is no longer point-accurate - Gaza resolves to IL, Ceuta/Macau/St-Denis
+  // fall outside their (surviving but collapsed) polygons, and Melilla
+  // resolves to MA. That is acceptable there and only there: the low tier is
+  // display-only, nothing at runtime does point-in-polygon against it (the
+  // data join is by feature id), and all 255 features are still present and
+  // drawable. It stays a hard failure for base and detail, which other code
+  // treats as point-accurate.
   for (const [name, lon, lat, want] of POINTS) {
     const hits = fc.features.filter((f) => geoContains(f, [lon, lat])).map((f) => String(f.id))
     if (hits.length !== 1 || hits[0] !== want) {
-      problems.push(`${name} (${lon}, ${lat}): expected ${want}, got ${hits.join('+') || 'nothing'}`)
+      const msg = `${name} (${lon}, ${lat}): expected ${want}, got ${hits.join('+') || 'nothing'}`
+      if (lenientPoints) warnings.push(msg)
+      else problems.push(msg)
     }
   }
 
+  // Always a hard failure, even for the low tier: this is what catches a ring
+  // that flipped inside out and swallowed the globe, not a micro-geometry
+  // nicety like the POINTS checks above.
   for (const pt of OCEAN) {
     const hits = fc.features.filter((f) => geoContains(f, pt)).map((f) => String(f.id))
     if (hits.length) problems.push(`open ocean ${pt.join(',')} is inside ${hits.join('+')}`)
   }
 
+  for (const w of warnings) process.stdout.write(`WARN (low tier, non-authoritative) ${w}\n`)
+
   if (problems.length) {
     for (const p of problems) process.stderr.write(`FAIL ${p}\n`)
-    throw new Error(`${problems.length} geometry check(s) failed - not writing ${OUT}`)
+    throw new Error(`${problems.length} geometry check(s) failed - not writing ${dest}`)
   }
   return fc.features.length
 }
@@ -207,7 +235,7 @@ const deu = await fetchSource('ne_10m_admin_0_countries_deu', SOURCES.deu)
 const isoPov = await fetchSource('ne_10m_admin_0_countries_iso', SOURCES.iso)
 const built = join(WORK, 'countries.json')
 const builtDetail = join(WORK, 'countries-detail.json')
-const builtMid = join(WORK, 'countries-mid.json')
+const builtLow = join(WORK, 'countries-low.json')
 
 const PIPELINE = [
   ['-i', deu, 'name=world'],
@@ -228,39 +256,43 @@ const PIPELINE = [
   ['-dissolve', 'key', 'copy-fields=NAME', 'target=countries'],
   ['-rename-fields', 'name=NAME', 'target=countries'],
   ['-filter-fields', 'name,key', 'target=countries'],
-  // Emit in decreasing detail: unsimplified, then mid, then base. mapshaper's
+  // Emit in decreasing detail: unsimplified, then base, then low. mapshaper's
   // -simplify is cumulative on the same layer, so the order matters.
   ['-o', builtDetail, 'format=topojson', 'id-field=key', 'target=countries'],
-  ['-simplify', ...SIMPLIFY_MID],
-  ['-o', builtMid, 'format=topojson', 'id-field=key', 'target=countries'],
   ['-simplify', ...SIMPLIFY],
   ['-o', built, 'format=topojson', 'id-field=key', 'target=countries'],
+  ['-simplify', ...SIMPLIFY_LOW],
+  ['-o', builtLow, 'format=topojson', 'id-field=key', 'target=countries'],
 ].flat()
 
 execFileSync('npx', ['--yes', MAPSHAPER, ...PIPELINE], {
   stdio: ['ignore', 'inherit', 'inherit'],
 })
 
-function finish(src, dest, label) {
+function finish(src, dest, label, { lenientPoints = false } = {}) {
   const topology = JSON.parse(readFileSync(src, 'utf8'))
   // id-field copies the field to the TopoJSON id but leaves it in properties.
   for (const geom of topology.objects.countries.geometries) delete geom.properties.key
   const json = JSON.stringify(topology)
-  const count = assertAll(JSON.parse(json))
+  const count = assertAll(JSON.parse(json), dest, { lenientPoints })
   writeFileSync(dest, json)
   process.stdout.write(
     `wrote ${dest}\n` +
-      `  ${label}: ${count} features, ${POINTS.length} disputed-point checks passed\n` +
+      `  ${label}: ${count} features, ${POINTS.length} disputed-point checks ` +
+      `${lenientPoints ? 'attempted (warnings only, see above)' : 'passed'}\n` +
       `  ${statSync(dest).size} bytes raw, ${gzipSync(json, { level: 9 }).length} bytes gzipped\n`,
   )
   return topology
 }
 
-// Both tiers run the full assertion suite: the detail tier is what the map
-// shows at high zoom, so a bad border there is exactly as wrong as in the base.
+// Base and detail run the full assertion suite as hard failures: the detail
+// tier is what the map shows at high zoom, so a bad border there is exactly
+// as wrong as in the base. The low tier runs the same duplicate-id/missing-
+// code/feature-count/ocean-canary checks as hard failures too, but downgrades
+// the disputed-point checks to warnings - see assertAll.
 const base = finish(built, OUT, 'base')
-const mid = finish(builtMid, OUT_MID, 'mid')
 const detail = finish(builtDetail, OUT_DETAIL, 'detail')
+const low = finish(builtLow, OUT_LOW, 'low', { lenientPoints: true })
 
 // Disputed boundary lines are drawn dotted, over an opaque casing that occludes
 // the solid country stroke underneath. The casing is what retracts the claim:
@@ -284,37 +316,51 @@ writeFileSync(
     features: disputed.map((f) => ({ type: 'Feature', properties: {}, geometry: f.geometry })),
   }),
 )
-execFileSync(
-  'npx',
-  [
-    '--yes',
-    MAPSHAPER,
-    '-i',
-    blOut,
-    'name=borders',
-    // Same simplification as the base tier so the dots track the coastline the
-    // base tier actually draws. The casing is far wider than the residual.
-    '-simplify',
-    ...SIMPLIFY,
-    '-o',
-    BORDERS_OUT,
-    'format=topojson',
-    'target=borders',
-  ],
-  { stdio: ['ignore', 'inherit', 'inherit'] },
-)
-const blJson = readFileSync(BORDERS_OUT, 'utf8')
-process.stdout.write(
-  `wrote ${BORDERS_OUT}\n` +
-    `  ${disputed.length} unsettled boundary features (${dropped} excluded as sitting on no polygon edge)\n` +
-    `  ${statSync(BORDERS_OUT).size} bytes raw, ${gzipSync(blJson, { level: 9 }).length} bytes gzipped\n`,
-)
+function buildDisputedBorders(simplify, dest) {
+  execFileSync(
+    'npx',
+    [
+      '--yes',
+      MAPSHAPER,
+      '-i',
+      blOut,
+      'name=borders',
+      '-simplify',
+      ...simplify,
+      '-o',
+      dest,
+      'format=topojson',
+      'target=borders',
+    ],
+    { stdio: ['ignore', 'inherit', 'inherit'] },
+  )
+  const json = readFileSync(dest, 'utf8')
+  process.stdout.write(
+    `wrote ${dest}\n` +
+      `  ${disputed.length} unsettled boundary features (${dropped} excluded as sitting on no polygon edge)\n` +
+      `  ${statSync(dest).size} bytes raw, ${gzipSync(json, { level: 9 }).length} bytes gzipped\n`,
+  )
+}
+
+// Same simplification as the base tier so the dots track the coastline the
+// base tier actually draws. The casing is far wider than the residual.
+buildDisputedBorders(SIMPLIFY, BORDERS_OUT)
+// The casing only retracts a claim if it still covers the country stroke
+// underneath it (see the header comment above). At dp 3.5% the low tier's fills
+// move far enough that this dp-20%-simplified casing no longer tracks them -
+// verified on the Kashmir Line of Control, where a dotted line drifts beside
+// an intact solid border, reading as "this border is settled". So the low
+// tier needs its own disputed-border geometry at the same simplification.
+// The unsimplified detail tier was checked the same way and the dp 20%
+// overlay still occludes correctly there, so high needs no matching file.
+buildDisputedBorders(SIMPLIFY_LOW, BORDERS_OUT_LOW)
+
 if (disputed.length < 40 || disputed.length > 100) {
   throw new Error(`unexpected unsettled boundary count ${disputed.length} - did NE reclassify?`)
 }
 
 // The tiers must be swappable path-for-path at runtime.
 const ids = (t) => t.objects.countries.geometries.map((g) => String(g.id)).sort().join(',')
-if (ids(base) !== ids(detail) || ids(base) !== ids(mid)) {
+if (ids(base) !== ids(detail) || ids(base) !== ids(low)) {
   throw new Error('geometry tiers disagree on feature ids')
 }

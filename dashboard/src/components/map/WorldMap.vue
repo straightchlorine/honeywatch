@@ -11,7 +11,7 @@
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { useReducedMotion } from '@/composables/useReducedMotion'
-  import { useMapDetail } from '@/composables/useMapDetail'
+  import { useMapDetail, type MapDetailTier } from '@/composables/useMapDetail'
   import { fmtNumber } from '@/utils/format'
   import { hexPoints } from '@/utils/hex'
   import { readStored, writeStored } from '@/utils/safeStorage'
@@ -127,25 +127,35 @@
   // hair under, landing at 23.99997 CSS px and failing the 24px floor outright.
   const minHitR = computed(() => 12.2 / (cssPerUnit.value * k.value))
 
-  // Hi-res geometry loaded past k=3 (base 0.53px at k=1 becomes 8.5px at k=16
-  // on 1080p). Skipped on narrow viewports where base data never pixel-limits.
-  // Coastline detail is viewer-chosen and persisted; smoothness depends on
-  // machine and display size, not a heuristic (4K struggles with high tier).
+  // Map detail is viewer-chosen and persisted, and can now go coarser as well
+  // as finer than the always-loaded base (countries.json, dp 20%). Low swaps
+  // in a dp-3.5%-simplified tier (with its own disputed-border file - see the
+  // comment on the disputed group below) applied at EVERY zoom and viewport:
+  // fewer vertices is the whole point of picking it, and phones benefit most.
+  // High swaps in the unsimplified tier, but only once the base tier's
+  // sub-pixel vertex spacing starts to show (past k=3) and only where the
+  // extra bytes are affordable (>=700px viewports; base data never
+  // pixel-limits on narrow ones anyway).
   const QUALITY_KEY = 'hw-map-quality'
-  const QUALITY_URL: Record<MapQualityLevel, string | null> = {
-    low: null,
-    regular: `${import.meta.env.BASE_URL}geo/countries-mid.json`,
-    high: `${import.meta.env.BASE_URL}geo/countries-detail.json`,
+  const QUALITY_TIER: Record<MapQualityLevel, MapDetailTier | null> = {
+    low: {
+      geo: `${import.meta.env.BASE_URL}geo/countries-low.json`,
+      borders: `${import.meta.env.BASE_URL}geo/borders-disputed-low.json`,
+    },
+    regular: null,
+    high: { geo: `${import.meta.env.BASE_URL}geo/countries-detail.json`, borders: null },
   }
   const stored = readStored('localStorage', QUALITY_KEY) as MapQualityLevel | null
+  // `regular` maps to `null`, so `in` (not truthiness) is what proves it is a
+  // recognised level.
   const quality = ref<MapQualityLevel>(
-    stored && stored in QUALITY_URL ? stored : 'high',
+    stored && stored in QUALITY_TIER ? stored : 'regular',
   )
   watch(quality, (q) => writeStored('localStorage', QUALITY_KEY, q))
   const detail = useMapDetail(k, geometry.fit, {
-    threshold: 3,
-    url: () => QUALITY_URL[quality.value],
-    enabled: () => window.innerWidth >= 700,
+    threshold: () => (quality.value === 'low' ? 0 : 3),
+    tier: () => QUALITY_TIER[quality.value],
+    enabled: () => quality.value === 'low' || window.innerWidth >= 700,
   })
 
   function onZoomIn(): void {
@@ -265,7 +275,12 @@
   const ringD = computed(() => {
     const a2 = focusedA2.value ?? props.selected
     if (!a2) return null
-    return geometry.countries.find((c) => c.a2 === a2)?.d ?? null
+    const c = geometry.countries.find((cc) => cc.a2 === a2)
+    if (!c) return null
+    // Trace whichever tier is actually drawn (the active detail tier if
+    // loaded, else the base) - otherwise the ring stops hugging the fill as
+    // soon as a coarser or finer tier is on screen.
+    return detail.value.countries.get(c.id) ?? c.d
   })
 
   function ariaLabelFor(c: MapCountry): string {
@@ -497,7 +512,7 @@
           :key="c.id"
           class="country"
           :class="{ selected: !!c.a2 && c.a2 === selected }"
-          :d="detail.get(c.id) ?? c.d"
+          :d="detail.countries.get(c.id) ?? c.d"
           :fill="fillFor(c.a2)"
           :tabindex="c.a2 && byA2.has(c.a2) ? 0 : undefined"
           :role="c.a2 && byA2.has(c.a2) ? 'button' : undefined"
@@ -519,10 +534,14 @@
              rather than merely decorating it. A dotted line laid over an intact
              solid one reads as emphasis, not as "this is not agreed".
              Dots need no zoom compensation: non-scaling-stroke resolves the
-             dash pattern in CSS px, measured constant from k=1 to k=16. -->
+             dash pattern in CSS px, measured constant from k=1 to k=16.
+             The low detail tier is simplified far enough (dp 3.5%) that the
+             base tier's dp-20% overlay drifts off the redrawn stroke and
+             stops occluding it, so that tier ships its own borders file at
+             the same simplification; other tiers fall back to the base. -->
         <g class="disputed" aria-hidden="true">
-          <path class="disputed-casing" :d="geometry.disputedBorders" />
-          <path class="disputed-line" :d="geometry.disputedBorders" />
+          <path class="disputed-casing" :d="detail.borders ?? geometry.disputedBorders" />
+          <path class="disputed-line" :d="detail.borders ?? geometry.disputedBorders" />
         </g>
         <!-- Selection/focus ring: dark casing under a bright ring, so one edge
              always contrasts whatever ramp colour is underneath. -->

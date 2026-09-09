@@ -12,7 +12,7 @@ describe('MapQuality component', () => {
     expect(input.attributes('min')).toBe('0')
     expect(input.attributes('max')).toBe('2')
     expect(input.attributes('step')).toBe('1')
-    expect(input.attributes('aria-label')).toBe('Coastline detail')
+    expect(input.attributes('aria-label')).toBe('Map detail')
   })
 
   it('renders all three level options in datalist', () => {
@@ -116,13 +116,13 @@ describe('MapQuality component', () => {
     expect(input.attributes('aria-valuetext')).toBe('High')
   })
 
-  it('has decorative "Detail" caption with aria-hidden', () => {
+  it('has decorative "Map detail" caption with aria-hidden', () => {
     const w = mount(MapQuality, {
       props: { modelValue: 'regular' },
     })
 
     const cap = w.get('.cap')
-    expect(cap.text()).toBe('Detail')
+    expect(cap.text()).toBe('Map detail')
     expect(cap.attributes('aria-hidden')).toBe('true')
   })
 

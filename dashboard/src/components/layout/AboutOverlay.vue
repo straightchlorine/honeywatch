@@ -94,10 +94,9 @@
           <summary>About the map</summary>
           <p>Borders follow the Natural Earth dataset. Dotted lines mark disputed borders.</p>
           <p>
-            Detailed coastlines can feel slow on a bigger screens. The
-            <strong>Detail</strong> control allows you to select between <i>Low</i>,
-            <i>Regular</i> and <i>High</i> detail. Select the one that works best for your purpose
-            and device.
+            Detailed borders can feel slow on a phone or a big screen. The
+            <strong>Map detail</strong> control starts at <i>Regular</i> - pick <i>Low</i> for
+            simpler outlines that draw faster, or <i>High</i> for the sharpest ones.
           </p>
         </details>
         <div class="intro-authors">
