@@ -1,6 +1,18 @@
-# Honeywatch
+<p align="center">
+  <img src="https://honeywatch.docs.codextechnologies.org/github/banner.svg" alt="Honeywatch" width="268">
+</p>
+
+<div align="center">
+
+[Live dashboard](https://honey.piotrkrzysztof.dev) &middot; [Documentation](https://docs.honeywatch.piotrkrzysztof.dev)
+
+[![CI](https://img.shields.io/github/actions/workflow/status/straightchlorine/honeywatch/ci.yml?branch=master&label=CI)](https://github.com/straightchlorine/honeywatch/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/straightchlorine/honeywatch)](https://github.com/straightchlorine/honeywatch/releases)
+[![ghcr.io](https://img.shields.io/badge/ghcr.io-api%20%7C%20ingestor%20%7C%20dashboard-blue?logo=github)](https://github.com/straightchlorine?tab=packages&repo_name=honeywatch)
 
 SSH honeypot with attack visualization and threat analysis.
+
+</div>
 
 <p align="center">
   <a href="https://honey.piotrkrzysztof.dev">
@@ -91,6 +103,15 @@ just openapi-regen          # regenerate api/openapi.json + dashboard TS SDK
 ```
 
 See `justfile` for the full command list.
+
+## Documentation
+
+Full docs at <https://docs.honeywatch.piotrkrzysztof.dev>. Build
+them locally with:
+
+```bash
+uv run --with-requirements docs/requirements.txt mkdocs serve
+```
 
 ## URLs
 

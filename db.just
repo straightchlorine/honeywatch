@@ -23,6 +23,7 @@ shell:
 
 # Restore a gzipped pg_dumpall dump. WIPES data. Only the `${POSTGRES_DB}` section replays; DROP ROLE/GRANTs are skipped (they'd lock services out).
 restore file:
+    gzip -dc {{file}} | grep -qxF "\\connect $POSTGRES_DB" || { echo "no \\connect $POSTGRES_DB section in dump (need pg_dumpall, not pg_dump)" >&2; exit 1; }
     docker compose stop api ingestor
     docker compose exec -T postgres psql -q -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
       -c "DROP SCHEMA IF EXISTS public CASCADE" -c "CREATE SCHEMA public"
