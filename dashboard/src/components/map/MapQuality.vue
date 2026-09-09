@@ -16,13 +16,14 @@
   const model = defineModel<MapQualityLevel>({ required: true })
 
   const tt = useHwTooltip()
+  // Rows run in slider order (left to right), so the list reads the way the control moves.
   const TIP: [string, string][] = [
-    ['High', 'Sharpest coastlines - slowest to pan on a big screen.'],
-    ['Regular', 'About half the detail, noticeably lighter.'],
-    ['Low', 'Simple outlines - fastest, with nothing extra to download.'],
+    ['Low', 'Blocky outlines, fastest'],
+    ['Regular', 'Middle ground'],
+    ['High', 'Sharpest, slowest to pan'],
   ]
   function showTip(): void {
-    tt.show('Coastline detail', TIP)
+    tt.show('Map detail', TIP)
   }
 
   const index = computed({
@@ -44,7 +45,7 @@
   >
     <!-- The caption is decorative: the input carries its own accessible name,
          so exposing the text twice would just make it read oddly. -->
-    <span class="cap" aria-hidden="true">Detail</span>
+    <span class="cap" aria-hidden="true">Map detail</span>
     <input
       v-model.number="index"
       class="slider"
@@ -52,7 +53,7 @@
       min="0"
       :max="LEVELS.length - 1"
       step="1"
-      aria-label="Coastline detail"
+      aria-label="Map detail"
       :aria-valuetext="LABEL[model]"
       list="map-quality-stops"
     />
@@ -75,13 +76,14 @@
 
   .cap {
     font: 650 9.5px var(--font-sans);
-    letter-spacing: 0.12em;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-dim);
   }
 
   .val {
-    min-width: 52px;
+    /* Widest label "Regular" measures 40.42px here, so 44px is the real floor. */
+    min-width: 44px;
     font: 650 10.5px var(--font-mono);
     color: var(--accent-hot);
   }
