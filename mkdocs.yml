@@ -1,0 +1,145 @@
+site_name: Honeywatch
+site_description: SSH honeypot with attack visualization and threat analysis
+site_author: Piotr Krzysztof Lis
+site_url: https://docs.honeywatch.piotrkrzysztof.dev
+
+repo_name: straightchlorine/honeywatch
+repo_url: https://github.com/straightchlorine/honeywatch
+edit_uri: edit/master/docs/
+
+copyright: Copyright &copy; 2026 Piotr Krzysztof Lis
+
+theme:
+  name: material
+  custom_dir: overrides
+  palette:
+    # Light mode
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: amber
+      accent: deep orange
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    # Dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: amber
+      accent: amber
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+
+  features:
+    - navigation.instant
+    - navigation.tracking
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.sections
+    - navigation.top
+    - navigation.footer
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - content.tabs.link
+    - toc.follow
+
+  icon:
+    repo: fontawesome/brands/github
+    edit: material/pencil
+
+  logo: assets/favicon.svg
+  favicon: assets/favicon.svg
+
+  font:
+    text: Roboto
+    code: Roboto Mono
+
+plugins:
+  - search:
+      lang: en
+  - git-revision-date-localized:
+      enable_creation_date: true
+      enable_git_follow: false
+      type: timeago
+      fallback_to_build_date: true
+
+exclude_docs: |
+  internal/
+  requirements.txt
+  plan.*
+  *.pdf
+
+markdown_extensions:
+  - abbr
+  - admonition
+  - attr_list
+  - def_list
+  - footnotes
+  - md_in_html
+  - tables
+  - toc:
+      permalink: true
+      toc_depth: 3
+  - pymdownx.betterem:
+      smart_enable: all
+  - pymdownx.caret
+  - pymdownx.details
+  - pymdownx.emoji:
+      emoji_index: !!python/name:material.extensions.emoji.twemoji
+      emoji_generator: !!python/name:material.extensions.emoji.to_svg
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.keys
+  - pymdownx.mark
+  - pymdownx.smartsymbols
+  - pymdownx.superfences:
+      custom_fences:
+        - name: mermaid
+          class: mermaid
+          format: !!python/name:pymdownx.superfences.fence_code_format
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+  - pymdownx.tilde
+
+extra:
+  social:
+    - icon: fontawesome/solid/globe
+      link: https://piotrkrzysztof.dev
+      name: piotrkrzysztof.dev
+    - icon: fontawesome/brands/github
+      link: https://github.com/straightchlorine/honeywatch
+    - icon: material/monitor-dashboard
+      link: https://honey.piotrkrzysztof.dev
+      name: Live dashboard
+
+extra_css:
+  - stylesheets/extra.css
+
+nav:
+  - Home: index.md
+
+  - Getting Started:
+      - Quick Start: getting-started/quick-start.md
+      - Configuration: getting-started/configuration.md
+
+  - Self-Hosting:
+      - Deploy the Stack: self-hosting/index.md
+      - Exposing Port 22: self-hosting/exposing.md
+      - Watching It Remotely: self-hosting/remote-access.md
+      - Operating It: self-hosting/operations.md
+
+  - Architecture:
+      - How It Works: architecture/index.md
+
+  - Reference:
+      - REST API: reference/api.md
+      - Development: reference/development.md
+      - Troubleshooting: reference/troubleshooting.md
+      - Operating This Instance: reference/maintainer-runbook.md

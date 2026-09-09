@@ -1,0 +1,66 @@
+/* Honeywatch docs theme - mirrors dashboard/src/assets/tokens.css */
+:root {
+  --md-primary-fg-color: #b45309;
+  --md-primary-fg-color--light: #d97706;
+  --md-primary-fg-color--dark: #92400e;
+  --md-accent-fg-color: #d97706;
+}
+
+[data-md-color-scheme="slate"] {
+  --md-primary-fg-color: #f59e0b;
+  --md-accent-fg-color: #fbbf24;
+  --md-default-bg-color: #1a1410;
+  --md-code-bg-color: #221a14;
+}
+
+.md-typeset code {
+  font-size: 0.85em;
+}
+
+.md-typeset pre > code {
+  font-size: 0.8em;
+}
+
+.md-typeset figure {
+  display: block;
+  margin: 1.5em auto;
+  text-align: center;
+  max-width: 90%;
+}
+
+.md-typeset figure img {
+  display: block;
+  margin: 0 auto;
+  max-width: 100%;
+  height: auto;
+  border-radius: 4px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.md-typeset figure figcaption {
+  margin-top: 0.6em;
+  font-size: 0.85em;
+  color: var(--md-default-fg-color--light);
+  font-style: italic;
+}
+
+.md-typeset table:not([class]) th {
+  background-color: var(--md-primary-fg-color);
+  color: var(--md-primary-bg-color);
+  font-weight: 600;
+}
+
+[data-md-color-scheme="slate"] .md-typeset table:not([class]) th {
+  background-color: var(--md-primary-fg-color--dark, #92400e);
+  color: #fff;
+}
+
+.md-typeset .admonition,
+.md-typeset details {
+  font-size: 0.82rem;
+}
+
+.md-typeset .admonition .admonition-title,
+.md-typeset details summary {
+  font-size: 0.85rem;
+}
