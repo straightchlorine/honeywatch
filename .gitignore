@@ -66,6 +66,10 @@ docs/*.fdb_latexmk
 docs/*.synctex.gz
 docs/*.toc
 
+# mkdocs build output
+/site/
+/docs/internal/*
+
 # --- Node (dashboard) ---
 node_modules/
 *.tsbuildinfo
@@ -85,3 +89,6 @@ dashboard/.playwright/
 
 # openapi-ts crash logs (written to dashboard/ on codegen failure)
 dashboard/openapi-ts-error-*.log
+
+# Ignore Claude stuff
+.claude
