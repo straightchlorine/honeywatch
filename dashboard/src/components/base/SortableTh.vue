@@ -2,9 +2,8 @@
   /**
    * One column header, shared by every sortable table. Omit sortKey for a column
    * that cannot be ranked and it renders a plain th instead.
-   * The API ranks each key in one fixed direction (only `country` is A-Z), so
-   * `dir` describes the server's order - this is not a toggle, and re-clicking
-   * the active column does nothing.
+   * Implements three-state cycling: click 1 sorts by this column in its natural
+   * direction, click 2 reverses, click 3 clears the sort.
    */
   import { computed } from 'vue'
   import { ICONS } from '@/components/icons'
@@ -18,12 +17,44 @@
   const props = withDefaults(defineProps<Props>(), {
     dir: 'desc',
   })
-  const sort = defineModel<string>()
+  const sort = defineModel<string | undefined>('sort')
+  const order = defineModel<'asc' | 'desc' | undefined>('order')
 
   const active = computed(() => props.sortKey !== undefined && sort.value === props.sortKey)
+  const resolvedDir = computed<'asc' | 'desc'>(() => order.value ?? props.dir)
   const ariaSort = computed<'ascending' | 'descending' | undefined>(() => {
     if (!active.value) return undefined
-    return props.dir === 'asc' ? 'ascending' : 'descending'
+    return resolvedDir.value === 'asc' ? 'ascending' : 'descending'
+  })
+
+  function onClick(): void {
+    if (!props.sortKey) return
+
+    // Different column: set sort to this key, order to natural direction
+    if (sort.value !== props.sortKey) {
+      sort.value = props.sortKey
+      order.value = props.dir
+      return
+    }
+
+    // Active column: check if at natural direction
+    if ((order.value ?? props.dir) === props.dir) {
+      // Still at natural direction: flip it
+      order.value = props.dir === 'asc' ? 'desc' : 'asc'
+    } else {
+      // Already flipped: clear both
+      sort.value = undefined
+      order.value = undefined
+    }
+  }
+
+  // What the next click will do
+  const nextActionText = computed<string>(() => {
+    if (!active.value) return 'Sort by this column'
+    if ((order.value ?? props.dir) === props.dir) {
+      return `Sort in reverse`
+    }
+    return `Clear sort`
   })
 </script>
 
@@ -36,7 +67,7 @@
       <button
         type="button"
         :title="hint"
-        @click="sort = sortKey"
+        @click="onClick"
       >
         <slot />
         <svg
@@ -51,10 +82,12 @@
           <path
             :d="ICONS['chevron-right']"
             fill="currentColor"
-            :transform="dir === 'asc' ? 'rotate(-90 12 12)' : 'rotate(90 12 12)'"
+            :transform="resolvedDir === 'asc' ? 'rotate(-90 12 12)' : 'rotate(90 12 12)'"
           />
         </svg>
-        <span v-if="active" class="visually-hidden">{{ dir === 'asc' ? 'sorted ascending' : 'sorted descending' }}</span>
+        <span class="visually-hidden">
+          {{ active ? `sorted ${resolvedDir === 'asc' ? 'ascending' : 'descending'}, ${nextActionText}` : nextActionText }}
+        </span>
       </button>
     </template>
   </th>

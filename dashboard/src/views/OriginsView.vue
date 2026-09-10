@@ -44,10 +44,11 @@
   const POLL_MS = 120_000
 
   const countrySort = ref<CountrySort>('sessions')
+  const countryOrder = ref<'asc' | 'desc' | undefined>(undefined)
 
   const countriesQ = useQuery(
     computed(() => ({
-      ...statsCountriesOptions({ query: { sort: countrySort.value, top_n: 100 } }),
+      ...statsCountriesOptions({ query: { sort: countrySort.value, order: countryOrder.value, top_n: 100 } }),
       placeholderData: keepPreviousData,
       refetchInterval: POLL_MS,
     })),
@@ -106,8 +107,7 @@
         ].join(' - '),
         value: fmtCompact(a.sessions),
         frac: netScale.value.frac(a.sessions),
-        over: netScale.value.over(a.sessions),
-      }
+        }
     })
   })
 
@@ -167,7 +167,6 @@
       title: cleanCred(c.client_version),
       value: fmtCompact(c.sessions),
       frac: clientScale.value.frac(c.sessions),
-      over: clientScale.value.over(c.sessions),
     })),
   )
 
@@ -179,7 +178,6 @@
       sub: `${fmtNumber(f.ips)} addresses - first seen ${fmtRelativeTime(f.first_seen)}, last seen ${fmtRelativeTime(f.last_seen)}`,
       value: fmtCompact(f.sessions),
       frac: keyScale.value.frac(f.sessions),
-      over: keyScale.value.over(f.sessions),
     }))
   })
 </script>
@@ -226,7 +224,7 @@
 
       <div class="grid-main">
         <div class="hive-wrapper">
-          <CountryHive v-model:selected="selectedCountry" v-model:sort="countrySort" :countries="resolvedCountries" />
+          <CountryHive v-model:selected="selectedCountry" v-model:sort="countrySort" v-model:order="countryOrder" :countries="resolvedCountries" />
         </div>
 
         <div class="right-col">

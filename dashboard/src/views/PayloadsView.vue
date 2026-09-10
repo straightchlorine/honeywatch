@@ -228,7 +228,7 @@
   }
 
   const relayRows = computed<RankRow[]>(() => {
-    const { frac, over } = cappedFracs(tcpip.value.map((t) => t.sessions))
+    const { frac } = cappedFracs(tcpip.value.map((t) => t.sessions))
     return tcpip.value.map((t) => {
       const net = t.network ?? 'Unknown network'
       const where = t.country_code
@@ -241,7 +241,6 @@
         title: `${net}, port ${t.port} (${portService(t.port)}) - ${fmtNumber(t.sessions)} sessions from ${fmtNumber(t.hosts)} addresses, ${t.country ?? 'no fixed location'}`,
         value: fmtNumber(t.sessions),
         frac: frac(t.sessions),
-        over: over(t.sessions),
         badge: String(t.port),
         badgeClass: portBadgeClass(t.port),
         sub: `${portService(t.port)} . ${fmtNumber(t.hosts)} host${t.hosts === 1 ? '' : 's'} . ${where}`,

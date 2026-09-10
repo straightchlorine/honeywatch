@@ -881,6 +881,10 @@ export type ListSessionsData = {
          */
         sort?: 'recent' | 'country' | 'active' | 'interest' | 'duration';
         /**
+         * Sort direction, overriding the chosen sort key's own default direction. Omit to use the per-key default.
+         */
+        order?: 'asc' | 'desc' | null;
+        /**
          * Comma-separated filters, all must match: 'commands' (n_commands > 0), 'downloads' (n_downloads > 0), 'success' (auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, did nothing at all - mutually exclusive with the others).
          */
         has?: string | null;
@@ -1081,6 +1085,10 @@ export type StatsCountriesData = {
          * Ranking metric: sessions, ips (distinct source IPs), attempts, or success_rate.
          */
         sort?: 'attempts' | 'ips' | 'sessions' | 'success_rate';
+        /**
+         * Sort direction, overriding the chosen sort key's own default direction. Omit to use the per-key default.
+         */
+        order?: 'asc' | 'desc' | null;
         /**
          * Number of countries to return (max 100).
          */

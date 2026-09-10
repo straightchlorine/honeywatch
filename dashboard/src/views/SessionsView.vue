@@ -50,6 +50,14 @@
     active: 'most SSH commands issued first',
     country: 'sorted alphabetically by origin',
   }
+  // Natural first-click direction for each sortable column
+  const SORT_DIR: Record<SortId, 'asc' | 'desc'> = {
+    interest: 'desc',
+    recent: 'desc',
+    duration: 'desc',
+    active: 'desc',
+    country: 'asc',
+  }
   // Short, lowercase clauses for the footer's "what the total is of" - keyed
   // by the OutcomeFilter has= token (see OutcomeFilter.vue's MAIN_ROWS/NONE_ROW).
   const OUTCOME_CLAUSE: Record<string, string> = {
@@ -92,6 +100,17 @@
     set: (v) => {
       updateQuery({
         sort: v === 'interest' ? undefined : v,
+        order: undefined,
+        page: undefined,
+        open: undefined,
+      })
+    },
+  })
+  const order = computed<'asc' | 'desc' | undefined>({
+    get: () => (route.query.order as 'asc' | 'desc' | undefined),
+    set: (v) => {
+      updateQuery({
+        order: v,
         page: undefined,
         open: undefined,
       })
@@ -188,6 +207,7 @@
           page: currentPage.value,
           per_page: PER_PAGE,
           sort: sort.value,
+          order: order.value,
           has: hasValue.value || undefined,
           country: country.value || undefined,
           q: qParam.value,
@@ -413,12 +433,12 @@
         <table class="data" role="treegrid" aria-label="Sessions">
           <thead>
             <tr>
-              <SortableTh v-model="sort" sort-key="interest" hint="Sort by interest: how much the attacker did">Session</SortableTh>
-              <SortableTh v-model="sort" sort-key="active" hint="Sort by activity: SSH commands issued" dir="desc">Story</SortableTh>
-              <SortableTh v-model="sort" sort-key="country" hint="Sort by origin: alphabetically" dir="asc">Origin</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="interest" :dir="SORT_DIR.interest" hint="Sort by interest: how much the attacker did">Session</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="active" :dir="SORT_DIR.active" hint="Sort by activity: SSH commands issued">Story</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="country" :dir="SORT_DIR.country" hint="Sort by origin: alphabetically">Origin</SortableTh>
               <th></th>
-              <SortableTh v-model="sort" sort-key="duration" hint="Sort by duration: longest first" dir="desc" class="r">Duration</SortableTh>
-              <SortableTh v-model="sort" sort-key="recent" hint="Sort by recency: newest first" dir="desc" class="r">Started</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="duration" :dir="SORT_DIR.duration" hint="Sort by duration: longest first" class="r">Duration</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="recent" :dir="SORT_DIR.recent" hint="Sort by recency: newest first" class="r">Started</SortableTh>
             </tr>
           </thead>
           <tbody>

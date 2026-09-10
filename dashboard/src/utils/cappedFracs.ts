@@ -1,24 +1,22 @@
 /**
- * Scales bar fractions against p75*1.5 for heavy-tailed data.
+ * Scales bar fractions linearly against the list maximum.
  *
- * Linear scaling collapses when top values dwarf the 75th percentile. We scale
- * against p75*1.5 instead and flag rows exceeding this cap. p75 is used (not p90)
- * because these lists hold ~10-25 rows, where p90 often equals the max. Bar length
- * must stay proportional to value (never log scale) or visual comparison breaks.
- * Row labels always show the true value.
+ * Bar length is read as proportional to value, so it must be. An earlier
+ * version scaled against p75*1.5 to keep the tail legible, but that clamped
+ * every value above the cap to a full bar: on the SSH-client list, 6.7k and
+ * 4.6k both rendered at 100% while 292 rendered at two thirds. Compressing the
+ * tail is a tradeoff; making the two largest rows indistinguishable is a lie,
+ * and it lands on exactly the rows read first.
+ *
+ * The tail is now short by design. RankList floors the width at 2% so no row
+ * vanishes, and every row prints its true value at the right edge.
  */
 export function cappedFracs(values: number[]): {
   frac: (n: number) => number
-  over: (n: number) => boolean
 } {
-  const sorted = [...values].filter((n) => n > 0).sort((a, b) => a - b)
-  const rawMax = sorted[sorted.length - 1] ?? 0
-  const p75 = sorted[Math.max(0, Math.ceil(sorted.length * 0.75) - 1)] ?? 0
-  const capped = p75 > 0 && rawMax > 3 * p75
-  const ceil = capped ? Math.min(rawMax, p75 * 1.5) : rawMax
-  const denom = ceil > 0 ? ceil : 1
+  const max = Math.max(0, ...values.filter((n) => n > 0))
+  const denom = max > 0 ? max : 1
   return {
-    frac: (n) => Math.min(1, n / denom),
-    over: (n) => capped && n > ceil,
+    frac: (n) => Math.min(1, Math.max(0, n / denom)),
   }
 }

@@ -23,6 +23,15 @@
 
   const selected = defineModel<string | null>('selected', { default: null })
   const sortKey = defineModel<CountrySort>('sort', { default: 'sessions' })
+  const order = defineModel<'asc' | 'desc' | undefined>('order')
+
+  // Natural first-click direction for each sortable column
+  const SORT_DIR: Record<CountrySort, 'asc' | 'desc'> = {
+    sessions: 'desc',
+    ips: 'desc',
+    attempts: 'desc',
+    success_rate: 'desc',
+  }
 
   const reduced = useReducedMotion()
 
@@ -47,15 +56,28 @@
 
   const CELLS = computed(() => ROW_SIZES.value.reduce((a, b) => a + b, 0))
   const top = computed(() => countries.slice(0, CELLS.value))
-  const maxSessions = computed(() => {
-    const sessions = top.value.map((c) => c.sessions)
-    return sessions.length > 0 ? Math.max(...sessions) : 0
+
+  // Get the metric value for a country based on the active sort
+  function getMetricValue(c: CountryRowResponse): number | null {
+    if (sortKey.value === 'ips') return c.distinct_ips
+    if (sortKey.value === 'attempts') return c.attempts
+    if (sortKey.value === 'success_rate') return c.success_rate
+    return c.sessions
+  }
+
+  const maxMetric = computed(() => {
+    const values = top.value
+      .map((c) => getMetricValue(c))
+      .filter((v): v is number => v !== null)
+    return values.length > 0 ? Math.max(...values) : 0
   })
-  const minSessions = computed(() => {
-    const vals = top.value.map((c) => c.sessions).filter((n) => n > 0)
-    return vals.length ? Math.min(...vals) : 0
+  const minMetric = computed(() => {
+    const values = top.value
+      .map((c) => getMetricValue(c))
+      .filter((v): v is number => v !== null && v > 0)
+    return values.length ? Math.min(...values) : 0
   })
-  const scale = useSeqScale(maxSessions)
+  const scale = useSeqScale(maxMetric)
 
   // Rows actually populated by the current country list (short lists just
   // stop filling rows, they are never padded with empty cells).
@@ -87,6 +109,9 @@
     ips: number
     successLabel: string
     ariaLabel: string
+    metricValue: number | null
+    metricLabel: string
+    metricName: string
   }
 
   const cells = computed<HexCell[]>(() => {
@@ -100,6 +125,15 @@
         colOf.push(col)
       }
     })
+
+    // Get metric name for display
+    const metricNames: Record<CountrySort, string> = {
+      sessions: 'sessions',
+      ips: 'unique IPs',
+      attempts: 'attempts',
+      success_rate: 'accepted',
+    }
+
     return top.value.map((c, i) => {
       const row = rowOf[i] ?? 0
       const col = colOf[i] ?? 0
@@ -108,25 +142,55 @@
       const cx = 10 + GUTTER + inset + HXW * col + HXW / 2
       const cy = 8 + R + 1.5 * R * row
       const code = c.country_code ?? ''
+
+      const metricValue = getMetricValue(c)
+      const metricName = metricNames[sortKey.value]
+
+      // For display: if metric is null or success_rate, handle specially
+      let metricLabel: string
+      if (metricValue === null || metricValue === undefined) {
+        metricLabel = '-'
+      } else if (sortKey.value === 'success_rate') {
+        metricLabel = fmtSuccessRate(metricValue)
+      } else {
+        metricLabel = fmtCompact(metricValue)
+      }
+
       // Normalise across the populated range (not [0, max]) to use the full ramp;
       // 0.06 floor keeps the quietest country off the darkest stop.
-      const lo = minSessions.value
-      const hi = maxSessions.value
-      const span = Math.log1p(hi) - Math.log1p(lo)
-      const norm = span > 0 ? (Math.log1p(c.sessions) - Math.log1p(lo)) / span : 1
-      const t = 0.06 + 0.94 * norm
+      // For success_rate, use the actual min/max of rates, not log scale
+      let norm = 1
+      if (sortKey.value === 'success_rate') {
+        if (metricValue !== null && minMetric.value !== maxMetric.value) {
+          const span = maxMetric.value - minMetric.value
+          norm = (metricValue - minMetric.value) / span
+        } else if (metricValue === null) {
+          norm = 0 // null will be rendered as no-data
+        }
+      } else {
+        const lo = minMetric.value
+        const hi = maxMetric.value
+        const span = Math.log1p(hi) - Math.log1p(lo)
+        norm = span > 0 && metricValue !== null ? (Math.log1p(metricValue) - Math.log1p(lo)) / span : 1
+      }
+
+      const t = metricValue === null ? 0 : 0.06 + 0.94 * norm
+
       return {
         code,
         name: c.country ?? code,
         cx,
         cy,
-        fill: scale.seq(t),
+        fill: metricValue === null ? 'var(--surface-2)' : scale.seq(t),
         dark: needsDarkInk(t),
         flag: useCountryFlag(code),
         sessions: c.sessions,
         ips: c.distinct_ips,
         successLabel: fmtSuccessRate(c.success_rate),
-        ariaLabel: `${c.country ?? code}: ${fmtNumber(c.sessions)} sessions`,
+        ariaLabel: `${c.country ?? code}: ${fmtNumber(metricValue ?? 0)} ${metricName}`,
+        metricValue,
+        metricLabel,
+        metricName,
       }
     })
   })
@@ -192,6 +256,13 @@
   <HwCard class="hive-card" :title="`Top ${top.length} origins by ${sortLabel}`">
     <template #head-extra>
       <span class="toggle-row">
+        <ChipButton
+          v-if="sortKey !== 'sessions' || order !== undefined"
+          :pressed="false"
+          @toggle="() => { sortKey = 'sessions'; order = undefined }"
+        >
+          Clear sort
+        </ChipButton>
         <ChipButton :pressed="view === 'hive'" @toggle="view = 'hive'">Hive</ChipButton>
         <ChipButton :pressed="view === 'table'" @toggle="view = 'table'">Table</ChipButton>
       </span>
@@ -204,7 +275,7 @@
       v-if="view === 'hive'"
       class="hive-svg"
       role="graphics-document"
-      :aria-label="`Top ${cells.length} attacking countries, shaded by session count. Switch to the table for exact figures.`"
+      :aria-label="`Top ${cells.length} attacking countries, shaded by ${sortLabel.toLowerCase()}. Switch to the table for exact figures.`"
       :viewBox="`0 0 ${viewW} ${viewH}`"
     >
       <g v-for="(cell, idx) in cells" :key="cell.code" class="hive-hex">
@@ -238,6 +309,7 @@
           {{ cell.code }}
         </text>
         <text
+          v-if="cell.metricValue !== null"
           :x="cell.cx"
           :y="cell.cy + 24"
           text-anchor="middle"
@@ -245,7 +317,18 @@
           class="hex-count"
           :class="{ dark: cell.dark }"
         >
-          {{ fmtCompact(cell.sessions) }}
+          {{ cell.metricLabel }}
+        </text>
+        <text
+          v-else
+          :x="cell.cx"
+          :y="cell.cy + 24"
+          text-anchor="middle"
+          font-size="10.5"
+          class="hex-count"
+          :class="{ dark: cell.dark }"
+        >
+          -
         </text>
       </g>
     </svg>
@@ -256,10 +339,10 @@
           <tr>
             <th scope="col">#</th>
             <th scope="col">Country</th>
-            <SortableTh v-model="sortKey" sort-key="sessions" dir="desc" class="r" hint="Sort by number of sessions">Sessions</SortableTh>
-            <SortableTh v-model="sortKey" sort-key="ips" dir="desc" class="r" hint="Sort by number of unique IPs">Unique IPs</SortableTh>
-            <SortableTh v-model="sortKey" sort-key="attempts" dir="desc" class="r" hint="Sort by number of login attempts">Attempts</SortableTh>
-            <SortableTh v-model="sortKey" sort-key="success_rate" dir="desc" class="r" hint="Sort by login success rate">Success</SortableTh>
+            <SortableTh v-model:sort="sortKey" v-model:order="order" sort-key="sessions" :dir="SORT_DIR.sessions" class="r" hint="Sort by number of sessions">Sessions</SortableTh>
+            <SortableTh v-model:sort="sortKey" v-model:order="order" sort-key="ips" :dir="SORT_DIR.ips" class="r" hint="Sort by number of unique IPs">Unique IPs</SortableTh>
+            <SortableTh v-model:sort="sortKey" v-model:order="order" sort-key="attempts" :dir="SORT_DIR.attempts" class="r" hint="Sort by number of login attempts">Attempts</SortableTh>
+            <SortableTh v-model:sort="sortKey" v-model:order="order" sort-key="success_rate" :dir="SORT_DIR.success_rate" class="r" hint="Sort by login success rate">Success</SortableTh>
           </tr>
         </thead>
         <tbody>
@@ -288,7 +371,11 @@
     <Transition name="sel">
       <div v-if="view === 'hive'" class="sel-line">
         <span class="sel-hint">Click a cell to inspect a country.</span>
-        <SeqLegend class="hive-legend" :min="fmtCompact(minSessions)" :max="`${fmtCompact(maxSessions)} sessions`" />
+        <SeqLegend
+          class="hive-legend"
+          :min="sortKey === 'success_rate' ? fmtSuccessRate(minMetric) : fmtCompact(minMetric)"
+          :max="`${sortKey === 'success_rate' ? fmtSuccessRate(maxMetric) : fmtCompact(maxMetric)} ${cells[0]?.metricName ?? 'sessions'}`"
+        />
       </div>
     </Transition>
   </HwCard>
@@ -297,6 +384,9 @@
 <style scoped>
   .hive-card {
     min-height: 0;
+    /* Fill the grid cell instead of sizing to content, or the hive floats in
+       empty space beside the taller right column on large displays. */
+    flex: 1;
   }
 
   .hive-card :deep(.card > h2) {
@@ -316,6 +406,9 @@
   .hive-svg {
     flex: 1;
     width: 100%;
+    /* No preserveAspectRatio override: the default xMidYMid meet scales the
+       hexagons up uniformly. Stretching to fill would turn them into ovals. */
+    height: 100%;
   }
 
   .hive-svg text {
