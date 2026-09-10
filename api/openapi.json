@@ -388,16 +388,6 @@
             "example": 42,
             "type": "integer"
           },
-          "distinct_passwords": {
-            "description": "Distinct passwords tried.",
-            "example": 96,
-            "type": "integer"
-          },
-          "distinct_usernames": {
-            "description": "Distinct usernames tried.",
-            "example": 18,
-            "type": "integer"
-          },
           "sessions": {
             "description": "Distinct sessions from this country.",
             "example": 137,
@@ -422,8 +412,6 @@
           "country",
           "country_code",
           "distinct_ips",
-          "distinct_passwords",
-          "distinct_usernames",
           "sessions",
           "success_rate",
           "successful"

@@ -122,14 +122,6 @@ class CountryRowResponse(BaseSchema):
             "example": 0.59,
         },
     )
-    distinct_usernames = fields.Int(
-        required=True,
-        metadata={"description": "Distinct usernames tried.", "example": 18},
-    )
-    distinct_passwords = fields.Int(
-        required=True,
-        metadata={"description": "Distinct passwords tried.", "example": 96},
-    )
 
 
 class CountriesResponse(BaseSchema):
