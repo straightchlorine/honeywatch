@@ -1,6 +1,6 @@
 {
   "name": "honeywatch-dashboard",
-  "version": "v0.7.1",
+  "version": "v0.7.2",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.33.0",
