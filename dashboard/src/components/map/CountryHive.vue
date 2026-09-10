@@ -13,13 +13,16 @@
   import { hexPoints } from '@/utils/hex'
   import { fmtNumber, fmtCompact } from '@/utils/format'
   import { fmtSuccessRate } from '@/utils/credentials'
+  import type { CountrySort } from '@/utils/countries'
   import ChipButton from '../base/ChipButton.vue'
+  import SortableTh from '../base/SortableTh.vue'
   import SeqLegend from '../base/SeqLegend.vue'
   import HwCard from '../base/HwCard.vue'
 
   const { countries } = defineProps<{ countries: CountryRowResponse[] }>()
 
   const selected = defineModel<string | null>('selected', { default: null })
+  const sortKey = defineModel<CountrySort>('sort', { default: 'sessions' })
 
   const reduced = useReducedMotion()
 
@@ -44,7 +47,10 @@
 
   const CELLS = computed(() => ROW_SIZES.value.reduce((a, b) => a + b, 0))
   const top = computed(() => countries.slice(0, CELLS.value))
-  const maxSessions = computed(() => top.value[0]?.sessions ?? 0)
+  const maxSessions = computed(() => {
+    const sessions = top.value.map((c) => c.sessions)
+    return sessions.length > 0 ? Math.max(...sessions) : 0
+  })
   const minSessions = computed(() => {
     const vals = top.value.map((c) => c.sessions).filter((n) => n > 0)
     return vals.length ? Math.min(...vals) : 0
@@ -170,10 +176,20 @@
       selectCountry(code ?? '')
     }
   }
+
+  const sortLabel = computed(() => {
+    const labels: Record<CountrySort, string> = {
+      sessions: 'Sessions',
+      ips: 'Unique IPs',
+      attempts: 'Attempts',
+      success_rate: 'Success',
+    }
+    return labels[sortKey.value]
+  })
 </script>
 
 <template>
-  <HwCard class="hive-card" :title="`Top ${top.length} origins`">
+  <HwCard class="hive-card" :title="`Top ${top.length} origins by ${sortLabel}`">
     <template #head-extra>
       <span class="toggle-row">
         <ChipButton :pressed="view === 'hive'" @toggle="view = 'hive'">Hive</ChipButton>
@@ -183,7 +199,7 @@
 
     <!-- graphics-document allows focusable cells; role="img" forbids
          interactive descendants (axe: nested-interactive). -->
-    <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
+    <!-- eslint-disable vuejs-accessibility/no-static-element-interactions -->
     <svg
       v-if="view === 'hive'"
       class="hive-svg"
@@ -240,10 +256,10 @@
           <tr>
             <th scope="col">#</th>
             <th scope="col">Country</th>
-            <th scope="col" class="r">Sessions</th>
-            <th scope="col" class="r">Unique IPs</th>
-            <th scope="col" class="r">Attempts</th>
-            <th scope="col" class="r">Success</th>
+            <SortableTh v-model="sortKey" sort-key="sessions" dir="desc" class="r" hint="Sort by number of sessions">Sessions</SortableTh>
+            <SortableTh v-model="sortKey" sort-key="ips" dir="desc" class="r" hint="Sort by number of unique IPs">Unique IPs</SortableTh>
+            <SortableTh v-model="sortKey" sort-key="attempts" dir="desc" class="r" hint="Sort by number of login attempts">Attempts</SortableTh>
+            <SortableTh v-model="sortKey" sort-key="success_rate" dir="desc" class="r" hint="Sort by login success rate">Success</SortableTh>
           </tr>
         </thead>
         <tbody>
@@ -252,8 +268,6 @@
             :key="c.country_code ?? i"
             :class="{ selected: c.country_code === selected }"
             tabindex="0"
-            role="button"
-            :aria-label="`${c.country ?? c.country_code}: ${fmtNumber(c.sessions)} sessions`"
             @click="selectCountry(c.country_code ?? '')"
             @keydown="onRowKeydown(c.country_code, $event)"
           >
@@ -267,7 +281,7 @@
         </tbody>
       </table>
     </div>
-    <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
+    <!-- eslint-enable vuejs-accessibility/no-static-element-interactions -->
 
     <!-- Hint and legend only apply to hive view; hiding together avoids
          meaningless UI in table mode. -->

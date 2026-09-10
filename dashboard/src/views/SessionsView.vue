@@ -7,6 +7,7 @@
   import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter, type LocationQuery } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
+  import type { ListSessionsData } from '@/api/generated/types.gen'
   import {
     listSessionsOptions,
     statsOutcomesOptions,
@@ -17,6 +18,7 @@
   import ChipButton from '@/components/base/ChipButton.vue'
   import Dropdown from '@/components/base/Dropdown.vue'
   import EmptyState from '@/components/base/EmptyState.vue'
+  import SortableTh from '@/components/base/SortableTh.vue'
   import SessionRow from '@/components/sessions/SessionRow.vue'
   import OutcomeFilter from '@/components/sessions/OutcomeFilter.vue'
   import { ICONS } from '@/components/icons'
@@ -32,17 +34,21 @@
   const MIN_QUERY_LEN = 2
   const MAX_QUERY_LEN = 64
 
-  type SortId = 'interest' | 'recent' | 'duration'
+  type SortId = NonNullable<NonNullable<ListSessionsData['query']>['sort']>
   const SORTS: { id: SortId; label: string }[] = [
     { id: 'interest', label: 'Most interesting' },
     { id: 'recent', label: 'Most recent' },
     { id: 'duration', label: 'Longest' },
+    { id: 'active', label: 'Most active' },
+    { id: 'country', label: 'By origin' },
   ]
   // Subtitles must reflect actual sort order (not independent hardcoded values).
   const SORT_SUBTITLE: Record<SortId, string> = {
     interest: 'ranked by how much the attacker did',
     recent: 'newest first',
     duration: 'longest sessions first',
+    active: 'most SSH commands issued first',
+    country: 'sorted alphabetically by origin',
   }
   // Short, lowercase clauses for the footer's "what the total is of" - keyed
   // by the OutcomeFilter has= token (see OutcomeFilter.vue's MAIN_ROWS/NONE_ROW).
@@ -407,12 +413,12 @@
         <table class="data" role="treegrid" aria-label="Sessions">
           <thead>
             <tr>
-              <th>Session</th>
-              <th>Story</th>
-              <th>Origin</th>
+              <SortableTh v-model="sort" sort-key="interest" hint="Sort by interest: how much the attacker did">Session</SortableTh>
+              <SortableTh v-model="sort" sort-key="active" hint="Sort by activity: SSH commands issued" dir="desc">Story</SortableTh>
+              <SortableTh v-model="sort" sort-key="country" hint="Sort by origin: alphabetically" dir="asc">Origin</SortableTh>
               <th></th>
-              <th class="r">Duration</th>
-              <th class="r">Started</th>
+              <SortableTh v-model="sort" sort-key="duration" hint="Sort by duration: longest first" dir="desc" class="r">Duration</SortableTh>
+              <SortableTh v-model="sort" sort-key="recent" hint="Sort by recency: newest first" dir="desc" class="r">Started</SortableTh>
             </tr>
           </thead>
           <tbody>

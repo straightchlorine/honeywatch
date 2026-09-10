@@ -218,11 +218,13 @@
                   :class="`trend-${trendTone}`"
                   role="button"
                   tabindex="0"
+                  aria-label="7-day trend: sessions this week compared with last week"
                   @pointerenter="showTrendTooltip($event)"
                   @pointermove="tt.move($event)"
                   @pointerleave="tt.hide()"
                   @focus="showTrendTooltip({})"
                   @blur="tt.hide()"
+                  @keydown.enter.space.prevent="showTrendTooltip({})"
                 >
                   {{ trendLabel }}
                 </span>

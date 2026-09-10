@@ -5,6 +5,7 @@ import type { SessionDetailResponse } from '@/api/generated/types.gen'
 import { sanitizeAttackerText } from '@/utils/sanitize'
 import { redactIps, type RedactSegment } from '@/utils/redactIps'
 import { humanizeDuration } from '@/utils/duration'
+import { fmtUtcClock } from '@/utils/format'
 
 const DEFAULT_USER = 'root'
 const HOST = 'honeypot'
@@ -39,13 +40,7 @@ function parseTs(iso: string | null): number | null {
 
 function fmtClock(ts: number | null): string {
   if (ts === null) return ''
-  return new Date(ts).toLocaleTimeString('en-GB', {
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-    hour12: false,
-    timeZone: 'UTC',
-  })
+  return fmtUtcClock(new Date(ts))
 }
 
 function clean(raw: string): string {
