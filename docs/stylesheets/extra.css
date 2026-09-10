@@ -1,5 +1,5 @@
 /* Honeywatch docs theme - mirrors dashboard/src/assets/tokens.css */
-:root {
+[data-md-color-scheme="default"] {
   --md-primary-fg-color: #b45309;
   --md-primary-fg-color--light: #d97706;
   --md-primary-fg-color--dark: #92400e;

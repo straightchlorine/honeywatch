@@ -34,7 +34,8 @@ Volumes and the schema survive that.
 | `POSTGRES_USER` | postgres, api, ingestor | `honeywatch` | Required. Becomes the bootstrap superuser on first boot. In `docker-compose.yml` both the api and the ingestor connect as this role. |
 | `POSTGRES_PASSWORD` | postgres, api, ingestor | none | Required. The api refuses to boot without it; the ingestor exits with `KeyError`. |
 | `POSTGRES_DB` | postgres, api, ingestor | `honeywatch` | Required. |
-| `POSTGRES_HOST` | api, ingestor | `postgres` | Set by the compose file. |
+| `POSTGRES_HOST` | api | `localhost` | The api defaults to localhost when running in development. |
+| `POSTGRES_HOST` | ingestor | `postgres` | The ingestor defaults to the postgres service name in Docker. |
 | `POSTGRES_PORT` | api, ingestor | `5432` | The port inside the Docker network, not the host port. |
 | `POSTGRES_SSLMODE` | api | `disable` | Postgres is only reachable on the private bridge, so there is no certificate step. The ingestor has no knob for this. |
 | `POSTGRES_HOST_PORT` | `docker-compose.yml` | `5433` | Changes the host-side publish only, never the bind address; for that see [Pin the Ports](../self-hosting/index.md#pin-the-ports-before-the-first-start). |
