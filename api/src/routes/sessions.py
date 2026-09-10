@@ -39,6 +39,7 @@ def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
         country=query_args.get("country"),
         category=query_args.get("category"),
         sort=query_args.get("sort", "recent"),
+        order=query_args.get("order"),
         has=query_args.get("has"),
         sha256=query_args.get("sha256"),
     )

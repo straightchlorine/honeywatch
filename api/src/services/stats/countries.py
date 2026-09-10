@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
-from sqlalchemy import BigInteger, cast, func, select, true
+from typing import Any
+
+from sqlalchemy import BigInteger, ColumnElement, cast, func, nulls_last, select, true
 from sqlalchemy.orm import Session as DbSession
 
 from src.models.auth_attempt import AuthAttempt
@@ -42,6 +44,12 @@ def _sessions_per_ip():
     )
 
 
+def _direction(col: ColumnElement[Any], resolved_order: str) -> ColumnElement[Any]:
+    """asc()/desc() for one column; every sort key routes through this so the
+    four order_by branches cannot drift apart."""
+    return col.asc() if resolved_order == "asc" else col.desc()
+
+
 def top_countries(db: DbSession, top_n: int = DEFAULT_TOP_N) -> list[TopCountryDict]:
     """Top-N countries by session count; unresolved IPs use UNKNOWN_COUNTRY."""
     per_ip = _sessions_per_ip()
@@ -62,10 +70,13 @@ def top_countries(db: DbSession, top_n: int = DEFAULT_TOP_N) -> list[TopCountryD
 
 
 def country_breakdown(
-    db: DbSession, sort: str = "sessions", top_n: int = DEFAULT_TOP_N
+    db: DbSession,
+    sort: str = "sessions",
+    top_n: int = DEFAULT_TOP_N,
+    order: str | None = None,
 ) -> CountriesDict:
     """Top-N countries ranked by sort key; countries with no attempts sort last on
-    success_rate."""
+    success_rate. All four sort keys default to descending; order= overrides it."""
     require_one_of(sort, VALID_COUNTRY_SORTS, "sort")
 
     # Pre-aggregate per src_ip to reduce geo join cardinality.
@@ -124,15 +135,16 @@ def country_breakdown(
     distinct_ips = sess_agg.c.distinct_ips
     attempts = func.coalesce(auth_agg.c.attempts, 0).label("attempts")
     successful = func.coalesce(auth_agg.c.successful, 0).label("successful")
-    rate_order = func.coalesce(
-        auth_agg.c.successful * 1.0 / func.nullif(auth_agg.c.attempts, 0),
-        -1.0,
-    )
+    # No -1.0 sentinel: nulls_last() keeps no-attempt countries last in BOTH
+    # directions. The old sentinel only worked for the DESC default - reversed,
+    # it would sort those countries FIRST instead of last.
+    rate_order = auth_agg.c.successful * 1.0 / func.nullif(auth_agg.c.attempts, 0)
+    resolved_order = order or "desc"  # all four keys default desc
     order_by = {
-        "sessions": sessions.desc(),
-        "ips": distinct_ips.desc(),
-        "attempts": attempts.desc(),
-        "success_rate": rate_order.desc(),
+        "sessions": _direction(sessions, resolved_order),
+        "ips": _direction(distinct_ips, resolved_order),
+        "attempts": _direction(attempts, resolved_order),
+        "success_rate": nulls_last(_direction(rate_order, resolved_order)),
     }[sort]
 
     rows = db.execute(
@@ -148,8 +160,8 @@ def country_breakdown(
         )
         .select_from(sess_agg)
         .outerjoin(auth_agg, auth_agg.c.country_code == sess_agg.c.country_code)
-        # Use sessions as stable tiebreaker for equal-rank rows.
-        .order_by(order_by, sessions.desc())
+        # sessions, then country_code, as stable tiebreakers for equal-rank rows.
+        .order_by(order_by, sessions.desc(), sess_agg.c.country_code)
         .limit(top_n)
     ).all()
 

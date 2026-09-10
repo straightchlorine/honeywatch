@@ -145,6 +145,38 @@ def test_list_sessions_sort_active_orders_by_command_count(
     assert ids == ["sess-001", "sess-002"]
 
 
+def test_list_sessions_sort_country_order_desc_puts_nulls_last(
+    client: Any, seed_data: Any
+) -> None:
+    """nulls_last() must hold for both directions - order=desc reverses the
+    resolved countries but the geo-less session still sorts last."""
+    del seed_data
+    response = client.get("/api/v1/sessions/?sort=country&order=desc")
+    assert response.status_code == 200
+    ids = [s["id"] for s in response.get_json()["items"]]
+    assert ids[-1] == "sess-002"
+
+
+def test_list_sessions_order_asc_reverses_order_desc(
+    client: Any, seed_data: Any
+) -> None:
+    del seed_data
+    desc_ids = [
+        s["id"] for s in client.get("/api/v1/sessions/?sort=active").get_json()["items"]
+    ]
+    asc_ids = [
+        s["id"]
+        for s in client.get("/api/v1/sessions/?sort=active&order=asc").get_json()[
+            "items"
+        ]
+    ]
+    assert asc_ids == list(reversed(desc_ids))
+
+
+def test_list_sessions_order_rejects_invalid(client: Any) -> None:
+    assert client.get("/api/v1/sessions/?order=bogus").status_code == 422
+
+
 def test_list_sessions_category_and_country_compose(
     client: Any, seed_data: Any
 ) -> None:

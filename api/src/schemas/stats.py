@@ -7,6 +7,7 @@ from src.schemas.common import (
     CountryCodeField,
     country_filter_field,
     country_or_unknown_field,
+    sort_order_field,
     top_n_field,
 )
 from src.services.stats.activity import VALID_BUCKETS
@@ -665,6 +666,7 @@ class CountriesQuery(BaseSchema):
             "example": "sessions",
         },
     )
+    order = sort_order_field()
     top_n = top_n_field(50, "Number of countries to return")
 
 

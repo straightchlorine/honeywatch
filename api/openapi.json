@@ -1751,6 +1751,25 @@
             }
           },
           {
+            "description": "Sort direction, overriding the chosen sort key's own default direction. Omit to use the per-key default.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": null,
+              "enum": [
+                "asc",
+                "desc",
+                null
+              ],
+              "example": "asc",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
             "description": "Comma-separated filters, all must match: 'commands' (n_commands > 0), 'downloads' (n_downloads > 0), 'success' (auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, did nothing at all - mutually exclusive with the others).",
             "in": "query",
             "name": "has",
@@ -2039,6 +2058,25 @@
               ],
               "example": "sessions",
               "type": "string"
+            }
+          },
+          {
+            "description": "Sort direction, overriding the chosen sort key's own default direction. Omit to use the per-key default.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": null,
+              "enum": [
+                "asc",
+                "desc",
+                null
+              ],
+              "example": "asc",
+              "type": [
+                "string",
+                "null"
+              ]
             }
           },
           {

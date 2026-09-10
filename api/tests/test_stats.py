@@ -495,6 +495,33 @@ def test_countries_sort_rejects_invalid(client: Any) -> None:
     assert client.get("/api/v1/stats/countries?sort=bogus").status_code == 422
 
 
+def test_countries_order_rejects_invalid(client: Any) -> None:
+    assert client.get("/api/v1/stats/countries?order=bogus").status_code == 422
+
+
+def test_countries_order_asc_reverses_order_desc(client: Any, db_session: Any) -> None:
+    """order=asc must reverse the default-desc ranking on the default sessions
+    sort key, without touching sort= itself."""
+    _add_session(
+        db_session, "sess-aa-1", "192.0.2.20", country_code="AA", country="Aland"
+    )
+    _add_session(
+        db_session, "sess-aa-2", "192.0.2.21", country_code="AA", country="Aland"
+    )
+    _add_session(
+        db_session, "sess-bb-1", "192.0.2.22", country_code="BB", country="Bland"
+    )
+    desc_order = [
+        r["country_code"]
+        for r in client.get("/api/v1/stats/countries").get_json()["countries"]
+    ]
+    asc_order = [
+        r["country_code"]
+        for r in client.get("/api/v1/stats/countries?order=asc").get_json()["countries"]
+    ]
+    assert asc_order == list(reversed(desc_order))
+
+
 def test_countries_top_n_clamp(client: Any, seed_data: Any) -> None:
     del seed_data
     data = client.get("/api/v1/stats/countries?top_n=1").get_json()
@@ -710,6 +737,36 @@ def test_countries_success_rate_sort_puts_no_attempt_country_last(
     order = [r["country_code"] for r in data["countries"]]
     assert order[-1] == "ZZ"  # null rate floored to -1 -> last under DESC, not first
     assert order.index("AA") < order.index("ZZ")
+    zz = _country_row(data, "ZZ")
+    assert zz["success_rate"] is None
+    assert zz["attempts"] == 0
+
+
+def test_countries_success_rate_sort_order_asc_puts_no_attempt_country_last(
+    client: Any, db_session: Any
+) -> None:
+    """nulls_last() must hold under order=asc too, not just the desc default -
+    the no-attempt country stays last either way, and its rate is still null."""
+    _add_session(
+        db_session,
+        "sess-aa",
+        "198.51.100.10",
+        country_code="AA",
+        country="Aland",
+        attempts=1,
+        successful=1,
+    )
+    _add_session(
+        db_session,
+        "sess-zz",
+        "198.51.100.11",
+        country_code="ZZ",
+        country="Zedland",
+        attempts=0,
+    )
+    data = client.get("/api/v1/stats/countries?sort=success_rate&order=asc").get_json()
+    order = [r["country_code"] for r in data["countries"]]
+    assert order[-1] == "ZZ"
     zz = _country_row(data, "ZZ")
     assert zz["success_rate"] is None
     assert zz["attempts"] == 0

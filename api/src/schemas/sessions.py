@@ -2,7 +2,12 @@ from __future__ import annotations
 
 from marshmallow import ValidationError, fields, validate
 
-from src.schemas.common import BaseSchema, PaginationMeta, country_filter_field
+from src.schemas.common import (
+    BaseSchema,
+    PaginationMeta,
+    country_filter_field,
+    sort_order_field,
+)
 from src.services.categories import CATEGORY_DESCRIPTION, SESSION_CATEGORIES
 from src.services.sessions import VALID_HAS_FILTERS
 
@@ -390,6 +395,7 @@ class SessionsListQuery(BaseSchema):
             "example": "country",
         },
     )
+    order = sort_order_field()
     has = fields.Str(
         load_default=None,
         allow_none=True,

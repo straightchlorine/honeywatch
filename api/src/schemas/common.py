@@ -50,6 +50,26 @@ def top_n_field(
     )
 
 
+def sort_order_field() -> fields.Str:
+    """Optional explicit sort direction, overriding a sort key's own default.
+
+    A factory, not a shared instance: marshmallow binds a field to its owning
+    schema, so reusing one across schemas breaks.
+    """
+    return fields.Str(
+        load_default=None,
+        allow_none=True,
+        validate=validate.OneOf(["asc", "desc"]),
+        metadata={
+            "description": (
+                "Sort direction, overriding the chosen sort key's own default "
+                "direction. Omit to use the per-key default."
+            ),
+            "example": "asc",
+        },
+    )
+
+
 def country_or_unknown_field() -> fields.Str:
     """Country filter that also accepts "??".
 
