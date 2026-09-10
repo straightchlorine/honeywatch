@@ -134,6 +134,14 @@ def stats_top_credentials(query_args: dict[str, Any]) -> list[TopCredentialDict]
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_countries(query_args: dict[str, Any]) -> CountriesDict:
     """Return the per-country attack leaderboard ranked by the chosen sort."""
+
+    # Origins polls these every 120s; the aggregates move slowly, so let the
+    # browser reuse them instead of re-running the scan on every poll.
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return countries.country_breakdown(
         get_db(),
         sort=query_args["sort"],
@@ -150,6 +158,14 @@ def stats_countries(query_args: dict[str, Any]) -> CountriesDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_asns(query_args: dict[str, Any]) -> list[CountryAsnDict]:
     """Return the top-N source networks (ASN / org) by session count."""
+
+    # Origins polls these every 120s; the aggregates move slowly, so let the
+    # browser reuse them instead of re-running the scan on every poll.
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return countries.country_asns(
         get_db(), country=query_args.get("country"), top_n=query_args["top_n"]
     )
@@ -276,6 +292,14 @@ def stats_country_detail(_path_args: dict[str, Any], a2: str) -> CountryDetailDi
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_ssh_clients(query_args: dict[str, Any]) -> list[SshClientDict]:
     """Return the top-N SSH client versions ranked by session count."""
+
+    # Origins polls these every 120s; the aggregates move slowly, so let the
+    # browser reuse them instead of re-running the scan on every poll.
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return clients.ssh_clients(get_db(), top_n=query_args["top_n"])
 
 
@@ -287,6 +311,14 @@ def stats_ssh_clients(query_args: dict[str, Any]) -> list[SshClientDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_fingerprints(query_args: dict[str, Any]) -> list[FingerprintDict]:
     """Return the top-N SSH client public key fingerprints by distinct IP count."""
+
+    # Origins polls these every 120s; the aggregates move slowly, so let the
+    # browser reuse them instead of re-running the scan on every poll.
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return clients.fingerprints(get_db(), top_n=query_args["top_n"])
 
 

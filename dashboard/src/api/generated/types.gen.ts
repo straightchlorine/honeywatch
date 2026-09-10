@@ -190,14 +190,6 @@ export type CountryRowResponse = {
      */
     distinct_ips: number;
     /**
-     * Distinct passwords tried.
-     */
-    distinct_passwords: number;
-    /**
-     * Distinct usernames tried.
-     */
-    distinct_usernames: number;
-    /**
      * Distinct sessions from this country.
      */
     sessions: number;

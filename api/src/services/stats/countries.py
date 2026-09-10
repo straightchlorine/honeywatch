@@ -100,34 +100,22 @@ def country_breakdown(
         .subquery()
     )
 
-    # Group attempts by (country, username, password) before counting distinct values.
+    # One pass grouped by country.
     auth_cc = func.coalesce(GeoLocation.country_code, UNKNOWN_COUNTRY).label(
         "country_code"
     )
-    auth_pre = (
+    auth_agg = (
         select(
             auth_cc,
-            AuthAttempt.username,
-            AuthAttempt.password,
-            func.count().label("cnt"),
-            func.count().filter(AuthAttempt.success.is_(True)).label("succ"),
+            cast(func.count(), BigInteger).label("attempts"),
+            cast(func.count().filter(AuthAttempt.success.is_(True)), BigInteger).label(
+                "successful"
+            ),
         )
         .select_from(AuthAttempt)
         .join(Session, Session.id == AuthAttempt.session_id)
         .outerjoin(GeoLocation, GeoLocation.ip == Session.src_ip)
-        .group_by(auth_cc, AuthAttempt.username, AuthAttempt.password)
-        .subquery()
-    )
-
-    auth_agg = (
-        select(
-            auth_pre.c.country_code,
-            cast(func.sum(auth_pre.c.cnt), BigInteger).label("attempts"),
-            cast(func.sum(auth_pre.c.succ), BigInteger).label("successful"),
-            func.count(func.distinct(auth_pre.c.username)).label("distinct_usernames"),
-            func.count(func.distinct(auth_pre.c.password)).label("distinct_passwords"),
-        )
-        .group_by(auth_pre.c.country_code)
+        .group_by(auth_cc)
         .subquery()
     )
 
@@ -155,8 +143,6 @@ def country_breakdown(
             distinct_ips,
             attempts,
             successful,
-            func.coalesce(auth_agg.c.distinct_usernames, 0).label("distinct_usernames"),
-            func.coalesce(auth_agg.c.distinct_passwords, 0).label("distinct_passwords"),
         )
         .select_from(sess_agg)
         .outerjoin(auth_agg, auth_agg.c.country_code == sess_agg.c.country_code)
@@ -177,8 +163,6 @@ def country_breakdown(
                 "attempts": att,
                 "successful": r.successful,
                 "success_rate": round(r.successful / att * 100, 2) if att else None,
-                "distinct_usernames": r.distinct_usernames,
-                "distinct_passwords": r.distinct_passwords,
             }
         )
 

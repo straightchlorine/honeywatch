@@ -158,8 +158,6 @@ class CountryRowDict(TypedDict):
     attempts: int
     successful: int
     success_rate: float | None
-    distinct_usernames: int
-    distinct_passwords: int
 
 
 class CountriesDict(TypedDict):

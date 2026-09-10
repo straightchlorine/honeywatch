@@ -18,8 +18,6 @@ function country(over: Partial<CountryRowResponse>): CountryRowResponse {
     attempts: 0,
     successful: 0,
     success_rate: null,
-    distinct_usernames: 0,
-    distinct_passwords: 0,
     ...over,
   }
 }

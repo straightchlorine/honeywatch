@@ -457,8 +457,7 @@ def test_countries_breakdown_envelope(client: Any, seed_data: Any) -> None:
     assert us["attempts"] == 2
     assert us["successful"] == 0
     assert us["success_rate"] == 0.0
-    assert us["distinct_usernames"] == 2  # root, admin
-    assert us["distinct_passwords"] == 2  # password123, admin
+    assert "distinct_usernames" not in us, "dropped: no page renders it"
 
     unknown = _country_row(data, "??")
     assert unknown["country"] == "Unknown"
