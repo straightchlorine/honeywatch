@@ -20,7 +20,6 @@
     v-if="to"
     :to="to"
     class="transparent-button"
-    role="button"
   >
     <slot />
   </RouterLink>
@@ -57,5 +56,10 @@
 
   .transparent-button:hover {
     text-decoration: none;
+  }
+
+  .transparent-button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
   }
 </style>

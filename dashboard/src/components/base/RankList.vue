@@ -14,9 +14,6 @@
     icon?: string
     title?: string
     sub?: string
-    /** Bar hit the capped axis - render a notch so it does not read as
-     *  simply "the maximum". The row's `value` still carries the real number. */
-    over?: boolean
     badge?: string
     badgeClass?: 'amber' | 'dim' | 'ok' | 'bad'
   }
@@ -119,7 +116,6 @@
       <span class="rk-track">
         <span
           class="rk-fill"
-          :class="{ 'rk-over': r.over }"
           :style="{ width: Math.max(2, Math.round(r.frac * 100)) + '%', background: fill }"
         />
       </span>
@@ -173,10 +169,6 @@
   }
 
   /* spans are inline by default; without display:block the bar has zero height */
-  .rk-over {
-    border-right: 3px solid var(--surface);
-  }
-
   .rk-track {
     display: block;
     height: 8px;

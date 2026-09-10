@@ -215,11 +215,13 @@
               :class="`trend-${trendTone}`"
               role="button"
               tabindex="0"
+              aria-label="7-day trend: sessions this week compared with last week"
               @pointerenter="showTrendTooltip($event)"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
               @focus="showTrendTooltip({})"
               @blur="tt.hide()"
+              @keydown.enter.space.prevent="showTrendTooltip({})"
             >
               {{ trendLabel }}
             </span>
@@ -262,11 +264,13 @@
               class="trend-delta"
               role="button"
               tabindex="0"
+              aria-label="Login success rate: accepted logins out of total attempts"
               @pointerenter="showAuthTooltip($event)"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
               @focus="showAuthTooltip({})"
               @blur="tt.hide()"
+              @keydown.enter.space.prevent="showAuthTooltip({})"
             >
               {{ acceptedPct }}
             </span>
@@ -308,11 +312,13 @@
             <span
               role="button"
               tabindex="0"
+              aria-label="Countries attacked: what share of the world is represented"
               @pointerenter="showCountriesToolip($event)"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
               @focus="showCountriesToolip({})"
               @blur="tt.hide()"
+              @keydown.enter.space.prevent="showCountriesToolip({})"
               class="countries-meta"
             >
               {{ countries.length }} countries

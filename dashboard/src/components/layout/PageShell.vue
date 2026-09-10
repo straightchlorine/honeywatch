@@ -90,7 +90,10 @@
     flex-direction: column;
     gap: 14px;
     padding: 16px 22px 18px;
-    max-width: 1720px;
+    /* Floor is the old fixed cap, so 1080p and below render exactly as before;
+       84vw only exceeds it past ~2048px, so only genuinely large displays get
+       the extra room instead of leaving half a 4K screen empty. */
+    max-width: clamp(1720px, 84vw, 2400px);
     width: 100%;
     margin: 0 auto;
   }

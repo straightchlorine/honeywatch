@@ -15,7 +15,7 @@ const EMPTY = '(blank)'
 /**
  * Blank stays blank so callers can swap in the empty-marker without re-sanitizing.
  */
-function cleanCred(raw: string): string {
+export function cleanCred(raw: string): string {
   if (raw === '') return ''
   const escaped = sanitizeAttackerText(raw, { mode: 'escape', allowWhitespace: false })
   // numericHosts off: "123456789" here is a password, not an integer-encoded host.

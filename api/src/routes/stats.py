@@ -135,7 +135,10 @@ def stats_top_credentials(query_args: dict[str, Any]) -> list[TopCredentialDict]
 def stats_countries(query_args: dict[str, Any]) -> CountriesDict:
     """Return the per-country attack leaderboard ranked by the chosen sort."""
     return countries.country_breakdown(
-        get_db(), sort=query_args["sort"], top_n=query_args["top_n"]
+        get_db(),
+        sort=query_args["sort"],
+        top_n=query_args["top_n"],
+        order=query_args.get("order"),
     )
 
 

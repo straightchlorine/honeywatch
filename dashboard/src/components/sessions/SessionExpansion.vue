@@ -27,7 +27,7 @@
     const attempts = detailQ.data.value?.auth_attempts ?? []
     return attempts.map((a) => ({
       key: a.id,
-      text: `${field(a.username) || '(blank)'}:${redactIps(field(a.password), undefined, { numericHosts: false }).text || '(blank)'}`,
+      text: `${redactIps(field(a.username), undefined, { numericHosts: false }).text || '(blank)'}:${redactIps(field(a.password), undefined, { numericHosts: false }).text || '(blank)'}`,
       ok: a.success,
     }))
   })

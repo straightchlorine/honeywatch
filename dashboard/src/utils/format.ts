@@ -51,3 +51,13 @@ export function fmtRelativeTime(iso: string): string {
   const diffD = Math.round(diffH / 24)
   return `${diffD}d ago`
 }
+
+/** UTC date in short month + numeric day (e.g. "Sep 5"). */
+export function fmtUtcDate(d: Date): string {
+  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+}
+
+/** UTC time in 24-hour format (e.g. "14:23:45"). */
+export function fmtUtcClock(d: Date): string {
+  return d.toLocaleTimeString('en-GB', { hour12: false, timeZone: 'UTC' })
+}

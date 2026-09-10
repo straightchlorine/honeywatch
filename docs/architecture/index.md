@@ -28,13 +28,6 @@ graph TB
     end
     LOG -->|"tailed read-only"| ING
     PG -->|"read-only SELECTs"| API
-
-    style COWRIE fill:#ffe082,color:#000
-    style LOG fill:#e0e0e0,color:#000
-    style ING fill:#a5d6a7,color:#1b5e20
-    style PG fill:#b39ddb,color:#311b92
-    style API fill:#90caf9,color:#0d47a1
-    style DASH fill:#c5cae9,color:#1a237e
 ```
 
 1. An attacker connects. Cowrie completes the handshake, presents a fake
@@ -142,9 +135,6 @@ graph LR
     S -->|relay attempts| T[direct_tcpip_requests]
     S -->|client banner, one per session| K[ssh_clients]
     S -.->|src_ip lookup| G[geo_locations]
-
-    style S fill:#ffe082,color:#000
-    style G fill:#e0e0e0,color:#000
 ```
 
 `sessions` carries the connection identity and four denormalized counters:

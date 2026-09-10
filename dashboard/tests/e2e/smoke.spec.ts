@@ -333,6 +333,13 @@ async function dismissIntro(page: Page): Promise<void> {
 }
 
 async function expectAxeClean(page: Page): Promise<void> {
+  // Mid-transition, colors interpolate and fail contrast checks on elements that are fine at rest.
+  // Infinite keyframe animations never finish, so only CSS transitions are awaited.
+  await page.waitForFunction(() =>
+    document
+      .getAnimations()
+      .every((a) => !(a instanceof CSSTransition) || a.playState === 'finished'),
+  )
   const results = await new AxeBuilder({ page })
     .withTags(['wcag2a', 'wcag2aa', 'wcag21aa'])
     .analyze()
@@ -403,6 +410,20 @@ test.describe('dashboard accessibility smoke', () => {
 
     await page.getByRole('button', { name: 'Table', exact: true }).click()
     await expect(page.getByRole('table')).toBeVisible()
+
+    // Mock ignores query params, so assert outgoing request has sort key (row order would falsely pass without refetch).
+    // Verify aria-sort attribute moved.
+    const sorted = page.waitForRequest(
+      (r) => r.url().includes('/stats/countries') && r.url().includes('sort=ips'),
+    )
+    await page.getByRole('button', { name: 'Unique IPs' }).click()
+    await sorted
+    await expect(page.getByRole('columnheader', { name: 'Unique IPs' })).toHaveAttribute(
+      'aria-sort',
+      'descending',
+    )
+
+    await expectAxeClean(page)
     await expect(page.getByRole('button', { name: 'Hive', exact: true })).toBeVisible()
     await page.getByRole('button', { name: 'Hive', exact: true }).click()
 

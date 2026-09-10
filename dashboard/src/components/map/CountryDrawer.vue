@@ -4,6 +4,7 @@
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { fmtNumber } from '@/utils/format'
+  import { cleanCred, fmtSuccessRate } from '@/utils/credentials'
   import { ICONS } from '@/components/icons'
   import InfoDot from '@/components/base/InfoDot.vue'
   import RankList, { type RankRow } from '../base/RankList.vue'
@@ -55,7 +56,7 @@
     const items = detail?.top_credentials ?? []
     const max = items.reduce((m, c) => Math.max(m, c.count), 0) || 1
     return items.map((c) => ({
-      label: `${c.username || '(blank)'}:${c.password || '(blank)'}`,
+      label: `${cleanCred(c.username ?? '') || '(blank)'}:${cleanCred(c.password ?? '') || '(blank)'}`,
       value: fmtNumber(c.count),
       frac: c.count / max,
       mono: true,
@@ -141,7 +142,7 @@
           @keydown.space.prevent="showSuccessTooltip({})"
         >
           <span class="k">Success</span>
-          <span class="v">{{ detail.success_rate === null ? 'n/a' : `${detail.success_rate}%` }}</span>
+          <span class="v">{{ fmtSuccessRate(detail.success_rate) }}</span>
         </div>
       </div>
       <div class="heading-with-info">

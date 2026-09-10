@@ -7,7 +7,7 @@
    */
   import { computed, onMounted, onUnmounted, ref, useTemplateRef } from 'vue'
   import type { ActivityBucketResponse } from '@/api/generated/types.gen'
-  import { fmtNumber, fmtCompact } from '@/utils/format'
+  import { fmtNumber, fmtCompact, fmtUtcDate } from '@/utils/format'
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { useReducedMotion } from '@/composables/useReducedMotion'
   import EmptyState from '@/components/base/EmptyState.vue'
@@ -210,7 +210,7 @@
   function fmtDate(iso: string): string {
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return iso
-    return d.toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+    return fmtUtcDate(d)
   }
 
   function showTooltip(title: string, count: number, e: PointerEvent): void {

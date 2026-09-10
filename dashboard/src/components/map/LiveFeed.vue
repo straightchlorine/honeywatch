@@ -5,6 +5,7 @@
   import { listSessionsOptions } from '@/api/generated/@tanstack/vue-query.gen'
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { useReducedMotion } from '@/composables/useReducedMotion'
+  import { fmtUtcClock } from '@/utils/format'
 
   const emit = defineEmits<{ arrive: [payload: { a2: string; lat: number | null; lon: number | null }] }>()
 
@@ -40,7 +41,7 @@
     if (!iso) return ''
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return ''
-    return d.toLocaleTimeString('en-GB', { hour12: false, timeZone: 'UTC' })
+    return fmtUtcClock(d)
   }
 
   const rows = computed<Row[]>(

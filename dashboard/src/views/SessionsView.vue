@@ -7,6 +7,7 @@
   import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter, type LocationQuery } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
+  import type { ListSessionsData } from '@/api/generated/types.gen'
   import {
     listSessionsOptions,
     statsOutcomesOptions,
@@ -17,6 +18,7 @@
   import ChipButton from '@/components/base/ChipButton.vue'
   import Dropdown from '@/components/base/Dropdown.vue'
   import EmptyState from '@/components/base/EmptyState.vue'
+  import SortableTh from '@/components/base/SortableTh.vue'
   import SessionRow from '@/components/sessions/SessionRow.vue'
   import OutcomeFilter from '@/components/sessions/OutcomeFilter.vue'
   import { ICONS } from '@/components/icons'
@@ -32,17 +34,28 @@
   const MIN_QUERY_LEN = 2
   const MAX_QUERY_LEN = 64
 
-  type SortId = 'interest' | 'recent' | 'duration'
+  type SortId = NonNullable<NonNullable<ListSessionsData['query']>['sort']>
   const SORTS: { id: SortId; label: string }[] = [
     { id: 'interest', label: 'Most interesting' },
     { id: 'recent', label: 'Most recent' },
     { id: 'duration', label: 'Longest' },
+    { id: 'active', label: 'Most active' },
+    { id: 'country', label: 'By origin' },
   ]
   // Subtitles must reflect actual sort order (not independent hardcoded values).
   const SORT_SUBTITLE: Record<SortId, string> = {
     interest: 'ranked by how much the attacker did',
     recent: 'newest first',
     duration: 'longest sessions first',
+    active: 'most SSH commands issued first',
+    country: 'sorted alphabetically by origin',
+  }
+  const SORT_DIR: Record<SortId, 'asc' | 'desc'> = {
+    interest: 'desc',
+    recent: 'desc',
+    duration: 'desc',
+    active: 'desc',
+    country: 'asc',
   }
   // Short, lowercase clauses for the footer's "what the total is of" - keyed
   // by the OutcomeFilter has= token (see OutcomeFilter.vue's MAIN_ROWS/NONE_ROW).
@@ -86,6 +99,17 @@
     set: (v) => {
       updateQuery({
         sort: v === 'interest' ? undefined : v,
+        order: undefined,
+        page: undefined,
+        open: undefined,
+      })
+    },
+  })
+  const order = computed<'asc' | 'desc' | undefined>({
+    get: () => (route.query.order as 'asc' | 'desc' | undefined),
+    set: (v) => {
+      updateQuery({
+        order: v,
         page: undefined,
         open: undefined,
       })
@@ -182,6 +206,7 @@
           page: currentPage.value,
           per_page: PER_PAGE,
           sort: sort.value,
+          order: order.value,
           has: hasValue.value || undefined,
           country: country.value || undefined,
           q: qParam.value,
@@ -407,12 +432,12 @@
         <table class="data" role="treegrid" aria-label="Sessions">
           <thead>
             <tr>
-              <th>Session</th>
-              <th>Story</th>
-              <th>Origin</th>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="interest" :dir="SORT_DIR.interest" hint="Sort by interest: how much the attacker did">Session</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="active" :dir="SORT_DIR.active" hint="Sort by activity: SSH commands issued">Story</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="country" :dir="SORT_DIR.country" hint="Sort by origin: alphabetically">Origin</SortableTh>
               <th></th>
-              <th class="r">Duration</th>
-              <th class="r">Started</th>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="duration" :dir="SORT_DIR.duration" hint="Sort by duration: longest first" class="r">Duration</SortableTh>
+              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="recent" :dir="SORT_DIR.recent" hint="Sort by recency: newest first" class="r">Started</SortableTh>
             </tr>
           </thead>
           <tbody>

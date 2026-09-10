@@ -85,6 +85,17 @@ describe('SessionExpansion', () => {
     expect(w.html()).not.toContain('203.0.113.7')
   })
 
+  it('never renders a raw IP address found in a username', async () => {
+    const w = await mountWith({
+      auth_attempts: [
+        { id: 1, username: 'admin@203.0.113.7', password: 'secret', success: false },
+      ] as SessionDetailResponse['auth_attempts'],
+    })
+    const text = w.get('.facts .cred').text()
+    expect(text).not.toContain('203.0.113.7')
+    expect(w.html()).not.toContain('203.0.113.7')
+  })
+
   it('marks a blank username or password as empty rather than rendering a bare colon', async () => {
     const w = await mountWith({
       auth_attempts: [

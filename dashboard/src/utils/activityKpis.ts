@@ -1,5 +1,6 @@
 import type { ActivityBucketResponse, HeatmapPointResponse } from '@/api/generated/types.gen'
 import { WEEKDAY_LABELS } from './heatmapGrid'
+import { fmtUtcDate } from './format'
 
 const EMPTY = '-'
 
@@ -59,5 +60,5 @@ export function peakDay(buckets: ActivityBucketResponse[]): Kpi {
 function fmtShortDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return EMPTY
-  return d.toLocaleDateString('en', { month: 'short', day: 'numeric', timeZone: 'UTC' })
+  return fmtUtcDate(d)
 }

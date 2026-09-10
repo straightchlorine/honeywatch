@@ -59,13 +59,6 @@ graph TB
     end
     LOG -->|tail| ING
     API -->|reads| PG
-
-    style COW fill:#ffe082,color:#000
-    style LOG fill:#e8f5e9,color:#1b5e20
-    style ING fill:#a5d6a7,color:#1b5e20
-    style PG fill:#b39ddb,color:#311b92
-    style API fill:#90caf9,color:#0d47a1
-    style DASH fill:#c5cae9,color:#1a237e
 ```
 
 Cowrie and the ingestor never talk directly. They share a volume, and the

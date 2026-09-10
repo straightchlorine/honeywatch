@@ -5,6 +5,7 @@ from typing import Any
 
 import pytest
 from alembic.config import Config as AlembicConfig
+from flask import url_for
 from sqlalchemy import create_engine
 from sqlalchemy.engine.url import URL
 from sqlalchemy.orm import Session, sessionmaker
@@ -88,6 +89,45 @@ def client(app: Any, db_session: Session) -> Generator[Any, None, None]:
 
     if original_factory is not None:
         app.extensions["db_session_factory"] = original_factory
+
+
+# Path args no fixture can synthesize.
+_UNCOVERABLE = {"static"}
+# Endpoints whose required query arg has no load_default.
+_REQUIRED_QUERY = {"stats.stats_passwords_by_length": {"length": 12}}
+
+
+@pytest.fixture()
+def get_urls(app: Any) -> Any:
+    """Every GET route in url_map, path/query args filled in.
+
+    Enumerated, not listed: a route added later is covered without anyone
+    remembering to add it to a privacy test.
+    """
+
+    def _build(**path_values: Any) -> list[str]:
+        urls: list[str] = []
+        with app.test_request_context():
+            for rule in app.url_map.iter_rules():
+                if "GET" not in (rule.methods or ()):
+                    continue
+                # api-docs.* passes today, but the 50 KB openapi.json would break
+                # this test the day someone writes an example like 192.0.2.1.
+                if rule.endpoint in _UNCOVERABLE or rule.endpoint.startswith(
+                    "api-docs."
+                ):
+                    continue
+                missing = set(rule.arguments) - set(path_values)
+                assert not missing, (
+                    f"{rule.rule} needs path args {sorted(missing)}: pass a value "
+                    f"from the fixture or add it to _UNCOVERABLE"
+                )
+                args = {k: path_values[k] for k in rule.arguments}
+                args.update(_REQUIRED_QUERY.get(rule.endpoint, {}))
+                urls.append(url_for(rule.endpoint, **args))
+        return sorted(urls)
+
+    return _build
 
 
 @pytest.fixture()

@@ -13,6 +13,7 @@
   import { useReducedMotion } from '@/composables/useReducedMotion'
   import { useMapDetail, type MapDetailTier } from '@/composables/useMapDetail'
   import { fmtNumber } from '@/utils/format'
+  import { fmtSuccessRate } from '@/utils/credentials'
   import { hexPoints } from '@/utils/hex'
   import { readStored, writeStored } from '@/utils/safeStorage'
   import MapControls from './MapControls.vue'
@@ -221,7 +222,7 @@
           ['Sessions', fmtNumber(row.sessions)],
           ['Unique IPs', fmtNumber(row.ips)],
           ['Share of attacks', pctShare(row.sessions)],
-          ['Login success', row.success_rate === null ? 'n/a' : `${row.success_rate.toFixed(1)}%`],
+          ['Login success', fmtSuccessRate(row.success_rate)],
         ],
         flag,
       )

@@ -226,6 +226,7 @@
             @pointerleave="tt.hide()"
             @focus="showTooltip(c, {})"
             @blur="tt.hide()"
+            @keydown.enter.space.prevent="showTooltip(c, {})"
           />
           <polygon
             v-if="hottestCell"

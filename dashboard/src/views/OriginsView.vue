@@ -4,7 +4,7 @@
    */
   import { computed, onMounted, onUnmounted, ref } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
-  import { useQuery } from '@tanstack/vue-query'
+  import { useQuery, keepPreviousData } from '@tanstack/vue-query'
   import {
     statsCountriesOptions,
     statsAsnsOptions,
@@ -24,8 +24,8 @@
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { fmtNumber, fmtCompact, fmtRelativeTime } from '@/utils/format'
   import { cappedFracs } from '@/utils/cappedFracs'
-  import { fmtSuccessRate } from '@/utils/credentials'
-  import { WORLD_COUNTRY_COUNT } from '@/utils/countries'
+  import { fmtSuccessRate, cleanCred } from '@/utils/credentials'
+  import { WORLD_COUNTRY_COUNT, type CountrySort } from '@/utils/countries'
 
   interface SshClientRow {
     client_version: string
@@ -43,10 +43,16 @@
   // Origins' aggregates barely move minute-to-minute; matches Overview's poll.
   const POLL_MS = 120_000
 
-  const countriesQ = useQuery({
-    ...statsCountriesOptions({ query: { sort: 'sessions', top_n: 100 } }),
-    refetchInterval: POLL_MS,
-  })
+  const countrySort = ref<CountrySort>('sessions')
+  const countryOrder = ref<'asc' | 'desc' | undefined>(undefined)
+
+  const countriesQ = useQuery(
+    computed(() => ({
+      ...statsCountriesOptions({ query: { sort: countrySort.value, order: countryOrder.value, top_n: 100 } }),
+      placeholderData: keepPreviousData,
+      refetchInterval: POLL_MS,
+    })),
+  )
   const asnsQ = useQuery({
     ...statsAsnsOptions({ query: { top_n: 12 } }),
     refetchInterval: POLL_MS,
@@ -101,8 +107,7 @@
         ].join(' - '),
         value: fmtCompact(a.sessions),
         frac: netScale.value.frac(a.sessions),
-        over: netScale.value.over(a.sessions),
-      }
+        }
     })
   })
 
@@ -158,23 +163,21 @@
   const clientScale = computed(() => cappedFracs(sshClients.value.map((c) => c.sessions)))
   const clientRows = computed<RankRow[]>(() =>
     sshClients.value.map((c) => ({
-      label: c.client_version,
-      title: c.client_version,
+      label: cleanCred(c.client_version),
+      title: cleanCred(c.client_version),
       value: fmtCompact(c.sessions),
       frac: clientScale.value.frac(c.sessions),
-      over: clientScale.value.over(c.sessions),
     })),
   )
 
   const keyScale = computed(() => cappedFracs(fingerprints.value.map((f) => f.sessions)))
   const keyRows = computed<RankRow[]>(() => {
     return fingerprints.value.map((f) => ({
-      label: f.fingerprint,
-      title: f.fingerprint,
+      label: cleanCred(f.fingerprint),
+      title: cleanCred(f.fingerprint),
       sub: `${fmtNumber(f.ips)} addresses - first seen ${fmtRelativeTime(f.first_seen)}, last seen ${fmtRelativeTime(f.last_seen)}`,
       value: fmtCompact(f.sessions),
       frac: keyScale.value.frac(f.sessions),
-      over: keyScale.value.over(f.sessions),
     }))
   })
 </script>
@@ -221,7 +224,7 @@
 
       <div class="grid-main">
         <div class="hive-wrapper">
-          <CountryHive v-model:selected="selectedCountry" :countries="resolvedCountries" />
+          <CountryHive v-model:selected="selectedCountry" v-model:sort="countrySort" v-model:order="countryOrder" :countries="resolvedCountries" />
         </div>
 
         <div class="right-col">
