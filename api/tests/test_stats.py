@@ -745,8 +745,7 @@ def test_countries_success_rate_sort_puts_no_attempt_country_last(
 def test_countries_success_rate_sort_order_asc_puts_no_attempt_country_last(
     client: Any, db_session: Any
 ) -> None:
-    """nulls_last() must hold under order=asc too, not just the desc default -
-    the no-attempt country stays last either way, and its rate is still null."""
+    """nulls_last() holds under order=asc: nulls stay last regardless."""
     _add_session(
         db_session,
         "sess-aa",

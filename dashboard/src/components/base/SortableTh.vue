@@ -2,8 +2,8 @@
   /**
    * One column header, shared by every sortable table. Omit sortKey for a column
    * that cannot be ranked and it renders a plain th instead.
-   * Implements three-state cycling: click 1 sorts by this column in its natural
-   * direction, click 2 reverses, click 3 clears the sort.
+   * Three-state click cycle: natural direction, reversed, cleared. Natural
+   * direction is set per column because the API ranks each key differently.
    */
   import { computed } from 'vue'
   import { ICONS } from '@/components/icons'
@@ -30,25 +30,20 @@
   function onClick(): void {
     if (!props.sortKey) return
 
-    // Different column: set sort to this key, order to natural direction
     if (sort.value !== props.sortKey) {
       sort.value = props.sortKey
       order.value = props.dir
       return
     }
 
-    // Active column: check if at natural direction
     if ((order.value ?? props.dir) === props.dir) {
-      // Still at natural direction: flip it
       order.value = props.dir === 'asc' ? 'desc' : 'asc'
     } else {
-      // Already flipped: clear both
       sort.value = undefined
       order.value = undefined
     }
   }
 
-  // What the next click will do
   const nextActionText = computed<string>(() => {
     if (!active.value) return 'Sort by this column'
     if ((order.value ?? props.dir) === props.dir) {

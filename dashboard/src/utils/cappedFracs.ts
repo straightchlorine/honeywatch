@@ -1,15 +1,9 @@
 /**
  * Scales bar fractions linearly against the list maximum.
  *
- * Bar length is read as proportional to value, so it must be. An earlier
- * version scaled against p75*1.5 to keep the tail legible, but that clamped
- * every value above the cap to a full bar: on the SSH-client list, 6.7k and
- * 4.6k both rendered at 100% while 292 rendered at two thirds. Compressing the
- * tail is a tradeoff; making the two largest rows indistinguishable is a lie,
- * and it lands on exactly the rows read first.
- *
- * The tail is now short by design. RankList floors the width at 2% so no row
- * vanishes, and every row prints its true value at the right edge.
+ * Bars are read as proportional, so they must be: the old p75*1.5 cap clamped
+ * every value above it to a full bar, making the two largest rows
+ * indistinguishable. The tail is short by design; each row prints its true value.
  */
 export function cappedFracs(values: number[]): {
   frac: (n: number) => number

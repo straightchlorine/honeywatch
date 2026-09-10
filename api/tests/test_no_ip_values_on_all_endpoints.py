@@ -55,11 +55,10 @@ def leaky_seed(db_session: Session) -> dict[str, Any]:
     db_session.add(sess)
     db_session.flush()
 
-    # Lets /api/v1/stats/countries/US resolve (200, not 404) and makes
-    # /stats/asns + /stats/map non-empty so the IPv4 regex actually guards them.
-    # merge(), not add(): geo_locations is keyed on the IP, and other tests in
+    # Seed geo_location so geo-dependent endpoints return 200 and non-empty results.
+    # merge() not add(): geo_locations.ip is the primary key, and other tests in
     # this suite commit inside the per-test transaction, so a row from an earlier
-    # local run survives teardown and add() would collide on the primary key.
+    # local run survives teardown; add() would collide.
     db_session.merge(
         GeoLocation(
             ip="198.51.100.9",
@@ -157,7 +156,6 @@ def test_seeded_rows_are_actually_reachable(
     banners = [r["client_version"] for r in rows]
     assert any(b and "<ip>" in b for b in banners), f"banner never blotted: {banners}"
 
-    # Verify the geo-seeded rows reach geo-dependent endpoints
     country_detail = client.get("/api/v1/stats/countries/US").get_json()
     assert country_detail, "country detail not reachable"
 

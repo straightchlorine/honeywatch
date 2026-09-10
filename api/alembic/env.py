@@ -45,7 +45,7 @@ def run_migrations_online() -> None:
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
         poolclass=pool.NullPool,
-        # Fix the PostgreSQL session's tiemzone to UTC.
+        # Pin the session to UTC (rather than inherint from the server)
         connect_args={"options": "-c timezone=UTC"},
     )
     with connectable.connect() as connection:

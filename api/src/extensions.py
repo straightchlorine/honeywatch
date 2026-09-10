@@ -20,7 +20,8 @@ def init_db(app: Flask, database_url: str) -> None:
         max_overflow=5,  # additional connections for spikes before backpressure
         pool_pre_ping=True,
         pool_recycle=1800,  # clear idle sessions after 30min, for network flakiness
-        # Fix the PostgreSQL session's tiemzone to UTC.
+        # Activity bucket queries should return UTC, so pin the session to UTC
+        # (rather than inherint from the server)
         connect_args={"options": "-c timezone=UTC"},
     )
     app.extensions["db_engine"] = engine

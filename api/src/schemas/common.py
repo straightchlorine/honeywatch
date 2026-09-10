@@ -51,10 +51,10 @@ def top_n_field(
 
 
 def sort_order_field() -> fields.Str:
-    """Optional explicit sort direction, overriding a sort key's own default.
+    """Optional sort direction override.
 
     A factory, not a shared instance: marshmallow binds a field to its owning
-    schema, so reusing one across schemas breaks.
+    schema, so one instance cannot be reused across schemas.
     """
     return fields.Str(
         load_default=None,

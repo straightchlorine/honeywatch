@@ -148,8 +148,7 @@ def test_list_sessions_sort_active_orders_by_command_count(
 def test_list_sessions_sort_country_order_desc_puts_nulls_last(
     client: Any, seed_data: Any
 ) -> None:
-    """nulls_last() must hold for both directions - order=desc reverses the
-    resolved countries but the geo-less session still sorts last."""
+    """nulls_last() holds under order=desc: nulls stay last regardless."""
     del seed_data
     response = client.get("/api/v1/sessions/?sort=country&order=desc")
     assert response.status_code == 200

@@ -333,9 +333,8 @@ async function dismissIntro(page: Page): Promise<void> {
 }
 
 async function expectAxeClean(page: Page): Promise<void> {
-  // Colors interpolate mid-transition, so a scan that lands during one reports
-  // blended values and fails color-contrast on elements that are fine at rest.
-  // Infinite keyframe animations never finish, so only transitions are awaited.
+  // Mid-transition, colors interpolate and fail contrast checks on elements that are fine at rest.
+  // Infinite keyframe animations never finish, so only CSS transitions are awaited.
   await page.waitForFunction(() =>
     document
       .getAnimations()
@@ -412,9 +411,8 @@ test.describe('dashboard accessibility smoke', () => {
     await page.getByRole('button', { name: 'Table', exact: true }).click()
     await expect(page.getByRole('table')).toBeVisible()
 
-    // Sorting is server-side, and the mock ignores query params, so asserting on
-    // row order would pass even if the refetch never happened. Assert the
-    // outgoing request carries the new sort key, and that aria-sort moved.
+    // Mock ignores query params, so assert outgoing request has sort key (row order would falsely pass without refetch).
+    // Verify aria-sort attribute moved.
     const sorted = page.waitForRequest(
       (r) => r.url().includes('/stats/countries') && r.url().includes('sort=ips'),
     )

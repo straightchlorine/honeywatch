@@ -50,7 +50,6 @@
     active: 'most SSH commands issued first',
     country: 'sorted alphabetically by origin',
   }
-  // Natural first-click direction for each sortable column
   const SORT_DIR: Record<SortId, 'asc' | 'desc'> = {
     interest: 'desc',
     recent: 'desc',

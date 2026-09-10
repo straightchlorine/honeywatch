@@ -57,7 +57,6 @@
   const CELLS = computed(() => ROW_SIZES.value.reduce((a, b) => a + b, 0))
   const top = computed(() => countries.slice(0, CELLS.value))
 
-  // Get the metric value for a country based on the active sort
   function getMetricValue(c: CountryRowResponse): number | null {
     if (sortKey.value === 'ips') return c.distinct_ips
     if (sortKey.value === 'attempts') return c.attempts
@@ -126,7 +125,6 @@
       }
     })
 
-    // Get metric name for display
     const metricNames: Record<CountrySort, string> = {
       sessions: 'sessions',
       ips: 'unique IPs',
@@ -146,7 +144,6 @@
       const metricValue = getMetricValue(c)
       const metricName = metricNames[sortKey.value]
 
-      // For display: if metric is null or success_rate, handle specially
       let metricLabel: string
       if (metricValue === null || metricValue === undefined) {
         metricLabel = '-'
@@ -158,14 +155,16 @@
 
       // Normalise across the populated range (not [0, max]) to use the full ramp;
       // 0.06 floor keeps the quietest country off the darkest stop.
-      // For success_rate, use the actual min/max of rates, not log scale
+      // success_rate is a rate, not a magnitude: normalise linearly over the
+      // visible rows' own min..max instead of log-scaling, or a 3-session
+      // country at 33% would outshine a 200k-session country's real rate.
       let norm = 1
       if (sortKey.value === 'success_rate') {
         if (metricValue !== null && minMetric.value !== maxMetric.value) {
           const span = maxMetric.value - minMetric.value
           norm = (metricValue - minMetric.value) / span
         } else if (metricValue === null) {
-          norm = 0 // null will be rendered as no-data
+          norm = 0 // null means no attempts recorded, not a 0% rate
         }
       } else {
         const lo = minMetric.value

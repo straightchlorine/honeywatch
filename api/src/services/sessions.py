@@ -20,8 +20,8 @@ from src.services.types import SessionDetailDict, SessionsPageDict
 
 VALID_HAS_FILTERS = frozenset({"commands", "downloads", "success", "tcpip", "none"})
 
-# Today's hardcoded per-key direction - order= overrides it, but omitting order
-# must reproduce this exact behavior.
+# Default direction per sort key, matching the old hardcoded behavior.
+# order= overrides this; omitting it must still match exactly.
 _SORT_DEFAULT_DIRECTION: dict[str, str] = {
     "country": "asc",
     "active": "desc",

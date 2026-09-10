@@ -69,14 +69,12 @@ describe('SortableTh', () => {
   })
 
   it('aria-sort follows resolved direction (order ?? dir)', async () => {
-    // Natural direction: no order set
     const w1 = mount(SortableTh, {
       props: { sort: 'attempts', order: undefined, sortKey: 'attempts', dir: 'desc' },
       slots: { default: 'Attempts' },
     })
     expect(w1.find('th').attributes('aria-sort')).toBe('descending')
 
-    // Flipped direction: order explicitly set
     const w2 = mount(SortableTh, {
       props: { sort: 'attempts', order: 'asc', sortKey: 'attempts', dir: 'desc' },
       slots: { default: 'Attempts' },
@@ -95,21 +93,18 @@ describe('SortableTh', () => {
   })
 
   it('visually-hidden text describes current state and next action', async () => {
-    // Inactive column
     const w1 = mount(SortableTh, {
       props: { sort: 'attempts', order: undefined, sortKey: 'sessions', dir: 'desc' },
       slots: { default: 'Sessions' },
     })
     expect(w1.find('.visually-hidden').text()).toBe('Sort by this column')
 
-    // Active, at natural direction
     const w2 = mount(SortableTh, {
       props: { sort: 'sessions', order: undefined, sortKey: 'sessions', dir: 'desc' },
       slots: { default: 'Sessions' },
     })
     expect(w2.find('.visually-hidden').text()).toBe('sorted descending, Sort in reverse')
 
-    // Active, flipped
     const w3 = mount(SortableTh, {
       props: { sort: 'sessions', order: 'asc', sortKey: 'sessions', dir: 'desc' },
       slots: { default: 'Sessions' },
