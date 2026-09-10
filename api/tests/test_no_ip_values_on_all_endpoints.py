@@ -23,6 +23,7 @@ from src.models.auth_attempt import AuthAttempt
 from src.models.command import Command
 from src.models.direct_tcpip import DirectTcpipRequest
 from src.models.download import Download
+from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
 from src.models.ssh_client import SshClient
 
@@ -52,6 +53,26 @@ def leaky_seed(db_session: Session) -> dict[str, Any]:
         sensor="sensor-1",
     )
     db_session.add(sess)
+    db_session.flush()
+
+    # Lets /api/v1/stats/countries/US resolve (200, not 404) and makes
+    # /stats/asns + /stats/map non-empty so the IPv4 regex actually guards them.
+    # merge(), not add(): geo_locations is keyed on the IP, and other tests in
+    # this suite commit inside the per-test transaction, so a row from an earlier
+    # local run survives teardown and add() would collide on the primary key.
+    db_session.merge(
+        GeoLocation(
+            ip="198.51.100.9",
+            country_code="US",
+            country="United States",
+            city="Ashburn",
+            latitude=39.04,
+            longitude=-77.49,
+            asn=14618,
+            as_org="Example Org",
+            last_updated=now,
+        )
+    )
     db_session.flush()
 
     db_session.add_all(
@@ -95,35 +116,20 @@ def leaky_seed(db_session: Session) -> dict[str, Any]:
     return {"sha256": "f" * 64}
 
 
-def _endpoints(sha256: str) -> list[str]:
-    return [
-        "/api/v1/sessions/",
-        "/api/v1/sessions/leak-001",
-        "/api/v1/stats/totals",
-        "/api/v1/stats/top-passwords",
-        "/api/v1/stats/top-credentials",
-        "/api/v1/stats/top-countries",
-        "/api/v1/stats/countries",
-        "/api/v1/stats/asns",
-        "/api/v1/stats/auth-outcomes",
-        "/api/v1/stats/password-composition",
-        "/api/v1/stats/passwords-by-length?length=12",
-        "/api/v1/stats/passwords-by-length?length=16",
-        "/api/v1/stats/activity",
-        "/api/v1/stats/trend",
-        "/api/v1/stats/heatmap",
-        "/api/v1/stats/map",
-        "/api/v1/stats/downloads",
-        f"/api/v1/stats/downloads/{sha256}",
-        "/api/v1/stats/tcpip-destinations",
-        "/api/v1/stats/ssh-clients",
-        "/api/v1/stats/fingerprints",
-    ]
-
-
-def test_no_ip_value_in_any_response(client: Any, leaky_seed: dict[str, Any]) -> None:
+def test_no_ip_value_in_any_response(
+    client: Any, get_urls: Any, leaky_seed: dict[str, Any]
+) -> None:
     """No endpoint echoes back an address from any attacker-controlled field."""
-    for url in _endpoints(leaky_seed["sha256"]):
+    # ?country= variants aren't path/query args enumeration can infer.
+    extras = [
+        "/api/v1/stats/top-credentials?country=US",
+        "/api/v1/stats/top-credentials?country=??",
+        "/api/v1/stats/asns?country=??",
+    ]
+    urls = (
+        get_urls(session_id="leak-001", sha256=leaky_seed["sha256"], a2="US") + extras
+    )
+    for url in urls:
         response = client.get(url)
         assert response.status_code == 200, f"{url} returned {response.status_code}"
         body = response.data.decode()
@@ -150,3 +156,13 @@ def test_seeded_rows_are_actually_reachable(
     rows = client.get("/api/v1/stats/ssh-clients").get_json()
     banners = [r["client_version"] for r in rows]
     assert any(b and "<ip>" in b for b in banners), f"banner never blotted: {banners}"
+
+    # Verify the geo-seeded rows reach geo-dependent endpoints
+    country_detail = client.get("/api/v1/stats/countries/US").get_json()
+    assert country_detail, "country detail not reachable"
+
+    asns = client.get("/api/v1/stats/asns").get_json()
+    assert asns, "asns endpoint returned empty"
+
+    map_data = client.get("/api/v1/stats/map").get_json()
+    assert map_data, "map endpoint returned empty"
