@@ -13,7 +13,7 @@ a regression anywhere on the serialization path fails this test by name.
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -88,7 +88,8 @@ def leaky_seed(db_session: Session) -> dict[str, Any]:
                 username="admin",
                 password=f"connect {LEAK_V6} now",
                 success=True,
-                timestamp=now,
+                # Distinct from the row above: (session_id, timestamp) is unique.
+                timestamp=now + timedelta(microseconds=1),
             ),
             Command(
                 session_id="leak-001",

@@ -1,6 +1,6 @@
 import os
 from collections.abc import Generator
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pytest
@@ -219,7 +219,8 @@ def seed_data(db_session: Session) -> dict[str, Any]:
         username="admin",
         password="admin",
         success=False,
-        timestamp=now,
+        # Distinct from auth1's timestamp: (session_id, timestamp) is unique.
+        timestamp=now + timedelta(microseconds=1),
     )
     auth3 = AuthAttempt(
         session_id="sess-002",
@@ -290,14 +291,15 @@ def charset_seed(db_session: Session) -> dict[str, Any]:
     db_session.flush()
 
     attempts = [
+        # Offset per row: (session_id, timestamp) is unique.
         AuthAttempt(
             session_id="charset-001",
             username="attacker",
             password=password,
             success=False,
-            timestamp=now,
+            timestamp=now + timedelta(microseconds=i),
         )
-        for password in _CHARSET_PASSWORDS.values()
+        for i, password in enumerate(_CHARSET_PASSWORDS.values())
     ]
     db_session.add_all(attempts)
     db_session.flush()

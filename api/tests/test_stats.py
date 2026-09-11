@@ -675,7 +675,8 @@ def _add_session(
                 username="root",
                 password=f"pw-{i}",
                 success=i < successful,
-                timestamp=now,
+                # Distinct per row: (session_id, timestamp) is unique.
+                timestamp=now + timedelta(microseconds=i),
             )
         )
     db_session.flush()
@@ -896,6 +897,7 @@ def test_downloads_name_is_url_basename_not_outfile(
     db_session.flush()
     db_session.add_all(
         [
+            # Distinct timestamps: (session_id, timestamp) is unique.
             Download(
                 session_id="dl-001",
                 url="http://cnc.example.com/meow",
@@ -908,14 +910,14 @@ def test_downloads_name_is_url_basename_not_outfile(
                 url="http://cnc.example.com/meow",
                 outfile=f"var/lib/cowrie/downloads/{sha256}",
                 sha256=sha256,
-                timestamp=now,
+                timestamp=now + timedelta(seconds=1),
             ),
             Download(
                 session_id="dl-001",
                 url="http://other.example.com/other",
                 outfile=f"var/lib/cowrie/downloads/{sha256}",
                 sha256=sha256,
-                timestamp=now,
+                timestamp=now + timedelta(seconds=2),
             ),
         ]
     )

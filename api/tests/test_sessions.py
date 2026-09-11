@@ -390,7 +390,9 @@ def test_session_detail_hides_failed_downloads(client: Any, db_session: Any) -> 
             url=None,
             outfile="downloads/p",
             sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            timestamp=now,
+            # Distinct from the failed download's timestamp: (session_id,
+            # timestamp) is unique.
+            timestamp=now + timedelta(seconds=1),
         )
     )
     db_session.flush()
@@ -426,14 +428,15 @@ def test_sessions_filtered_by_sha256(client: Any, db_session: Any) -> None:
         )
     db_session.flush()
     # Two rows, same digest, same session: the page must not double it.
-    for _ in range(2):
+    for i in range(2):
         db_session.add(
             Download(
                 session_id="sessSHA00001",
                 url=None,
                 outfile="downloads/p",
                 sha256=digest,
-                timestamp=now,
+                # Distinct per row: (session_id, timestamp) is unique.
+                timestamp=now + timedelta(seconds=i),
             )
         )
     db_session.add(
@@ -446,13 +449,14 @@ def test_sessions_filtered_by_sha256(client: Any, db_session: Any) -> None:
         )
     )
     # A failed fetch on the second session - stored for its URL, sha256 NULL.
+    # Distinct timestamp from the download above: (session_id, timestamp) is unique.
     db_session.add(
         Download(
             session_id="sessSHA00002",
             url="http://dropper.example.com/x.sh",
             outfile=None,
             sha256=None,
-            timestamp=now,
+            timestamp=now + timedelta(seconds=1),
         )
     )
     db_session.flush()

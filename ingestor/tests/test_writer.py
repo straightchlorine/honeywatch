@@ -484,29 +484,29 @@ def test_duplicate_session_ignored(
     assert count[0] == 1
 
 
-# --- Idempotency: same event written twice (documents actual behavior).
+# --- Idempotency: same event written twice.
 #
 # NOT a tail.py replay risk: tail_follow() always seeks to EOF on open, on
 # both startup and rotation, so a restart never re-reads an already-yielded
 # line (see src/tail.py's docstring).
 #
 # The real risk is one layer up: src/reliability.py's `Retry.run` retries any
-# `psycopg.Error`, assuming the callable is idempotent - but `write_event` is
-# only idempotent for `sessions` (ON CONFLICT DO NOTHING) and
-# `ssh_clients`/`geo_locations` (upsert). If a write commits but the client
-# sees a `psycopg.Error` anyway (e.g. connection drops before the ack), Retry
-# replays the identical event. None of the five tables below has a unique
-# constraint, so the replay inserts a second row instead of being ignored.
-# See test_reliability.py::test_retry_duplicates_a_non_idempotent_write for
-# this exercised through the real Writer/Retry path. Pins down current
-# behavior, not desired behavior. ---
+# `psycopg.Error`, assuming the callable is idempotent. If a write commits
+# but the client sees a `psycopg.Error` anyway (e.g. connection drops before
+# the ack), Retry replays the identical event. These five tables now have a
+# unique index on (session_id, timestamp) - safe because cowrie stamps each
+# event with microsecond precision and a replay carries the exact same
+# timestamp - so the replayed INSERT's ON CONFLICT DO NOTHING (writer.py) is
+# a no-op instead of a second row. See
+# test_reliability.py::test_retry_duplicates_a_non_idempotent_write for this
+# exercised through the real Writer/Retry path, and docs/internal/todo.md for
+# the full writeup. ---
 
 
-def test_duplicate_auth_attempt_writes_two_rows(
+def test_duplicate_auth_attempt_is_deduped(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
-    """auth_attempts has no unique constraint; a replayed event double-inserts."""
     writer.write_event(_connect_event())
     event = LoginFailed(
         session_id="sess-001",
@@ -523,14 +523,13 @@ def test_duplicate_auth_attempt_writes_two_rows(
     ).fetchone()
 
     assert count is not None
-    assert count[0] == 2
+    assert count[0] == 1
 
 
-def test_duplicate_command_writes_two_rows(
+def test_duplicate_command_is_deduped(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
-    """commands has no unique constraint; a replayed event double-inserts."""
     writer.write_event(_connect_event())
     event = CommandInput(
         session_id="sess-001",
@@ -546,14 +545,13 @@ def test_duplicate_command_writes_two_rows(
     ).fetchone()
 
     assert count is not None
-    assert count[0] == 2
+    assert count[0] == 1
 
 
-def test_duplicate_download_writes_two_rows(
+def test_duplicate_download_is_deduped(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
-    """downloads has no unique constraint; a replayed event double-inserts."""
     writer.write_event(_connect_event())
     event = FileDownload(
         session_id="sess-001",
@@ -571,14 +569,13 @@ def test_duplicate_download_writes_two_rows(
     ).fetchone()
 
     assert count is not None
-    assert count[0] == 2
+    assert count[0] == 1
 
 
-def test_duplicate_client_fingerprint_writes_two_rows(
+def test_duplicate_client_fingerprint_is_deduped(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
-    """client_fingerprints has no unique constraint; a replayed event double-inserts."""
     writer.write_event(_connect_event())
     event = ClientFingerprint(
         session_id="sess-001",
@@ -596,16 +593,16 @@ def test_duplicate_client_fingerprint_writes_two_rows(
     ).fetchone()
 
     assert count is not None
-    assert count[0] == 2
+    assert count[0] == 1
 
 
-def test_duplicate_direct_tcpip_writes_two_rows(
+def test_duplicate_direct_tcpip_is_deduped(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
-    """direct_tcpip_requests has no unique constraint; a replayed event
-    double-inserts (and double-increments sessions.n_tcpip, since the
-    counter update runs in the same transaction as each insert)."""
+    """Also proves sessions.n_tcpip does not double-increment: the counter
+    update is skipped when the insert's ON CONFLICT no-ops (writer.py's
+    `_execute`), not just the row itself."""
     writer.write_event(_connect_event())
     event = DirectTcpipRequest(
         session_id="sess-001",
@@ -623,10 +620,10 @@ def test_duplicate_direct_tcpip_writes_two_rows(
         (event.session_id,),
     ).fetchone()
     assert count is not None
-    assert count[0] == 2
+    assert count[0] == 1
 
     n_tcpip = _session_counters(db_connection, "sess-001")[2]
-    assert n_tcpip == 2
+    assert n_tcpip == 1
 
 
 def test_geo_enrichment_populates_geo_locations(

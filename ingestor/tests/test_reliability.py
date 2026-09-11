@@ -223,25 +223,23 @@ def test_writer_sanitizes_raw_in_log(
     assert "\\x1b" in msg
 
 
-def test_retry_duplicates_a_non_idempotent_write(
+def test_retry_replay_is_deduped_by_write_event(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
     """The real mechanism behind test_writer.py's
-    test_duplicate_*_writes_two_rows family: `Retry` is documented as
-    "retry around an idempotent callable", but `write_event` is only
-    actually idempotent for `sessions` (ON CONFLICT DO NOTHING) and
-    `ssh_clients`/`geo_locations` (upsert) - not for `commands` or the
-    other four child tables. If a write's transaction commits but the
-    caller still sees a `psycopg.Error` (an ambiguous outcome - e.g. the
-    connection drops between COMMIT and the ack reaching this process),
-    Retry calls `write_event` again with the identical event and, unlike
-    `sessions`, `commands` has no unique constraint to reject the repeat.
+    test_duplicate_*_is_deduped family: `Retry` is documented as "retry
+    around an idempotent callable" and retries any `psycopg.Error`. If a
+    write's transaction commits but the caller still sees that error (an
+    ambiguous outcome - e.g. the connection drops between COMMIT and the
+    ack reaching this process), Retry calls `write_event` again with the
+    identical event. `commands` now has a unique index on
+    (session_id, timestamp), so that replayed insert's ON CONFLICT DO
+    NOTHING (writer.py) is a no-op rather than a second row.
 
-    Uses a real `Retry` and a real DB write (not a mock) so the duplicate
-    row is an observed outcome rather than an assumption - and to be
-    clear, this is a retry-layer duplicate, not the tail.py replay
-    scenario corrected in test_writer.py.
+    Uses a real `Retry` and a real DB write (not a mock) so the outcome is
+    observed rather than assumed - and to be clear, this is a retry-layer
+    replay, not the tail.py scenario corrected in test_writer.py.
     """
     writer.write_event(
         SessionConnect(
@@ -281,4 +279,4 @@ def test_retry_duplicates_a_non_idempotent_write(
         (event.session_id,),
     ).fetchone()
     assert count is not None
-    assert count[0] == 2
+    assert count[0] == 1  # Second attempt really ran - and was deduped.
