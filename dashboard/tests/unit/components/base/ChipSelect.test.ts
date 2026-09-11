@@ -13,7 +13,10 @@ describe('ChipSelect', () => {
     const w = mount(ChipSelect, { props: { modelValue: 'ips', options, label: 'Sort by' } })
     expect(w.find('.dd-button').text()).toContain('Unique IPs')
     await w.find('.dd-button').trigger('click')
-    expect(w.findAll('[role=option]')).toHaveLength(2)
+    const opts = w.findAll('[role=option]')
+    expect(opts).toHaveLength(2)
+    await opts[0]!.trigger('click')
+    expect(w.emitted('update:modelValue')?.[0]).toEqual(['sessions'])
   })
 
   it('exposes an accessible name via a visually-hidden label', () => {

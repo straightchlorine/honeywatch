@@ -26,15 +26,28 @@ def sanitize(s: str | None, max_len: int = 500) -> str:
 
 _STORAGE_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
-# Strip whole CSI sequences, not just ESC. A bare ESC strip leaves the
-# printable tail (e.g. "[31m") right before the payload, and that trailing
-# letter defeats redact_ips's alnum-adjacency guard (exists to avoid
-# matching an IP embedded in an identifier): "\x1b[31mssh 192.168.1.1" would
-# store as "[31mssh 192.168.1.1", with "m" blocking redaction of the IP.
-# Scoped to CSI (ESC '[' params letter - colors, cursor moves, DEC private
-# modes), the realistic case for terminal input; an incomplete sequence
-# falls through to the control-char strip below.
-_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+# Strip whole ANSI escape sequences, not just ESC. A bare ESC strip leaves
+# the printable tail (e.g. "[31m") right before the payload, and that
+# trailing character defeats redact_ips's alnum-adjacency guard (exists to
+# avoid matching an IP embedded in an identifier): "\x1b[31mssh 192.168.1.1"
+# would store as "[31mssh 192.168.1.1", with "m" blocking redaction of the
+# IP. Not CSI-only: an OSC sequence (window title, e.g. "\x1b]0;x\x07") or
+# any other ESC-introduced sequence leaves the identical residue and the
+# identical bypass, so all three ECMA-48 families are covered:
+#   - CSI:            ESC '[' params/intermediate bytes, final byte
+#   - OSC/DCS/APC/PM:  ESC ']'/'P'/'X'/'^'/'_' ... terminated by BEL or ST
+#   - simple (Fp/Fe/Fs): ESC + one more printable byte (e.g. reset, save-cursor)
+# A malformed/unterminated sequence still loses at least its introducer to
+# the last alternative, and any single stray byte falls through to the
+# control-char strip below.
+_ANSI_ESCAPE = re.compile(
+    r"\x1b(?:"
+    r"\[[0-9:;<=>?]*[ -/]*[@-~]"  # CSI
+    r"|\][^\x07\x1b]*(?:\x07|\x1b\\)"  # OSC, BEL- or ST-terminated
+    r"|[PX^_][^\x1b]*\x1b\\"  # DCS/SOS/PM/APC, ST-terminated
+    r"|[!-~]"  # any other simple escape, or a malformed introducer
+    r")"
+)
 
 
 def truncate(s: str | None, max_len: int) -> str | None:

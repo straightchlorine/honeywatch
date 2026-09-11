@@ -65,11 +65,28 @@ class TestTruncate:
     def test_ansi_cursor_and_dec_private_mode_sequences_stripped(self) -> None:
         assert truncate("a\x1b[2K\x1b[?25lb", 10) == "ab"
 
-    def test_incomplete_escape_sequence_falls_back_to_lone_esc_strip(self) -> None:
-        # No final letter, so the CSI regex doesn't match; the plain
-        # control-char strip still removes the bare ESC byte, leaving the
-        # rest of the (harmless, non-IP) text as literal characters.
-        assert truncate("a\x1b[31", 10) == "a[31"
+    def test_incomplete_csi_sequence_still_loses_its_introducer(self) -> None:
+        # No final byte, so the CSI alternative doesn't match - but the
+        # generic simple-escape alternative still consumes ESC + '[',
+        # leaving only the harmless, non-IP digits behind.
+        assert truncate("a\x1b[31", 10) == "a31"
+
+    def test_osc_window_title_sequence_fully_stripped(self) -> None:
+        # BEL-terminated OSC (window title) leaves no residue that could
+        # sit in front of an IP and defeat redact_ips's adjacency guard.
+        assert truncate("\x1b]0;pwn\x07192.168.1.1", 500) == "192.168.1.1"
+
+    def test_osc_string_terminator_form_fully_stripped(self) -> None:
+        # ST-terminated OSC (ESC \\ instead of BEL).
+        assert truncate("\x1b]0;pwn\x1b\\192.168.1.1", 500) == "192.168.1.1"
+
+    def test_dcs_sequence_fully_stripped(self) -> None:
+        assert truncate("\x1bPsome-dcs-body\x1b\\192.168.1.1", 500) == "192.168.1.1"
+
+    def test_simple_two_byte_escape_stripped(self) -> None:
+        # ESC 'M' (reverse index) has no '[' - the generic simple-escape
+        # alternative, not the CSI one.
+        assert truncate("\x1bM192.168.1.1", 500) == "192.168.1.1"
 
 
 class TestSanitize:

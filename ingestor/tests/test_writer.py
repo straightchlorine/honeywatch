@@ -484,23 +484,11 @@ def test_duplicate_session_ignored(
     assert count[0] == 1
 
 
-# --- Idempotency: same event written twice.
-#
-# NOT a tail.py replay risk: tail_follow() always seeks to EOF on open, on
-# both startup and rotation, so a restart never re-reads an already-yielded
-# line (see src/tail.py's docstring).
-#
-# The real risk is one layer up: src/reliability.py's `Retry.run` retries any
-# `psycopg.Error`, assuming the callable is idempotent. If a write commits
-# but the client sees a `psycopg.Error` anyway (e.g. connection drops before
-# the ack), Retry replays the identical event. These five tables now have a
-# unique index on (session_id, timestamp) - safe because cowrie stamps each
-# event with microsecond precision and a replay carries the exact same
-# timestamp - so the replayed INSERT's ON CONFLICT DO NOTHING (writer.py) is
-# a no-op instead of a second row. See
-# test_reliability.py::test_retry_duplicates_a_non_idempotent_write for this
-# exercised through the real Writer/Retry path, and docs/internal/todo.md for
-# the full writeup. ---
+# --- Idempotency: same event written twice. See migration
+# b8f3e6a1d942_dedupe_child_event_writes.py for the full writeup (why
+# this can happen, why (session_id, timestamp) is the fix, and the
+# residual-risk analysis). Tested through the real path by
+# test_reliability.py::test_retry_replay_is_deduped_by_write_event. ---
 
 
 def test_duplicate_auth_attempt_is_deduped(
@@ -526,10 +514,19 @@ def test_duplicate_auth_attempt_is_deduped(
     assert count[0] == 1
 
 
+def _deduped(kind: str) -> float:
+    return (
+        REGISTRY.get_sample_value("ingestor_deduped_write_total", {"kind": kind}) or 0.0
+    )
+
+
 def test_duplicate_command_is_deduped(
     writer: EventWriter,
     db_connection: DbConn,
 ) -> None:
+    """Also proves the dedup is observable, not just silent: a no-op'd
+    write increments ingestor_deduped_write_total (writer.py's _execute)."""
+    before = _deduped("cmd")
     writer.write_event(_connect_event())
     event = CommandInput(
         session_id="sess-001",
@@ -538,6 +535,8 @@ def test_duplicate_command_is_deduped(
     )
     writer.write_event(event)
     writer.write_event(event)
+
+    assert _deduped("cmd") == before + 1
 
     count = db_connection.execute(
         "SELECT count(*) FROM commands WHERE session_id = %s",
@@ -624,6 +623,31 @@ def test_duplicate_direct_tcpip_is_deduped(
 
     n_tcpip = _session_counters(db_connection, "sess-001")[2]
     assert n_tcpip == 1
+
+
+def test_two_distinct_commands_same_timestamp_second_is_dropped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Names the accepted tradeoff: this index can't tell a Retry replay
+    from two real commands sharing a session and microsecond (e.g. a
+    pasted multi-line block) - unlike test_duplicate_*_is_deduped, these
+    two events differ in `input`, so dedup here means a real command was
+    lost, not that a replay was ignored. Changing this assertion is a
+    deliberate dedup-key decision, not a regression fix."""
+    writer.write_event(_connect_event())
+    ts = datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc)
+    writer.write_event(
+        CommandInput(session_id="sess-001", input="whoami", timestamp=ts)
+    )
+    writer.write_event(CommandInput(session_id="sess-001", input="id", timestamp=ts))
+
+    rows = db_connection.execute(
+        "SELECT input FROM commands WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchall()
+
+    assert [r[0] for r in rows] == ["whoami"]
 
 
 def test_geo_enrichment_populates_geo_locations(

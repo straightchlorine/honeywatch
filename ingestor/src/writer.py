@@ -105,7 +105,7 @@ _UPDATE_SESSION_CLOSED = """
 # re-runs a write whose transaction actually committed if the client only
 # saw the acknowledgment fail (psycopg.Error), and the retried call carries
 # the identical event - same timestamp, down to the microsecond cowrie
-# stamps it with. See docs/internal/todo.md for the full writeup.
+# stamps it with.
 _INSERT_AUTH_ATTEMPT = """
     INSERT INTO auth_attempts (session_id, username, password, success, timestamp)
     VALUES (%(session_id)s, %(username)s, %(password)s, %(success)s, %(timestamp)s)
@@ -389,7 +389,9 @@ class EventWriter:
         try:
             with self.pool.connection() as conn:
                 cur = conn.execute(sql, params)
-                if counter_sql is not None and cur.rowcount > 0:
+                if cur.rowcount == 0:
+                    self._log_deduped(kind, session_id)
+                elif counter_sql is not None:
                     conn.execute(counter_sql, {"session_id": params["session_id"]})
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan(kind, session_id)
@@ -602,6 +604,12 @@ class EventWriter:
         """Log + meter an event whose session row never landed."""
         metrics.orphan_event_total.labels(kind=kind).inc()
         logger.info("orphan %s event for session_id=%s", kind, session_id)
+
+    @staticmethod
+    def _log_deduped(kind: str, session_id: str) -> None:
+        """Log + meter a write the (session_id, timestamp) index rejected."""
+        metrics.deduped_write_total.labels(kind=kind).inc()
+        logger.info("deduped %s event for session_id=%s", kind, session_id)
 
     @staticmethod
     def _drop_bad_event(kind: str, session_id: str, exc: psycopg.Error) -> None:
