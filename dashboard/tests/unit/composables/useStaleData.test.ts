@@ -6,6 +6,7 @@ import { defineComponent, h, nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
 import { QueryClient, VueQueryPlugin } from '@tanstack/vue-query'
 import { useStaleData } from '@/composables/useStaleData'
+import { newTestQueryClient } from '../../helpers/mount'
 
 function mountWith(client: QueryClient) {
   const seen: { stale: boolean }[] = []
@@ -24,7 +25,7 @@ function mountWith(client: QueryClient) {
 
 describe('useStaleData', () => {
   it('is quiet when every query is healthy', async () => {
-    const client = new QueryClient()
+    const client = newTestQueryClient()
     client.setQueryData(['ok'], { value: 1 })
     const { wrapper } = mountWith(client)
     await nextTick()
@@ -32,7 +33,7 @@ describe('useStaleData', () => {
   })
 
   it('flags an errored query, and clears when it recovers', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const client = newTestQueryClient()
     const { wrapper } = mountWith(client)
     await nextTick()
     expect(wrapper.text()).toBe('false')
@@ -50,7 +51,7 @@ describe('useStaleData', () => {
   })
 
   it('stays quiet while a healthy query is merely in flight', async () => {
-    const client = new QueryClient()
+    const client = newTestQueryClient()
     let release: (v: number) => void = () => {}
     const pending = client.fetchQuery({
       queryKey: ['slow'],
@@ -67,7 +68,7 @@ describe('useStaleData', () => {
   })
 
   it('unsubscribes on unmount, so an unmounted view leaves no listener', async () => {
-    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } })
+    const client = newTestQueryClient()
     const cache = client.getQueryCache()
     // Spy on the real subscribe rather than reading the protected listener set.
     const unsubs: ReturnType<typeof cache.subscribe>[] = []

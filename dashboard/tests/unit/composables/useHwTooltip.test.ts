@@ -1,5 +1,6 @@
 import { describe, expect, it, afterEach, vi } from 'vitest'
 import { useHwTooltip } from '@/composables/useHwTooltip'
+import { stubMatchMedia } from '../../setup'
 
 describe('useHwTooltip', () => {
   afterEach(() => {
@@ -179,16 +180,7 @@ describe('useHwTooltip', () => {
 
   it('adds global pointerdown and scroll listeners on show() for touch devices', () => {
     const originalMatchMedia = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => ({
-      matches: query === '(hover: none)',
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(() => false),
-    })) as unknown as typeof window.matchMedia
+    stubMatchMedia(true)
 
     try {
       const tt = useHwTooltip()
@@ -215,16 +207,7 @@ describe('useHwTooltip', () => {
 
   it('removes global listeners on hide(force=true)', () => {
     const originalMatchMedia = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => ({
-      matches: query === '(hover: none)',
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(() => false),
-    })) as unknown as typeof window.matchMedia
+    stubMatchMedia(true)
 
     try {
       const tt = useHwTooltip()
@@ -253,16 +236,7 @@ describe('useHwTooltip', () => {
 
   it('respects tap-burst guard: unforced hide() does not remove listeners within TAP_BURST_MS on touch', () => {
     const originalMatchMedia = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => ({
-      matches: query === '(hover: none)',
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(() => false),
-    })) as unknown as typeof window.matchMedia
+    stubMatchMedia(true)
 
     try {
       const tt = useHwTooltip()
@@ -283,16 +257,7 @@ describe('useHwTooltip', () => {
 
   it('does not add listeners on show() for hover-capable devices', () => {
     const originalMatchMedia = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => ({
-      matches: false, // Not a touch device
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(() => false),
-    })) as unknown as typeof window.matchMedia
+    stubMatchMedia(false) // Not a touch device
 
     try {
       const tt = useHwTooltip()
@@ -310,16 +275,7 @@ describe('useHwTooltip', () => {
 
   it('records shownAt timestamp on show()', () => {
     const originalMatchMedia = window.matchMedia
-    window.matchMedia = vi.fn((query: string) => ({
-      matches: query === '(hover: none)',
-      media: query,
-      onchange: null,
-      addListener: vi.fn(),
-      removeListener: vi.fn(),
-      addEventListener: vi.fn(),
-      removeEventListener: vi.fn(),
-      dispatchEvent: vi.fn(() => false),
-    })) as unknown as typeof window.matchMedia
+    stubMatchMedia(true)
 
     try {
       const tt = useHwTooltip()

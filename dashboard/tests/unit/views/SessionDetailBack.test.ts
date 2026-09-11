@@ -1,8 +1,9 @@
 import { defineComponent, h, Suspense } from 'vue'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
-import { VueQueryPlugin, QueryClient } from '@tanstack/vue-query'
+import { VueQueryPlugin } from '@tanstack/vue-query'
 import type { SessionDetailResponse } from '@/api/generated/types.gen'
+import { newTestQueryClient } from '../../helpers/mount'
 
 // Both SessionDetailView and PageShell call useRoute(), so share one mock.
 const routerBack = vi.fn()
@@ -48,9 +49,7 @@ function setHistoryBack(back: string | null) {
 // Top-level suspense requires a <Suspense> wrapper. Stubs (PageShell renders slot,
 // SessionTerminal stubbed) isolate the .back button test.
 async function mountView() {
-  const queryClient = new QueryClient({
-    defaultOptions: { queries: { retry: false, staleTime: Infinity, gcTime: 0 } },
-  })
+  const queryClient = newTestQueryClient()
   const Wrapper = defineComponent({
     render: () => h(Suspense, null, { default: () => h(SessionDetailView) }),
   })
