@@ -91,15 +91,18 @@ describe('MapControls component', () => {
     expect(qualityContainer.exists()).toBe(true)
   })
 
-  it('passes quality prop to MapQuality and updates on emit', async () => {
+  it('re-emits update:quality when the rendered MapQuality range input changes', async () => {
     const w = mount(MapControls, {
-      props: { legendMax: '100', quality: 'low' as MapQualityLevel },
+      props: { legendMax: '100', quality: 'regular' as MapQualityLevel },
     })
 
-    expect(w.emitted('update:quality')).toBeFalsy()
+    const input = w.find('input[type="range"]')
+    expect(input.exists()).toBe(true)
 
-    await w.setProps({ quality: 'high' as MapQualityLevel })
-    expect(w.props('quality')).toBe('high')
+    await input.setValue('2')
+
+    expect(w.emitted('update:quality')).toBeTruthy()
+    expect(w.emitted('update:quality')![0]).toEqual(['high'])
   })
 
   it('renders legend component with legendMax prop', () => {
@@ -184,20 +187,6 @@ describe('MapControls component', () => {
     expect(w.emitted('zoomIn')).toHaveLength(2)
     expect(w.emitted('zoomOut')).toHaveLength(1)
     expect(w.emitted('reset')).toHaveLength(1)
-  })
-
-  it('all three quality levels can be set', async () => {
-    const w = mount(MapControls, {
-      props: { legendMax: '100', quality: 'regular' as MapQualityLevel },
-    })
-
-    expect(w.props('quality')).toBe('regular')
-
-    await w.setProps({ quality: 'low' as MapQualityLevel })
-    expect(w.props('quality')).toBe('low')
-
-    await w.setProps({ quality: 'high' as MapQualityLevel })
-    expect(w.props('quality')).toBe('high')
   })
 
   it('handles large legendMax values', () => {

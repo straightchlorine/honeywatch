@@ -49,6 +49,8 @@ container. `just db test-init` creates it; `just db test-reset` recreates it.
 | `just test` | The full local gate, below |
 | `just test-api` | `pytest` in `api/` |
 | `just test-ingestor` | `pytest` in `ingestor/` |
+| `just cov <api\|ingestor\|dashboard>` | Coverage report for one submodule |
+| `just cov-all` | Coverage report for all three submodules |
 | `just pnpm test` | `vitest run`; add `--coverage` for the thresholds |
 | `just pnpm typecheck` | `vue-tsc --noEmit` |
 | `just pnpm e2e` | Playwright plus axe, previewing the built SPA on 4173 |

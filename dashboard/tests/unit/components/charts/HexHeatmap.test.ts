@@ -1,26 +1,9 @@
 import { mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it } from 'vitest'
 
 import HexHeatmap from '@/components/charts/HexHeatmap.vue'
 import { seq } from '@/composables/useSeqScale'
-
-/**
- * jsdom doesn't evaluate real CSS media queries, so the compact (<=900px)
- * breakpoint has to be forced per test rather than relying on an actual
- * viewport. Shape mirrors the global default in tests/setup.ts.
- */
-function stubMatchMedia(matches: boolean): void {
-  window.matchMedia = vi.fn((query: string) => ({
-    matches,
-    media: query,
-    onchange: null,
-    addListener: vi.fn(),
-    removeListener: vi.fn(),
-    addEventListener: vi.fn(),
-    removeEventListener: vi.fn(),
-    dispatchEvent: vi.fn(() => false),
-  })) as unknown as typeof window.matchMedia
-}
+import { stubMatchMedia } from '../../../setup'
 
 describe('HexHeatmap', () => {
   // Every test starts at full resolution unless it opts into compact mode,

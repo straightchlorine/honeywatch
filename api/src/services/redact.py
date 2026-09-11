@@ -123,11 +123,13 @@ def _replace(m: re.Match[str]) -> str:
 
 
 @overload
-def redact_ips(text: str, *, numeric_hosts: bool = True) -> str: ...
+def redact_ips(text: str, *, numeric_hosts: bool = True) -> str:
+    pass
 
 
 @overload
-def redact_ips(text: None, *, numeric_hosts: bool = True) -> None: ...
+def redact_ips(text: None, *, numeric_hosts: bool = True) -> None:
+    pass
 
 
 def redact_ips(text: str | None, *, numeric_hosts: bool = True) -> str | None:

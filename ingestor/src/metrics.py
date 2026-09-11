@@ -39,6 +39,14 @@ orphan_event_total = Counter(
     ["kind"],
 )
 
+deduped_write_total = Counter(
+    "ingestor_deduped_write_total",
+    "Writes rejected by the (session_id, timestamp) unique index - a "
+    "Retry-replayed write being correctly ignored, or (rarely) two "
+    "distinct events colliding on the same session and microsecond.",
+    ["kind"],
+)
+
 queue_depth = Gauge(
     "ingestor_queue_depth",
     "Current depth of the tail->writer queue.",

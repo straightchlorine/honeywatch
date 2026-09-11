@@ -101,19 +101,27 @@ _UPDATE_SESSION_CLOSED = """
 # ON CONFLICT, so an upsert with partial columns blows up.
 # If no connect event this session, silently skip the close - no half-empty rows.
 
+# ON CONFLICT DO NOTHING on (session_id, timestamp): Retry (reliability.py)
+# re-runs a write whose transaction actually committed if the client only
+# saw the acknowledgment fail (psycopg.Error), and the retried call carries
+# the identical event - same timestamp, down to the microsecond cowrie
+# stamps it with.
 _INSERT_AUTH_ATTEMPT = """
     INSERT INTO auth_attempts (session_id, username, password, success, timestamp)
     VALUES (%(session_id)s, %(username)s, %(password)s, %(success)s, %(timestamp)s)
+    ON CONFLICT (session_id, timestamp) DO NOTHING
 """
 
 _INSERT_COMMAND = """
     INSERT INTO commands (session_id, input, success, timestamp)
     VALUES (%(session_id)s, %(input)s, %(success)s, %(timestamp)s)
+    ON CONFLICT (session_id, timestamp) DO NOTHING
 """
 
 _INSERT_DOWNLOAD = """
     INSERT INTO downloads (session_id, url, outfile, sha256, timestamp)
     VALUES (%(session_id)s, %(url)s, %(outfile)s, %(sha256)s, %(timestamp)s)
+    ON CONFLICT (session_id, timestamp) DO NOTHING
 """
 
 _UPSERT_GEO = """
@@ -168,6 +176,7 @@ _INSERT_CLIENT_FINGERPRINT = """
     VALUES
         (%(session_id)s, %(username)s, %(fingerprint)s,
          %(fingerprint_type)s, %(timestamp)s)
+    ON CONFLICT (session_id, timestamp) DO NOTHING
 """
 
 _INSERT_DIRECT_TCPIP = """
@@ -176,6 +185,7 @@ _INSERT_DIRECT_TCPIP = """
     VALUES
         (%(session_id)s, %(dst_ip)s, %(dst_port)s,
          %(src_ip)s, %(src_port)s, %(timestamp)s)
+    ON CONFLICT (session_id, timestamp) DO NOTHING
 """
 
 # Sessions explorer sort/filter counters (dashboard/REDESIGN_PLAN.md section
@@ -372,11 +382,16 @@ class EventWriter:
         rolls back on the exceptions caught below) - the child row and its
         session counter always land or fail together. It only ever targets
         `session_id`, which the insert above already proved exists via FK.
+        Skipped when the insert's `ON CONFLICT DO NOTHING` no-ops (a
+        `Retry`-replayed write, see `_INSERT_COMMAND` et al.), so a
+        deduped row can't still double-bump its counter.
         """
         try:
             with self.pool.connection() as conn:
-                conn.execute(sql, params)
-                if counter_sql is not None:
+                cur = conn.execute(sql, params)
+                if cur.rowcount == 0:
+                    self._log_deduped(kind, session_id)
+                elif counter_sql is not None:
                     conn.execute(counter_sql, {"session_id": params["session_id"]})
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan(kind, session_id)
@@ -589,6 +604,12 @@ class EventWriter:
         """Log + meter an event whose session row never landed."""
         metrics.orphan_event_total.labels(kind=kind).inc()
         logger.info("orphan %s event for session_id=%s", kind, session_id)
+
+    @staticmethod
+    def _log_deduped(kind: str, session_id: str) -> None:
+        """Log + meter a write the (session_id, timestamp) index rejected."""
+        metrics.deduped_write_total.labels(kind=kind).inc()
+        logger.info("deduped %s event for session_id=%s", kind, session_id)
 
     @staticmethod
     def _drop_bad_event(kind: str, session_id: str, exc: psycopg.Error) -> None:

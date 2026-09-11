@@ -6,7 +6,7 @@ from src.models.direct_tcpip import DirectTcpipRequest
 from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
-from tests.conftest import LONG_PASSWORD
+from tests.conftest import LONG_PASSWORD, make_counter_session
 
 
 def test_totals(client: Any, seed_data: Any) -> None:
@@ -262,6 +262,48 @@ def test_top_credentials_rejects_invalid_params(client: Any) -> None:
     assert client.get("/api/v1/stats/top-credentials?outcome=bogus").status_code == 422
 
 
+def test_top_credentials_redacts_ip_shaped_control_char_credentials(
+    client: Any, db_session: Any
+) -> None:
+    """Attacker-supplied username/password reach the client through _cred()
+    (src/services/stats/credentials.py), which wraps redact_ips - this exercises
+    that call site specifically, not just redact_ips in isolation (test_redact.py).
+    An IP-shaped value flanked by raw control-character bytes must still come out
+    blotted (mirrors test_sessions.py::
+    test_session_detail_redacts_ips_in_commands_and_downloads)."""
+    now = datetime.now(timezone.utc)
+    db_session.add(
+        HoneypotSession(
+            id="credip000001",
+            src_ip="203.0.113.70",
+            src_port=1,
+            dst_port=22,
+            protocol="ssh",
+            started_at=now,
+        )
+    )
+    db_session.flush()
+    db_session.add(
+        AuthAttempt(
+            session_id="credip000001",
+            username="\x1b198.51.100.9\x07",
+            password="wget http://1.2.3.4/x",
+            success=False,
+            timestamp=now,
+        )
+    )
+    db_session.commit()
+
+    response = client.get("/api/v1/stats/top-credentials")
+    assert response.status_code == 200
+    # Verify IP redaction survives at the bytes level (control chars don't bypass it).
+    for leaked in (b"198.51.100.9", b"1.2.3.4"):
+        assert leaked not in response.data, leaked
+    row = response.get_json()[0]
+    assert "<ip>" in row["username"]
+    assert "<ip>" in row["password"]
+
+
 def test_auth_outcomes(client: Any, seed_data: Any) -> None:
     del seed_data
     response = client.get("/api/v1/stats/auth-outcomes")
@@ -293,40 +335,6 @@ def test_auth_outcomes_empty_returns_null_rate(client: Any, db_session: Any) -> 
     }
 
 
-def _outcome_session(
-    db_session: Any,
-    sid: str,
-    ip: str,
-    *,
-    n_commands: int = 0,
-    n_downloads: int = 0,
-    n_tcpip: int = 0,
-    auth_success: bool = False,
-    country_code: str | None = None,
-) -> None:
-    """Seed session with ingestor-maintained outcome counters (not derived from
-    child rows)."""
-    now = datetime.now(timezone.utc)
-    db_session.add(
-        HoneypotSession(
-            id=sid,
-            src_ip=ip,
-            src_port=1,
-            dst_port=22,
-            protocol="ssh",
-            started_at=now,
-            n_commands=n_commands,
-            n_downloads=n_downloads,
-            n_tcpip=n_tcpip,
-            auth_success=auth_success,
-        )
-    )
-    db_session.flush()
-    if country_code is not None:
-        db_session.add(GeoLocation(ip=ip, country_code=country_code))
-        db_session.flush()
-
-
 def test_outcomes_keys_and_types(client: Any, seed_data: Any) -> None:
     del seed_data
     response = client.get("/api/v1/stats/outcomes")
@@ -352,13 +360,21 @@ def test_outcomes_buckets_overlap_and_none_is_complement(
     their sum.
     """
     # Both shell and commands on one session - exercises the overlap.
-    _outcome_session(
-        db_session, "out-both", "203.0.113.1", n_commands=2, auth_success=True
+    make_counter_session(
+        db_session,
+        "out-both",
+        src_ip="203.0.113.1",
+        n_commands=2,
+        auth_success=True,
     )
-    _outcome_session(db_session, "out-shell", "203.0.113.2", auth_success=True)
-    _outcome_session(db_session, "out-download", "203.0.113.3", n_downloads=1)
-    _outcome_session(db_session, "out-tcpip", "203.0.113.4", n_tcpip=2)
-    _outcome_session(db_session, "out-none", "203.0.113.5")
+    make_counter_session(
+        db_session, "out-shell", src_ip="203.0.113.2", auth_success=True
+    )
+    make_counter_session(
+        db_session, "out-download", src_ip="203.0.113.3", n_downloads=1
+    )
+    make_counter_session(db_session, "out-tcpip", src_ip="203.0.113.4", n_tcpip=2)
+    make_counter_session(db_session, "out-none", src_ip="203.0.113.5")
     db_session.commit()
 
     data = client.get("/api/v1/stats/outcomes").get_json()
@@ -377,25 +393,25 @@ def test_outcomes_buckets_overlap_and_none_is_complement(
 
 
 def test_outcomes_country_narrows_every_bucket(client: Any, db_session: Any) -> None:
-    _outcome_session(
+    make_counter_session(
         db_session,
         "out-us-both",
-        "203.0.113.11",
+        src_ip="203.0.113.11",
         n_commands=1,
         auth_success=True,
         country_code="US",
     )
-    _outcome_session(
+    make_counter_session(
         db_session,
         "out-us-download",
-        "203.0.113.12",
+        src_ip="203.0.113.12",
         n_downloads=1,
         country_code="US",
     )
-    _outcome_session(
+    make_counter_session(
         db_session,
         "out-de-shell",
-        "203.0.113.13",
+        src_ip="203.0.113.13",
         auth_success=True,
         country_code="DE",
     )
@@ -659,7 +675,8 @@ def _add_session(
                 username="root",
                 password=f"pw-{i}",
                 success=i < successful,
-                timestamp=now,
+                # Distinct per row: (session_id, timestamp) is unique.
+                timestamp=now + timedelta(microseconds=i),
             )
         )
     db_session.flush()
@@ -880,6 +897,7 @@ def test_downloads_name_is_url_basename_not_outfile(
     db_session.flush()
     db_session.add_all(
         [
+            # Distinct timestamps: (session_id, timestamp) is unique.
             Download(
                 session_id="dl-001",
                 url="http://cnc.example.com/meow",
@@ -892,14 +910,14 @@ def test_downloads_name_is_url_basename_not_outfile(
                 url="http://cnc.example.com/meow",
                 outfile=f"var/lib/cowrie/downloads/{sha256}",
                 sha256=sha256,
-                timestamp=now,
+                timestamp=now + timedelta(seconds=1),
             ),
             Download(
                 session_id="dl-001",
                 url="http://other.example.com/other",
                 outfile=f"var/lib/cowrie/downloads/{sha256}",
                 sha256=sha256,
-                timestamp=now,
+                timestamp=now + timedelta(seconds=2),
             ),
         ]
     )

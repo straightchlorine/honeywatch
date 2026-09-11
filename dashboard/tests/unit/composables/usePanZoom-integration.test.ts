@@ -6,34 +6,15 @@ import {
   easeInOutCubic,
   type PanZoomState,
 } from '@/composables/usePanZoom'
+import { mockScreenCTM } from '../../setup'
 
 const W = 1600
 const H = 780
 
-// Mock getScreenCTM since jsdom doesn't implement it
+// Mock via factory so inverse() carries b/c. DOMPointPolyfill#matrixTransform
+// reads all four matrix fields; missing them caused silent NaN.
 function mockGetScreenCTM(scale = 1) {
-  return {
-    a: scale,
-    d: scale,
-    e: 0,
-    f: 0,
-    inverse: () => ({
-      a: 1 / scale,
-      d: 1 / scale,
-      e: 0,
-      f: 0,
-      transformPoint: (pt: DOMPoint) => {
-        pt.x /= scale
-        pt.y /= scale
-        return pt
-      },
-    }),
-    transformPoint: (pt: DOMPoint) => {
-      pt.x *= scale
-      pt.y *= scale
-      return pt
-    },
-  }
+  return mockScreenCTM({ a: scale, b: 0, c: 0, d: scale, e: 0, f: 0 })
 }
 
 describe('easeInOutCubic', () => {
@@ -297,16 +278,42 @@ describe('usePanZoom handlers', () => {
   })
 
   it('onWheel sets interacting flag for hit-testing throttle (and clears after timeout)', () => {
-    expect(pz.interacting.value).toBe(false)
+    vi.useFakeTimers()
+    try {
+      expect(pz.interacting.value).toBe(false)
 
-    // Full wheel zoom tested in e2e; jsdom lacks DOMPoint.matrixTransform
-    expect(typeof pz.handlers.onWheel).toBe('function')
+      pz.handlers.onWheel(
+        new WheelEvent('wheel', {
+          deltaY: -100,
+          clientX: W / 2,
+          clientY: H / 2,
+          cancelable: true,
+        }),
+      )
+      expect(pz.interacting.value).toBe(true)
+
+      vi.advanceTimersByTime(140)
+      expect(pz.interacting.value).toBe(false)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 
   it('onPointerDown starts pan state tracking', () => {
-    const e = new PointerEvent('pointerdown', { clientX: 100, clientY: 100, pointerId: 1 })
-    pz.handlers.onPointerDown(e)
-    // Internal panning state is not exposed, but we can verify it doesn't error
+    pz.k.value = 3
+    const startTransform = pz.transform.value
+
+    pz.handlers.onPointerDown(
+      new PointerEvent('pointerdown', { clientX: 100, clientY: 100, pointerId: 1 }),
+    )
+    pz.handlers.onPointerMove(
+      new PointerEvent('pointermove', { clientX: 70, clientY: 100, pointerId: 1 }),
+    )
+
+    // A pan only happens if onPointerDown recorded the drag-start x/y/tx/ty.
+    expect(pz.transform.value).not.toBe(startTransform)
+    expect(pz.transform.value).toBe('translate(-30,0) scale(3)')
+    expect(svg.setPointerCapture).toHaveBeenCalledWith(1)
   })
 
   it('onPointerMove requires 4px threshold before capturing and panning', () => {
@@ -346,9 +353,21 @@ describe('usePanZoom handlers', () => {
     expect(pz.interacting.value).toBe(false)
   })
 
-  it('onDblClick handler is defined and callable', () => {
-    // Full behavior tested in e2e; jsdom lacks DOMPoint.matrixTransform
-    expect(typeof pz.handlers.onDblClick).toBe('function')
+  it('onDblClick zooms in on the clicked point', () => {
+    vi.useFakeTimers()
+    try {
+      const startK = pz.k.value
+
+      pz.handlers.onDblClick(
+        new MouseEvent('dblclick', { clientX: W / 2, clientY: H / 2 }),
+      )
+      // tweenZoomAt animates over 160ms.
+      vi.advanceTimersByTime(160)
+
+      expect(pz.k.value).toBeGreaterThan(startK)
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

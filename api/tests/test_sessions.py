@@ -6,6 +6,7 @@ from src.models.command import Command
 from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
+from tests.conftest import make_counter_session
 
 
 def test_list_sessions(client: Any, seed_data: Any) -> None:
@@ -215,42 +216,14 @@ def test_list_sessions_summary_exposes_counters_and_interest(
     assert by_id["sess-001"]["interest"] == 0
 
 
-def _make_session(
-    db_session: Any,
-    session_id: str,
-    *,
-    n_commands: int = 0,
-    n_downloads: int = 0,
-    n_tcpip: int = 0,
-    auth_success: bool = False,
-    started_at: Any,
-    ended_at: Any = None,
-) -> None:
-    db_session.add(
-        HoneypotSession(
-            id=session_id,
-            src_ip="203.0.113.10",
-            src_port=1,
-            dst_port=22,
-            protocol="ssh",
-            started_at=started_at,
-            ended_at=ended_at,
-            n_commands=n_commands,
-            n_downloads=n_downloads,
-            n_tcpip=n_tcpip,
-            auth_success=auth_success,
-        )
-    )
-
-
 def test_list_sessions_sort_interest(client: Any, db_session: Any) -> None:
     now = datetime.now(timezone.utc)
     # low: 0 -> interest 0; mid: 1 command + success -> 2+3=5; high: 1 download -> 5.
-    _make_session(db_session, "sess-low", started_at=now)
-    _make_session(
+    make_counter_session(db_session, "sess-low", started_at=now)
+    make_counter_session(
         db_session, "sess-mid", n_commands=1, auth_success=True, started_at=now
     )
-    _make_session(db_session, "sess-high", n_downloads=2, started_at=now)
+    make_counter_session(db_session, "sess-high", n_downloads=2, started_at=now)
     db_session.flush()
     db_session.commit()
 
@@ -270,11 +243,11 @@ def test_list_sessions_max_interest_is_global_unfiltered_ceiling(
     session's normalized display score stays stable across views."""
     now = datetime.now(timezone.utc)
     # interest: 0, 2*1+3=5, 5*2=10 (highest).
-    _make_session(db_session, "sess-low", started_at=now)
-    _make_session(
+    make_counter_session(db_session, "sess-low", started_at=now)
+    make_counter_session(
         db_session, "sess-mid", n_commands=1, auth_success=True, started_at=now
     )
-    _make_session(db_session, "sess-high", n_downloads=2, started_at=now)
+    make_counter_session(db_session, "sess-high", n_downloads=2, started_at=now)
     db_session.flush()
     db_session.commit()
 
@@ -293,10 +266,10 @@ def test_list_sessions_max_interest_is_global_unfiltered_ceiling(
 def test_list_sessions_sort_duration(client: Any, db_session: Any) -> None:
     now = datetime.now(timezone.utc)
 
-    _make_session(
+    make_counter_session(
         db_session, "sess-short", started_at=now, ended_at=now + timedelta(seconds=5)
     )
-    _make_session(
+    make_counter_session(
         db_session, "sess-long", started_at=now, ended_at=now + timedelta(hours=1)
     )
     db_session.flush()
@@ -310,8 +283,8 @@ def test_list_sessions_sort_duration(client: Any, db_session: Any) -> None:
 
 def test_list_sessions_has_filter_ands_tokens(client: Any, db_session: Any) -> None:
     now = datetime.now(timezone.utc)
-    _make_session(db_session, "sess-cmd-only", n_commands=1, started_at=now)
-    _make_session(
+    make_counter_session(db_session, "sess-cmd-only", n_commands=1, started_at=now)
+    make_counter_session(
         db_session,
         "sess-cmd-and-success",
         n_commands=1,
@@ -417,7 +390,9 @@ def test_session_detail_hides_failed_downloads(client: Any, db_session: Any) -> 
             url=None,
             outfile="downloads/p",
             sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
-            timestamp=now,
+            # Distinct from the failed download's timestamp: (session_id,
+            # timestamp) is unique.
+            timestamp=now + timedelta(seconds=1),
         )
     )
     db_session.flush()
@@ -453,14 +428,15 @@ def test_sessions_filtered_by_sha256(client: Any, db_session: Any) -> None:
         )
     db_session.flush()
     # Two rows, same digest, same session: the page must not double it.
-    for _ in range(2):
+    for i in range(2):
         db_session.add(
             Download(
                 session_id="sessSHA00001",
                 url=None,
                 outfile="downloads/p",
                 sha256=digest,
-                timestamp=now,
+                # Distinct per row: (session_id, timestamp) is unique.
+                timestamp=now + timedelta(seconds=i),
             )
         )
     db_session.add(
@@ -473,13 +449,14 @@ def test_sessions_filtered_by_sha256(client: Any, db_session: Any) -> None:
         )
     )
     # A failed fetch on the second session - stored for its URL, sha256 NULL.
+    # Distinct timestamp from the download above: (session_id, timestamp) is unique.
     db_session.add(
         Download(
             session_id="sessSHA00002",
             url="http://dropper.example.com/x.sh",
             outfile=None,
             sha256=None,
-            timestamp=now,
+            timestamp=now + timedelta(seconds=1),
         )
     )
     db_session.flush()
@@ -593,9 +570,9 @@ def test_list_sessions_filter_q_prefix_match(client: Any, db_session: Any) -> No
     """q= matches only ids carrying that hex prefix, not ids that merely
     contain it elsewhere."""
     now = datetime.now(timezone.utc)
-    _make_session(db_session, "abc123001100", started_at=now)
-    _make_session(db_session, "abc999002200", started_at=now)
-    _make_session(
+    make_counter_session(db_session, "abc123001100", started_at=now)
+    make_counter_session(db_session, "abc999002200", started_at=now)
+    make_counter_session(
         db_session, "aaabc1230033", started_at=now
     )  # "abc123" mid-id, not prefix
     db_session.flush()
@@ -609,7 +586,7 @@ def test_list_sessions_filter_q_prefix_match(client: Any, db_session: Any) -> No
 
 def test_list_sessions_filter_q_no_matches(client: Any, db_session: Any) -> None:
     now = datetime.now(timezone.utc)
-    _make_session(db_session, "abc123001100", started_at=now)
+    make_counter_session(db_session, "abc123001100", started_at=now)
     db_session.flush()
     db_session.commit()
 
@@ -704,8 +681,8 @@ def test_list_sessions_has_none_filters_zero_interest(
     client: Any, db_session: Any
 ) -> None:
     now = datetime.now(timezone.utc)
-    _make_session(db_session, "sess-idle-001", started_at=now)
-    _make_session(db_session, "sess-busy-001", n_commands=1, started_at=now)
+    make_counter_session(db_session, "sess-idle-001", started_at=now)
+    make_counter_session(db_session, "sess-busy-001", n_commands=1, started_at=now)
     db_session.flush()
     db_session.commit()
 

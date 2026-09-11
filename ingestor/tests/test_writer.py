@@ -118,6 +118,33 @@ def test_write_command(
     assert row[2] is True
 
 
+def test_write_command_strips_ansi_so_embedded_ip_stays_redactable(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """An SGR color code immediately before an IP must not survive as literal
+    text: its trailing letter (e.g. the "m" in "\\x1b[31m") would sit directly
+    in front of the IP with no separator, defeating redact_ips's
+    alnum-adjacency guard downstream in the API. Proves the fix end-to-end
+    through the real write path, not just truncate() in isolation
+    (see test_sanitize.py::test_ansi_color_sequence_fully_stripped)."""
+    writer.write_event(_connect_event())
+    event = CommandInput(
+        session_id="sess-001",
+        input="\x1b[31mssh 192.168.1.1\x1b[0m",
+        timestamp=datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+
+    row = db_connection.execute(
+        "SELECT input FROM commands WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert row is not None
+    assert row[0] == "ssh 192.168.1.1"
+
+
 def test_write_download(
     writer: EventWriter,
     db_connection: DbConn,
@@ -455,6 +482,172 @@ def test_duplicate_session_ignored(
 
     assert count is not None
     assert count[0] == 1
+
+
+# --- Idempotency: same event written twice. See migration
+# b8f3e6a1d942_dedupe_child_event_writes.py for the full writeup (why
+# this can happen, why (session_id, timestamp) is the fix, and the
+# residual-risk analysis). Tested through the real path by
+# test_reliability.py::test_retry_replay_is_deduped_by_write_event. ---
+
+
+def test_duplicate_auth_attempt_is_deduped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    event = LoginFailed(
+        session_id="sess-001",
+        username="root",
+        password="password123",
+        timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM auth_attempts WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 1
+
+
+def _deduped(kind: str) -> float:
+    return (
+        REGISTRY.get_sample_value("ingestor_deduped_write_total", {"kind": kind}) or 0.0
+    )
+
+
+def test_duplicate_command_is_deduped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Also proves the dedup is observable, not just silent: a no-op'd
+    write increments ingestor_deduped_write_total (writer.py's _execute)."""
+    before = _deduped("cmd")
+    writer.write_event(_connect_event())
+    event = CommandInput(
+        session_id="sess-001",
+        input="cat /etc/passwd",
+        timestamp=datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    assert _deduped("cmd") == before + 1
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM commands WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 1
+
+
+def test_duplicate_download_is_deduped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    event = FileDownload(
+        session_id="sess-001",
+        url="http://evil.com/malware.sh",
+        outfile="/tmp/malware.sh",
+        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        timestamp=datetime(2024, 1, 15, 10, 30, 20, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM downloads WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 1
+
+
+def test_duplicate_client_fingerprint_is_deduped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    writer.write_event(_connect_event())
+    event = ClientFingerprint(
+        session_id="sess-001",
+        username="root",
+        fingerprint="SHA256:n0tArealKeyFingerprintAAAAAAAAAAAAAAAAAAAAAA",
+        type="ssh-ed25519",
+        timestamp=datetime(2024, 1, 15, 10, 30, 3, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM client_fingerprints WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 1
+
+
+def test_duplicate_direct_tcpip_is_deduped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Also proves sessions.n_tcpip does not double-increment: the counter
+    update is skipped when the insert's ON CONFLICT no-ops (writer.py's
+    `_execute`), not just the row itself."""
+    writer.write_event(_connect_event())
+    event = DirectTcpipRequest(
+        session_id="sess-001",
+        dst_ip="smtp.example.com",
+        dst_port=25,
+        src_ip="127.0.0.1",
+        src_port=40000,
+        timestamp=datetime(2024, 1, 15, 10, 30, 4, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM direct_tcpip_requests WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+    assert count is not None
+    assert count[0] == 1
+
+    n_tcpip = _session_counters(db_connection, "sess-001")[2]
+    assert n_tcpip == 1
+
+
+def test_two_distinct_commands_same_timestamp_second_is_dropped(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """Names the accepted tradeoff: this index can't tell a Retry replay
+    from two real commands sharing a session and microsecond (e.g. a
+    pasted multi-line block) - unlike test_duplicate_*_is_deduped, these
+    two events differ in `input`, so dedup here means a real command was
+    lost, not that a replay was ignored. Changing this assertion is a
+    deliberate dedup-key decision, not a regression fix."""
+    writer.write_event(_connect_event())
+    ts = datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc)
+    writer.write_event(
+        CommandInput(session_id="sess-001", input="whoami", timestamp=ts)
+    )
+    writer.write_event(CommandInput(session_id="sess-001", input="id", timestamp=ts))
+
+    rows = db_connection.execute(
+        "SELECT input FROM commands WHERE session_id = %s",
+        ("sess-001",),
+    ).fetchall()
+
+    assert [r[0] for r in rows] == ["whoami"]
 
 
 def test_geo_enrichment_populates_geo_locations(
@@ -883,6 +1076,52 @@ _CAP_CASES = [
         "SELECT dst_ip FROM direct_tcpip_requests WHERE session_id = %s",
         writer_module._LEN_HOST,
         id="dst_ip",
+    ),
+    pytest.param(
+        LoginFailed(
+            session_id="sess-001", username="A" * 300, password="x", timestamp=_TS
+        ),
+        "SELECT username FROM auth_attempts WHERE session_id = %s",
+        writer_module._LEN_USERNAME,
+        id="username",
+    ),
+    pytest.param(
+        LoginFailed(
+            session_id="sess-001", username="root", password="A" * 300, timestamp=_TS
+        ),
+        "SELECT password FROM auth_attempts WHERE session_id = %s",
+        writer_module._LEN_PASSWORD,
+        id="password",
+    ),
+    pytest.param(
+        CommandInput(session_id="sess-001", input="A" * 10_000, timestamp=_TS),
+        "SELECT input FROM commands WHERE session_id = %s",
+        writer_module._LEN_COMMAND_INPUT,
+        id="command_input",
+    ),
+    pytest.param(
+        FileDownload(
+            session_id="sess-001",
+            url="http://evil.com/" + "A" * 3000,
+            outfile="/tmp/x",
+            sha256="0" * 64,
+            timestamp=_TS,
+        ),
+        "SELECT url FROM downloads WHERE session_id = %s",
+        writer_module._LEN_URL,
+        id="download_url",
+    ),
+    pytest.param(
+        FileDownload(
+            session_id="sess-001",
+            url="http://evil.com/x",
+            outfile="/tmp/" + "A" * 1000,
+            sha256="0" * 64,
+            timestamp=_TS,
+        ),
+        "SELECT outfile FROM downloads WHERE session_id = %s",
+        writer_module._LEN_OUTFILE,
+        id="download_outfile",
     ),
 ]
 

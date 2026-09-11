@@ -30,22 +30,36 @@ class NoopEventSource {
   }
 }
 
+function buildMatchMediaStub(matches: boolean) {
+  return (q: string) => ({
+    matches,
+    media: q,
+    onchange: null,
+    addListener() {},
+    removeListener() {},
+    addEventListener() {},
+    removeEventListener() {},
+    dispatchEvent() {
+      return false
+    },
+  })
+}
+
 if (!globalThis.matchMedia) {
   Object.defineProperty(globalThis, 'matchMedia', {
     writable: true,
-    value: (q: string) => ({
-      matches: false,
-      media: q,
-      onchange: null,
-      addListener() {},
-      removeListener() {},
-      addEventListener() {},
-      removeEventListener() {},
-      dispatchEvent() {
-        return false
-      },
-    }),
+    value: buildMatchMediaStub(false),
   })
+}
+
+/**
+ * Override the default matchMedia stub for a test/describe block (e.g. '(hover: none)' for touch).
+ * Shared so tests don't hand-roll their own.
+ */
+export function stubMatchMedia(matches: boolean): typeof globalThis.matchMedia {
+  const stub = buildMatchMediaStub(matches) as unknown as typeof globalThis.matchMedia
+  globalThis.matchMedia = stub
+  return stub
 }
 
 type GlobalWithPolyfills = typeof globalThis & {
@@ -83,6 +97,41 @@ if (!g.DOMPoint) {
     }
   }
   g.DOMPoint = DOMPointPolyfill as unknown as typeof DOMPoint
+}
+
+interface Matrix2D {
+  a: number
+  b: number
+  c: number
+  d: number
+  e: number
+  f: number
+}
+
+/**
+ * Build a fake SVGMatrix as returned by `svg.getScreenCTM()`. Shared so tests
+ * don't hand-roll partial mocks that break DOMPoint#matrixTransform (missing b/c silently
+ * causes NaN). usePanZoom expects .a/.d for scaling and .inverse().
+ */
+export function mockScreenCTM(matrix: Matrix2D): Matrix2D & { inverse: () => Matrix2D } {
+  const { a, b, c, d, e, f } = matrix
+  const det = a * d - b * c
+  return {
+    a,
+    b,
+    c,
+    d,
+    e,
+    f,
+    inverse: () => ({
+      a: d / det,
+      b: -b / det,
+      c: -c / det,
+      d: a / det,
+      e: (c * f - d * e) / det,
+      f: (b * e - a * f) / det,
+    }),
+  }
 }
 
 afterEach(() => {

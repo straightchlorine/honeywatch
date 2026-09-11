@@ -29,23 +29,25 @@ describe('HexMatrix', () => {
     expect(w.find('polygon.mcell').attributes('stroke')).toBe('var(--ok)')
   })
 
-  it('flips a mid-bright cell (heat between 0.37 and 0.62) to dark ink', () => {
+  it("flips a cell's label to dark ink only once heat reaches needsDarkInk's INK_FLIP_T, not below it", () => {
     const w = mount(HexMatrix, {
       props: {
         users: [
           { label: 'a', count: 100 },
-          { label: 'b', count: 20 },
+          { label: 'b', count: 2 },
         ],
         passwords: [{ label: 'p', count: 1 }],
         pairs: [
           { username: 'a', password: 'p', count: 100, accepted: false },
-          { username: 'b', password: 'p', count: 20, accepted: false },
+          { username: 'b', password: 'p', count: 2, accepted: false },
         ],
       },
     })
     const labels = w.findAll('.mx-cell-label')
     expect(labels).toHaveLength(2)
-    expect(labels[0]!.classes()).toContain('dark')
+    // b: heat = (2/100)^0.45 ~= 0.17, below INK_FLIP_T (0.37) -> stays light ink.
+    expect(labels[0]!.classes()).not.toContain('dark')
+    // a: heat = (100/100)^0.45 = 1, at/above INK_FLIP_T -> flips to dark ink.
     expect(labels[1]!.classes()).toContain('dark')
   })
 

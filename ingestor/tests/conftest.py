@@ -72,7 +72,7 @@ def apply_migrations(db_url: str) -> None:
 
 _TRUNCATE = """
 TRUNCATE direct_tcpip_requests, client_fingerprints, ssh_clients,
-         downloads, commands, auth_attempts, sessions CASCADE;
+         downloads, commands, auth_attempts, sessions, geo_locations CASCADE;
 """
 
 
@@ -173,21 +173,5 @@ def sample_session_closed() -> str:
             "eventid": "cowrie.session.closed",
             "session": "abc123",
             "timestamp": "2024-01-15T10:31:00.000000Z",
-        }
-    )
-
-
-@pytest.fixture
-def sample_direct_tcpip_ip_dest() -> str:
-    """Direct-tcpip event with an IP literal destination."""
-    return json.dumps(
-        {
-            "eventid": "cowrie.direct-tcpip.request",
-            "session": "abc123",
-            "dst_ip": "203.0.113.100",
-            "dst_port": 443,
-            "src_ip": "192.168.1.100",
-            "src_port": 54321,
-            "timestamp": "2024-01-15T10:30:25.000000Z",
         }
     )

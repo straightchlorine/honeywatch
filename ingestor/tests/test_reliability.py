@@ -13,13 +13,15 @@ from unittest.mock import MagicMock
 import psycopg
 import pytest
 
-from src.events import LoginFailed
+from src.events import CommandInput, LoginFailed, SessionConnect
 from src.reliability import (
     Fuse,
     Outcome,
     Retry,
     Writer,
 )
+from src.writer import EventWriter
+from tests.conftest import DbConn
 
 
 def _make_recorder() -> tuple[Callable[[float], None], list[float]]:
@@ -219,3 +221,62 @@ def test_writer_sanitizes_raw_in_log(
     assert "\x1b" not in msg
     assert "\n" not in msg
     assert "\\x1b" in msg
+
+
+def test_retry_replay_is_deduped_by_write_event(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """The real mechanism behind test_writer.py's
+    test_duplicate_*_is_deduped family: `Retry` is documented as "retry
+    around an idempotent callable" and retries any `psycopg.Error`. If a
+    write's transaction commits but the caller still sees that error (an
+    ambiguous outcome - e.g. the connection drops between COMMIT and the
+    ack reaching this process), Retry calls `write_event` again with the
+    identical event. `commands` now has a unique index on
+    (session_id, timestamp), so that replayed insert's ON CONFLICT DO
+    NOTHING (writer.py) is a no-op rather than a second row.
+
+    Uses a real `Retry` and a real DB write (not a mock) so the outcome is
+    observed rather than assumed - and to be clear, this is a retry-layer
+    replay, not the tail.py scenario corrected in test_writer.py.
+    """
+    writer.write_event(
+        SessionConnect(
+            session_id="sess-retry-dup",
+            src_ip="203.0.113.5",
+            src_port=1,
+            dst_ip="10.0.0.1",
+            dst_port=22,
+            protocol="ssh",
+            timestamp=datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc),
+            sensor="honeypot-01",
+        )
+    )
+    event = CommandInput(
+        session_id="sess-retry-dup",
+        input="whoami",
+        timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
+    )
+
+    calls = 0
+
+    def flaky_write() -> None:
+        nonlocal calls
+        calls += 1
+        writer.write_event(event)  # real insert + commit, every call
+        if calls == 1:
+            raise psycopg.OperationalError("simulated ambiguous ack")
+
+    sleep, _ = _make_recorder()
+    retry = Retry(attempts=2, initial_backoff=0.0, sleep=sleep)
+
+    assert retry.run(flaky_write) is Outcome.SUCCESS
+    assert calls == 2  # Retry's second attempt really re-ran the write.
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM commands WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+    assert count is not None
+    assert count[0] == 1  # Second attempt really ran - and was deduped.
