@@ -1,5 +1,7 @@
 -- Per-app role split; only runs on initial PG init.
 
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;
+
 CREATE ROLE honeywatch_ingestor WITH LOGIN PASSWORD :'INGESTOR_PW';
 CREATE ROLE honeywatch_api      WITH LOGIN PASSWORD :'API_PW';
 

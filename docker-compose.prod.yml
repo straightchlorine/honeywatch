@@ -147,10 +147,14 @@ services:
       POSTGRES_API_PASSWORD: ${POSTGRES_API_PASSWORD:?POSTGRES_API_PASSWORD must be set}
       POSTGRES_INITDB_ARGS: >-
         -c password_encryption=scram-sha-256 -c log_connections=on -c log_disconnections=on -c log_statement=ddl -c shared_preload_libraries=pg_stat_statements -c shared_buffers=128MB -c work_mem=4MB -c max_connections=50 -c log_line_prefix='%t [%p]: [%l-1] user=%u,db=%d,app=%a,client=%h '
+    # Runtime tuning: INITDB_ARGS above only runs at cluster creation, so it
+    # cannot retune an existing volume. Command-line flags apply on every start.
     command:
       - postgres
       - -c
       - hba_file=/etc/postgresql/pg_hba.conf
+      - -c
+      - random_page_cost=1.1
     volumes:
       - postgres-data:/var/lib/postgresql/data
       - ./postgres/init.sh:/docker-entrypoint-initdb.d/00-roles.sh:ro,Z
