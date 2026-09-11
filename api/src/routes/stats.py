@@ -116,6 +116,14 @@ def stats_top_countries(query_args: dict[str, Any]) -> list[TopCountryDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_top_credentials(query_args: dict[str, Any]) -> list[TopCredentialDict]:
     """Return the top-N attempted credentials ranked by the chosen metric."""
+
+    # Credentials polls every 30s, these are top-N aggregates over many
+    # attempts. Two minutes doesn't matter much.
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return credentials.top_credentials(
         get_db(),
         by=query_args["by"],
@@ -177,6 +185,12 @@ def stats_asns(query_args: dict[str, Any]) -> list[CountryAsnDict]:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_auth_outcomes() -> AuthOutcomesDict:
     """Return the accept/reject split across all auth attempts."""
+
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return credentials.auth_outcomes(get_db())
 
 
@@ -197,6 +211,12 @@ def stats_outcomes(query_args: dict[str, Any]) -> OutcomeCountsDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_password_composition() -> PasswordCompositionDict:
     """Return the password length histogram + charset-class breakdown."""
+
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return credentials.password_composition(get_db())
 
 
@@ -208,6 +228,12 @@ def stats_password_composition() -> PasswordCompositionDict:
 @stats_bp.alt_response(500, "InternalServerError")
 def stats_passwords_by_length(query_args: dict[str, Any]) -> list[TopPasswordDict]:
     """Return the top-N passwords of a given length (histogram drill-down)."""
+
+    @after_this_request
+    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
+        response.headers["Cache-Control"] = "public, max-age=120"
+        return response
+
     return credentials.passwords_by_length(
         get_db(), query_args["length"], top_n=query_args["top_n"]
     )
