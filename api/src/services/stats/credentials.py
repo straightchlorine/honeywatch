@@ -29,11 +29,13 @@ PASSWORD_LENGTH_CAP = 16
 
 
 @overload
-def _cred(value: str) -> str: ...
+def _cred(value: str) -> str:
+    pass
 
 
 @overload
-def _cred(value: None) -> None: ...
+def _cred(value: None) -> None:
+    pass
 
 
 def _cred(value: str | None) -> str | None:

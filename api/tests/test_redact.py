@@ -111,6 +111,64 @@ def test_safe_host_keeps_real_names_and_as_orgs() -> None:
     assert safe_host("") is None
 
 
+def test_redacts_ip_flanked_by_control_chars() -> None:
+    """A control char immediately before/after the digit run does not confuse the
+    boundary guards; only the digits themselves are alnum-checked."""
+    assert redact_ips("\x1b1.2.3.4\x07") == "\x1b<ip>\x07"
+    assert redact_ips("\x00wget http://1.2.3.4/x\x00") == "\x00wget http://<ip>/x\x00"
+
+
+def test_ansi_sgr_terminator_blocks_the_alnum_boundary() -> None:
+    """Documents redact_ips's own regex in isolation, not a live end-to-end gap:
+    the IPv4 guard rejects any alnum immediately before the digits (so it does
+    not eat version strings like lib.so.1.2.3.4.5). An ANSI color code ends in
+    a letter (`m`), so `\\x1b[31m` immediately followed by an IP is
+    indistinguishable from that case and the IP is left un-blotted here.
+
+    Not reachable through the real pipeline: ingestor's `truncate()` strips
+    whole CSI escape sequences before storage, closing this gap upstream
+    (see sanitize.py's `_ANSI_ESCAPE`, proven end-to-end by
+    test_write_command_strips_ansi_so_embedded_ip_stays_redactable in
+    ingestor/tests/test_writer.py)."""
+    assert redact_ips("\x1b[31m1.2.3.4\x1b[0m") == "\x1b[31m1.2.3.4\x1b[0m"
+    # A separator between the escape code and the IP restores normal blotting.
+    assert redact_ips("\x1b[31m 1.2.3.4\x1b[0m") == "\x1b[31m <ip>\x1b[0m"
+
+
+def test_control_chars_alone_pass_through_unchanged() -> None:
+    """No IP-shaped text present: control chars are not this module's concern
+    (contrast ingestor's sanitize()/truncate(), which own control-char
+    stripping/escaping for their own log/storage sinks) and are left untouched."""
+    assert redact_ips("\x1b") == "\x1b"
+    assert redact_ips("\x07\x07\x07") == "\x07\x07\x07"
+    assert redact_ips("\x00") == "\x00"
+    assert redact_ips("\x00\x00\x00") == "\x00\x00\x00"
+
+
+def test_crlf_passes_through_around_a_blotted_ip() -> None:
+    """CR/LF is a log-forgery vector elsewhere, but redact_ips's only job is IP
+    blotting: line-ending bytes around the blot are left exactly as typed."""
+    assert redact_ips("get 1.2.3.4\r\ndone") == "get <ip>\r\ndone"
+
+
+def test_nul_byte_survives_ip_blotting() -> None:
+    """NUL bytes are not stripped by redact_ips (Postgres-storage NUL-stripping
+    is truncate()'s job in the ingestor, not this client-facing module's)."""
+    assert redact_ips("wget http://1.2.3.4/x\x00.sh") == "wget http://<ip>/x\x00.sh"
+    assert redact_ips("MGLNDD_204.168.164.170_22\x00") == "MGLNDD_<ip>_22\x00"
+
+
+def test_safe_host_ignores_control_chars_absent_an_ip_shape() -> None:
+    """safe_host only screens for address encodings; a stray control char in an
+    otherwise-real name is not itself an address, so it is not blanked."""
+    assert safe_host("exam\x00ple.com") == "exam\x00ple.com"
+    assert safe_host("cdn\x1b[31m.example.com") == "cdn\x1b[31m.example.com"
+
+
+def test_safe_host_still_blanks_an_ip_with_a_trailing_nul() -> None:
+    assert safe_host("1.2.3.4\x00") is None
+
+
 def test_numeric_host_pattern_does_not_backtrack_on_adversarial_input() -> None:
     """Attacker text is redacted inline, so the numeric-host pattern must stay linear.
 

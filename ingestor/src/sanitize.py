@@ -26,14 +26,25 @@ def sanitize(s: str | None, max_len: int = 500) -> str:
 
 _STORAGE_CONTROL_CHARS = re.compile(r"[\x00-\x08\x0a-\x1f\x7f]")
 
+# Strip whole CSI sequences, not just ESC. A bare ESC strip leaves the
+# printable tail (e.g. "[31m") right before the payload, and that trailing
+# letter defeats redact_ips's alnum-adjacency guard (exists to avoid
+# matching an IP embedded in an identifier): "\x1b[31mssh 192.168.1.1" would
+# store as "[31mssh 192.168.1.1", with "m" blocking redaction of the IP.
+# Scoped to CSI (ESC '[' params letter - colors, cursor moves, DEC private
+# modes), the realistic case for terminal input; an incomplete sequence
+# falls through to the control-char strip below.
+_ANSI_ESCAPE = re.compile(r"\x1b\[[0-9;?]*[A-Za-z]")
+
 
 def truncate(s: str | None, max_len: int) -> str | None:
-    """Strip control chars (keep `\\t`) and cap length for DB storage.
+    """Strip ANSI escapes and control chars (keep `\\t`), cap length for DB storage.
 
-    Preserves None for nullable columns. Strips NUL (Postgres rejects it)
-    and other C0/DEL chars (prevent log injection downstream). `\\t` is
-    kept - legitimate in attacker input. Control chars stripped before
-    length cap so max_len counts stored bytes.
+    Preserves None for nullable columns. Strips whole ANSI/VT100 escape
+    sequences (not just the ESC byte - see `_ANSI_ESCAPE`), NUL (Postgres
+    rejects it), and other C0/DEL chars (prevent log injection downstream).
+    `\\t` is kept - legitimate in attacker input. Stripped before the length
+    cap so max_len counts stored bytes.
 
     Arguments:
       s: attacker-supplied string or None
@@ -44,6 +55,7 @@ def truncate(s: str | None, max_len: int) -> str | None:
     """
     if s is None:
         return s
+    s = _ANSI_ESCAPE.sub("", s)
     s = _STORAGE_CONTROL_CHARS.sub("", s)
     if len(s) <= max_len:
         return s

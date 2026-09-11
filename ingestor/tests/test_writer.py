@@ -118,6 +118,33 @@ def test_write_command(
     assert row[2] is True
 
 
+def test_write_command_strips_ansi_so_embedded_ip_stays_redactable(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """An SGR color code immediately before an IP must not survive as literal
+    text: its trailing letter (e.g. the "m" in "\\x1b[31m") would sit directly
+    in front of the IP with no separator, defeating redact_ips's
+    alnum-adjacency guard downstream in the API. Proves the fix end-to-end
+    through the real write path, not just truncate() in isolation
+    (see test_sanitize.py::test_ansi_color_sequence_fully_stripped)."""
+    writer.write_event(_connect_event())
+    event = CommandInput(
+        session_id="sess-001",
+        input="\x1b[31mssh 192.168.1.1\x1b[0m",
+        timestamp=datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+
+    row = db_connection.execute(
+        "SELECT input FROM commands WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert row is not None
+    assert row[0] == "ssh 192.168.1.1"
+
+
 def test_write_download(
     writer: EventWriter,
     db_connection: DbConn,
@@ -455,6 +482,151 @@ def test_duplicate_session_ignored(
 
     assert count is not None
     assert count[0] == 1
+
+
+# --- Idempotency: same event written twice (documents actual behavior).
+#
+# NOT a tail.py replay risk: tail_follow() always seeks to EOF on open, on
+# both startup and rotation, so a restart never re-reads an already-yielded
+# line (see src/tail.py's docstring).
+#
+# The real risk is one layer up: src/reliability.py's `Retry.run` retries any
+# `psycopg.Error`, assuming the callable is idempotent - but `write_event` is
+# only idempotent for `sessions` (ON CONFLICT DO NOTHING) and
+# `ssh_clients`/`geo_locations` (upsert). If a write commits but the client
+# sees a `psycopg.Error` anyway (e.g. connection drops before the ack), Retry
+# replays the identical event. None of the five tables below has a unique
+# constraint, so the replay inserts a second row instead of being ignored.
+# See test_reliability.py::test_retry_duplicates_a_non_idempotent_write for
+# this exercised through the real Writer/Retry path. Pins down current
+# behavior, not desired behavior - see docs/internal/todo.md. ---
+
+
+def test_duplicate_auth_attempt_writes_two_rows(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """auth_attempts has no unique constraint; a replayed event double-inserts."""
+    writer.write_event(_connect_event())
+    event = LoginFailed(
+        session_id="sess-001",
+        username="root",
+        password="password123",
+        timestamp=datetime(2024, 1, 15, 10, 30, 5, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM auth_attempts WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 2
+
+
+def test_duplicate_command_writes_two_rows(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """commands has no unique constraint; a replayed event double-inserts."""
+    writer.write_event(_connect_event())
+    event = CommandInput(
+        session_id="sess-001",
+        input="cat /etc/passwd",
+        timestamp=datetime(2024, 1, 15, 10, 30, 15, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM commands WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 2
+
+
+def test_duplicate_download_writes_two_rows(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """downloads has no unique constraint; a replayed event double-inserts."""
+    writer.write_event(_connect_event())
+    event = FileDownload(
+        session_id="sess-001",
+        url="http://evil.com/malware.sh",
+        outfile="/tmp/malware.sh",
+        sha256="e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        timestamp=datetime(2024, 1, 15, 10, 30, 20, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM downloads WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 2
+
+
+def test_duplicate_client_fingerprint_writes_two_rows(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """client_fingerprints has no unique constraint; a replayed event double-inserts."""
+    writer.write_event(_connect_event())
+    event = ClientFingerprint(
+        session_id="sess-001",
+        username="root",
+        fingerprint="SHA256:n0tArealKeyFingerprintAAAAAAAAAAAAAAAAAAAAAA",
+        type="ssh-ed25519",
+        timestamp=datetime(2024, 1, 15, 10, 30, 3, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM client_fingerprints WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+
+    assert count is not None
+    assert count[0] == 2
+
+
+def test_duplicate_direct_tcpip_writes_two_rows(
+    writer: EventWriter,
+    db_connection: DbConn,
+) -> None:
+    """direct_tcpip_requests has no unique constraint; a replayed event
+    double-inserts (and double-increments sessions.n_tcpip, since the
+    counter update runs in the same transaction as each insert)."""
+    writer.write_event(_connect_event())
+    event = DirectTcpipRequest(
+        session_id="sess-001",
+        dst_ip="smtp.example.com",
+        dst_port=25,
+        src_ip="127.0.0.1",
+        src_port=40000,
+        timestamp=datetime(2024, 1, 15, 10, 30, 4, tzinfo=timezone.utc),
+    )
+    writer.write_event(event)
+    writer.write_event(event)
+
+    count = db_connection.execute(
+        "SELECT count(*) FROM direct_tcpip_requests WHERE session_id = %s",
+        (event.session_id,),
+    ).fetchone()
+    assert count is not None
+    assert count[0] == 2
+
+    n_tcpip = _session_counters(db_connection, "sess-001")[2]
+    assert n_tcpip == 2
 
 
 def test_geo_enrichment_populates_geo_locations(
@@ -883,6 +1055,52 @@ _CAP_CASES = [
         "SELECT dst_ip FROM direct_tcpip_requests WHERE session_id = %s",
         writer_module._LEN_HOST,
         id="dst_ip",
+    ),
+    pytest.param(
+        LoginFailed(
+            session_id="sess-001", username="A" * 300, password="x", timestamp=_TS
+        ),
+        "SELECT username FROM auth_attempts WHERE session_id = %s",
+        writer_module._LEN_USERNAME,
+        id="username",
+    ),
+    pytest.param(
+        LoginFailed(
+            session_id="sess-001", username="root", password="A" * 300, timestamp=_TS
+        ),
+        "SELECT password FROM auth_attempts WHERE session_id = %s",
+        writer_module._LEN_PASSWORD,
+        id="password",
+    ),
+    pytest.param(
+        CommandInput(session_id="sess-001", input="A" * 10_000, timestamp=_TS),
+        "SELECT input FROM commands WHERE session_id = %s",
+        writer_module._LEN_COMMAND_INPUT,
+        id="command_input",
+    ),
+    pytest.param(
+        FileDownload(
+            session_id="sess-001",
+            url="http://evil.com/" + "A" * 3000,
+            outfile="/tmp/x",
+            sha256="0" * 64,
+            timestamp=_TS,
+        ),
+        "SELECT url FROM downloads WHERE session_id = %s",
+        writer_module._LEN_URL,
+        id="download_url",
+    ),
+    pytest.param(
+        FileDownload(
+            session_id="sess-001",
+            url="http://evil.com/x",
+            outfile="/tmp/" + "A" * 1000,
+            sha256="0" * 64,
+            timestamp=_TS,
+        ),
+        "SELECT outfile FROM downloads WHERE session_id = %s",
+        writer_module._LEN_OUTFILE,
+        id="download_outfile",
     ),
 ]
 

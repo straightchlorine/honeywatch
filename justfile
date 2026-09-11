@@ -52,6 +52,32 @@ test-api:
 test-ingestor:
     cd ingestor && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" POSTGRES_TEST_DB=honeywatch_test uv run pytest -q
 
+# Coverage for one submodule: `just cov api`, `just cov ingestor`, `just cov dashboard`.
+cov module:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    case "{{module}}" in
+      api)
+        cd api && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" POSTGRES_TEST_DB=honeywatch_test uv run --extra dev pytest -q --cov=src --cov-report=term-missing
+        ;;
+      ingestor)
+        cd ingestor && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" POSTGRES_TEST_DB=honeywatch_test uv run pytest -q --cov=src --cov-report=term-missing
+        ;;
+      dashboard)
+        cd dashboard && pnpm exec vitest run --coverage
+        ;;
+      *)
+        echo "unknown module '{{module}}' - use api, ingestor, or dashboard" >&2
+        exit 1
+        ;;
+    esac
+
+# Coverage for all three submodules.
+cov-all:
+    just cov api
+    just cov ingestor
+    just cov dashboard
+
 # Full CI mirror (minus the Playwright e2e; `just pnpm e2e` for that).
 test:
     just db test-init

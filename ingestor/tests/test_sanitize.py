@@ -56,6 +56,21 @@ class TestTruncate:
         # Length cap counts stored chars, not input (stripped chars don't count).
         assert truncate("a\x00\x00\x00b", 2) == "ab"
 
+    def test_ansi_color_sequence_fully_stripped(self) -> None:
+        # Stripping only the ESC byte would leave "[31m" as literal text,
+        # whose trailing "m" sits directly in front of the IP with no
+        # separator - defeating redact_ips's alnum-adjacency guard downstream.
+        assert truncate("\x1b[31mssh 192.168.1.1\x1b[0m", 500) == "ssh 192.168.1.1"
+
+    def test_ansi_cursor_and_dec_private_mode_sequences_stripped(self) -> None:
+        assert truncate("a\x1b[2K\x1b[?25lb", 10) == "ab"
+
+    def test_incomplete_escape_sequence_falls_back_to_lone_esc_strip(self) -> None:
+        # No final letter, so the CSI regex doesn't match; the plain
+        # control-char strip still removes the bare ESC byte, leaving the
+        # rest of the (harmless, non-IP) text as literal characters.
+        assert truncate("a\x1b[31", 10) == "a[31"
+
 
 class TestSanitize:
     def test_none_yields_empty(self) -> None:

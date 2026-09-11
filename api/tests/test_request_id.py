@@ -31,3 +31,21 @@ def test_request_id_sanitized(client: Any) -> None:
 def test_request_id_length_capped(client: Any) -> None:
     response = client.get("/health", headers={"X-Request-Id": "a" * 200})
     assert len(response.headers["X-Request-Id"]) <= 64
+
+
+def test_request_id_sanitizes_to_empty_mints_uuid(client: Any) -> None:
+    """Inbound value of only disallowed chars sanitizes to nothing, minting a UUID."""
+    response = client.get("/health", headers={"X-Request-Id": "<<< >>>"})
+    rid = response.headers["X-Request-Id"]
+    assert rid != ""
+    assert rid != "<<< >>>"
+    assert re.fullmatch(r"[A-Fa-f0-9]{32}", rid), rid
+
+
+def test_request_id_nul_byte_sanitized_to_empty_mints_uuid(client: Any) -> None:
+    """NUL-byte-only inbound value sanitizes to nothing, so a fresh UUID is minted."""
+    response = client.get("/health", headers={"X-Request-Id": "\x00\x00"})
+    rid = response.headers["X-Request-Id"]
+    assert rid != ""
+    assert rid != "\x00\x00"
+    assert re.fullmatch(r"[A-Fa-f0-9]{32}", rid), rid

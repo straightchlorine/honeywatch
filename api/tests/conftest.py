@@ -130,6 +130,43 @@ def get_urls(app: Any) -> Any:
     return _build
 
 
+def make_counter_session(
+    db_session: Session,
+    session_id: str,
+    *,
+    src_ip: str = "203.0.113.10",
+    n_commands: int = 0,
+    n_downloads: int = 0,
+    n_tcpip: int = 0,
+    auth_success: bool = False,
+    started_at: datetime | None = None,
+    ended_at: datetime | None = None,
+    country_code: str | None = None,
+) -> HoneypotSession:
+    """Counter-only session (no child rows) shared by test_sessions.py and
+    test_stats.py for testing summary columns directly rather than via joins.
+    """
+    session = HoneypotSession(
+        id=session_id,
+        src_ip=src_ip,
+        src_port=1,
+        dst_port=22,
+        protocol="ssh",
+        started_at=started_at or datetime.now(timezone.utc),
+        ended_at=ended_at,
+        n_commands=n_commands,
+        n_downloads=n_downloads,
+        n_tcpip=n_tcpip,
+        auth_success=auth_success,
+    )
+    db_session.add(session)
+    db_session.flush()
+    if country_code is not None:
+        db_session.add(GeoLocation(ip=src_ip, country_code=country_code))
+        db_session.flush()
+    return session
+
+
 @pytest.fixture()
 def seed_data(db_session: Session) -> dict[str, Any]:
     now = datetime.now(timezone.utc)
