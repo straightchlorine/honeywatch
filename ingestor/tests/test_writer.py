@@ -499,7 +499,7 @@ def test_duplicate_session_ignored(
 # constraint, so the replay inserts a second row instead of being ignored.
 # See test_reliability.py::test_retry_duplicates_a_non_idempotent_write for
 # this exercised through the real Writer/Retry path. Pins down current
-# behavior, not desired behavior - see docs/internal/todo.md. ---
+# behavior, not desired behavior. ---
 
 
 def test_duplicate_auth_attempt_writes_two_rows(
