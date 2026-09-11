@@ -37,10 +37,10 @@
     type BarRow,
   } from '@/utils/credentials'
 
-  // Fast lenses (matrix rows/cols/pairs): 30s (matches endpoint Cache-Control);
-  // full-scan aggregates: 60s.
-  const POLL_MS = 30_000
-  const POLL_SLOW_MS = 60_000
+  // These endpoints send Cache-Control: max-age=120, so polling faster than that
+  // only re-reads the browser's own cache and never reaches the API. One value,
+  // matching the cache, instead of two that pretend to be quicker.
+  const POLL_MS = 120_000
   const MATRIX_USERS = 8
   // API max is 100 (validate.Range in common.py); HexMatrix reports actual
   // drawn count via @shown, so fetch conservatively.
@@ -65,13 +65,13 @@
   })
   const outcomesQ = useQuery({
     ...statsAuthOutcomesOptions(),
-    refetchInterval: POLL_SLOW_MS,
-    staleTime: POLL_SLOW_MS,
+    refetchInterval: POLL_MS,
+    staleTime: POLL_MS,
   })
   const compositionQ = useQuery({
     ...statsPasswordCompositionOptions(),
-    refetchInterval: POLL_SLOW_MS,
-    staleTime: POLL_SLOW_MS,
+    refetchInterval: POLL_MS,
+    staleTime: POLL_MS,
   })
 
   await Promise.all([

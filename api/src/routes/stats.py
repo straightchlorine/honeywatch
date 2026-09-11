@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from flask import after_this_request
+from flask import Response, after_this_request
 from flask_smorest import Blueprint, abort
 
 from src.extensions import get_db
@@ -77,6 +77,22 @@ stats_bp = Blueprint(
 )
 
 
+def _cache_for(seconds: int) -> None:
+    """Let clients reuse a SUCCESSFUL response for `seconds`.
+
+    The status guard is load-bearing. security_headers.py sets no-store for
+    status >= 400 with setdefault, and after_this_request callbacks run before
+    it, so assigning unconditionally here would win and let the shared nginx
+    cache replay a 500 to every viewer until it expired.
+    """
+
+    @after_this_request
+    def _set(response: Response) -> Response:  # pyright: ignore[reportUnusedFunction]
+        if response.status_code < 400:
+            response.headers["Cache-Control"] = f"public, max-age={seconds}"
+        return response
+
+
 @stats_bp.route("/totals")
 @stats_bp.doc(operationId="statsTotals")
 @stats_bp.response(200, TotalsResponse)
@@ -119,10 +135,7 @@ def stats_top_credentials(query_args: dict[str, Any]) -> list[TopCredentialDict]
 
     # Credentials polls every 30s, these are top-N aggregates over many
     # attempts. Two minutes doesn't matter much.
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return credentials.top_credentials(
         get_db(),
@@ -145,10 +158,7 @@ def stats_countries(query_args: dict[str, Any]) -> CountriesDict:
 
     # Origins polls these every 120s; the aggregates move slowly, so let the
     # browser reuse them instead of re-running the scan on every poll.
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return countries.country_breakdown(
         get_db(),
@@ -169,10 +179,7 @@ def stats_asns(query_args: dict[str, Any]) -> list[CountryAsnDict]:
 
     # Origins polls these every 120s; the aggregates move slowly, so let the
     # browser reuse them instead of re-running the scan on every poll.
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return countries.country_asns(
         get_db(), country=query_args.get("country"), top_n=query_args["top_n"]
@@ -186,10 +193,7 @@ def stats_asns(query_args: dict[str, Any]) -> list[CountryAsnDict]:
 def stats_auth_outcomes() -> AuthOutcomesDict:
     """Return the accept/reject split across all auth attempts."""
 
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return credentials.auth_outcomes(get_db())
 
@@ -212,10 +216,7 @@ def stats_outcomes(query_args: dict[str, Any]) -> OutcomeCountsDict:
 def stats_password_composition() -> PasswordCompositionDict:
     """Return the password length histogram + charset-class breakdown."""
 
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return credentials.password_composition(get_db())
 
@@ -229,10 +230,7 @@ def stats_password_composition() -> PasswordCompositionDict:
 def stats_passwords_by_length(query_args: dict[str, Any]) -> list[TopPasswordDict]:
     """Return the top-N passwords of a given length (histogram drill-down)."""
 
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return credentials.passwords_by_length(
         get_db(), query_args["length"], top_n=query_args["top_n"]
@@ -281,10 +279,7 @@ def stats_heatmap(query_args: dict[str, Any]) -> list[HeatmapPointDict]:
 def stats_map() -> MapDataDict:
     """Return one payload for the Overview map deck: choropleth + city markers."""
 
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return map_deck.map_data(get_db())
 
@@ -302,10 +297,7 @@ def stats_country_detail(_path_args: dict[str, Any], a2: str) -> CountryDetailDi
     if result is None:
         abort(404, message="Country not found")
 
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=300"
-        return response
+    _cache_for(300)
 
     return result
 
@@ -321,10 +313,7 @@ def stats_ssh_clients(query_args: dict[str, Any]) -> list[SshClientDict]:
 
     # Origins polls these every 120s; the aggregates move slowly, so let the
     # browser reuse them instead of re-running the scan on every poll.
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return clients.ssh_clients(get_db(), top_n=query_args["top_n"])
 
@@ -340,10 +329,7 @@ def stats_fingerprints(query_args: dict[str, Any]) -> list[FingerprintDict]:
 
     # Origins polls these every 120s; the aggregates move slowly, so let the
     # browser reuse them instead of re-running the scan on every poll.
-    @after_this_request
-    def _cache(response: Any) -> Any:  # pyright: ignore[reportUnusedFunction]
-        response.headers["Cache-Control"] = "public, max-age=120"
-        return response
+    _cache_for(120)
 
     return clients.fingerprints(get_db(), top_n=query_args["top_n"])
 

@@ -46,6 +46,8 @@ pnpm *args:
     cd dashboard && pnpm {{args}}
 
 # Fast pytest against the dev postgres' test DB (`just dev` first).
+# A wall of alembic "Can't locate revision" errors means a sibling worktree
+# sharing this postgres migrated honeywatch_test: `just db test-reset`.
 test-api:
     cd api && POSTGRES_HOST=localhost POSTGRES_PORT="${POSTGRES_HOST_PORT:-5433}" POSTGRES_TEST_DB=honeywatch_test uv run --extra dev pytest -q
 
