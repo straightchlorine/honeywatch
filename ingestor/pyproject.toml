@@ -19,7 +19,7 @@ dependencies = [
 dev = [
     "pytest>=9.1.1",
     "pytest-cov>=7.1.0",
-    "ruff>=0.16.8",
+    "ruff>=0.16.9",
     "pyright>=1.1.414",
 ]
 
