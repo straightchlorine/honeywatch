@@ -333,6 +333,8 @@ async function dismissIntro(page: Page): Promise<void> {
 }
 
 async function expectAxeClean(page: Page): Promise<void> {
+  // The loading splash covers the page and animates; wait until it is gone, then scan.
+  await expect(page.locator('#hw-splash')).toHaveCount(0)
   // Mid-transition, colors interpolate and fail contrast checks on elements that are fine at rest.
   // Infinite keyframe animations never finish, so only CSS transitions are awaited.
   await page.waitForFunction(() =>
@@ -680,9 +682,149 @@ test.describe('dashboard accessibility smoke', () => {
     const alert = page.getByRole('alert')
     await expect(alert).toBeVisible({ timeout: 15_000 })
     await expect(alert).toContainText('Something went wrong')
+    // A failed view never resolves Suspense, so the error boundary must remove the splash.
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
 
     fail = false
     await alert.getByRole('button', { name: 'Try again' }).click()
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
+  })
+})
+
+// Overview cannot render until /stats/map answers, so delaying it keeps the splash up
+// until release() is called.
+async function holdMap(page: Page): Promise<() => void> {
+  let release!: () => void
+  const gate = new Promise<void>((r) => (release = r))
+  await page.route('**/api/v1/stats/map', async (route) => {
+    await gate
+    await route.fallback()
+  })
+  return release
+}
+
+test.describe('boot splash', () => {
+  test.beforeEach(async ({ page }) => {
+    await mockApi(page)
+  })
+
+  test('stays up until the first view is in, then leaves before About opens', async ({ page }) => {
+    const errors: string[] = []
+    page.on('console', (m) => m.type() === 'error' && errors.push(m.text()))
+    page.on('pageerror', (e) => errors.push(e.message))
+    // Sets window.aboutOverSplash if the About dialog ever exists while the splash does.
+    await page.addInitScript(() => {
+      new MutationObserver(() => {
+        if (
+          document.querySelector('[aria-label="About Honeywatch"]') &&
+          document.getElementById('hw-splash')
+        )
+          Object.assign(window, { aboutOverSplash: true })
+      }).observe(document, { childList: true, subtree: true })
+    })
+    // Overview needs the map data to render; the .topbar check below confirms it has not.
+    const release = await holdMap(page)
+
+    await page.goto('/')
+    const splash = page.locator('#hw-splash')
+    await expect(splash).toHaveAttribute('role', 'status')
+    // Suspense resolves once at mount, before the first route loads; that must not
+    // remove the splash.
+    await page.waitForFunction(() => performance.now() > 1200)
+    await expect(page.locator('.topbar')).toHaveCount(0)
+    await expect(splash).toBeVisible()
+    await expect(splash).not.toHaveAttribute('data-state', 'exit')
+    // The hint is visibility:hidden until it appears at 5s, so screen readers do not hear
+    // it early.
+    expect(await splash.ariaSnapshot()).not.toContain('Still loading')
+
+    release()
+    await expect(splash).toHaveCount(0)
+    await expect(page.getByRole('dialog', { name: 'About Honeywatch' })).toBeVisible()
+    expect(await page.evaluate(() => 'aboutOverSplash' in window)).toBe(false)
+    expect(errors).toEqual([])
+  })
+
+  test('reduced motion drops the turning loop but keeps the splash', async ({ page }) => {
+    await page.route('**/assets/*.js', (r) => r.abort()) // no app, so nothing ever removes the splash
+    const turning = () =>
+      page.evaluate(() =>
+        document.getAnimations().some((a) => (a as CSSAnimation).animationName === 'hw-turn'),
+      )
+    await page.goto('/')
+    await expect(page.locator('#hw-splash')).toBeVisible()
+    expect(await turning()).toBe(true)
+    await expect(page.locator('.hw-mark')).toHaveCSS('animation-name', 'hw-in-s')
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    expect(await turning()).toBe(false)
+    // Opacity-only fade-in, no scale.
+    await expect(page.locator('.hw-mark')).toHaveCSS('animation-name', 'hw-in')
+    // tokens.css cuts animations to 0.01ms for reduced motion; index.html restores the fades.
+    await expect(page.locator('.hw-mark')).toHaveCSS('animation-duration', '0.48s')
+    await expect(page.locator('#hw-splash')).toBeVisible()
+  })
+
+  test('a load that outlasts the failsafe is removed without replaying the exit', async ({
+    page,
+  }) => {
+    await page.addInitScript(() => {
+      new MutationObserver(() => Object.assign(window, { exitReplayed: true })).observe(document, {
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['data-state'],
+      })
+    })
+    const release = await holdMap(page)
+    await page.goto('/')
+    const splash = page.locator('#hw-splash')
+    // Skip the waits: jump the 5s hint and the 12s failsafe fade-out to their end.
+    const finish = (name: string) =>
+      page.evaluate(
+        (n) =>
+          document
+            .getAnimations()
+            .find((a) => (a as CSSAnimation).animationName === n)
+            ?.finish(),
+        name,
+      )
+    await finish('hw-hint-in')
+    await expect(splash.getByText('Still loading - hang tight.')).toBeVisible()
+    expect(await splash.ariaSnapshot()).toContain('Still loading')
+    await finish('hw-failsafe')
+    await expect(splash).toHaveCSS('visibility', 'hidden')
+
+    release()
+    await expect(splash).toHaveCount(0)
+    expect(await page.evaluate(() => 'exitReplayed' in window)).toBe(false)
+  })
+
+  test('the hexagon reveal ends with a ring centred on the honeypot marker', async ({ page }) => {
+    // Release the map once the splash has been up 800ms (on its own clock, as splash.ts reads
+    // it), past the 500ms fast-exit limit, so it leaves through the hexagon reveal.
+    const release = await holdMap(page)
+    await page.goto('/')
+    await page.waitForFunction(
+      () => Number(document.getElementById('hw-splash')?.getAnimations()[0]?.currentTime) > 800,
+    )
+    release()
+
+    // The mocked map has no Helsinki city, so the ring sits on the plain sensor marker.
+    await page.locator('html[data-hw-exit]').waitFor({ state: 'attached' })
+    const centres = await page.evaluate(() => {
+      const mid = (el: Element) => {
+        const b = el.getBoundingClientRect()
+        return { x: b.x + b.width / 2, y: b.y + b.height / 2 }
+      }
+      return {
+        ring: mid(document.querySelector('.boot-ping:not(.boot-ping-under)')!),
+        marker: mid(document.querySelector('.sensor')!),
+      }
+    })
+    expect(Math.abs(centres.ring.x - centres.marker.x)).toBeLessThan(1)
+    expect(Math.abs(centres.ring.y - centres.marker.y)).toBeLessThan(1)
+    await expect(page.locator('.boot-ping').last()).toHaveCSS('animation-name', /boot-ping/)
+
+    // The attribute leaves, so coming back to Overview later never replays it.
+    await expect(page.locator('html')).not.toHaveAttribute('data-hw-exit', '')
   })
 })

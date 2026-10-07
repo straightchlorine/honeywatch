@@ -2,6 +2,7 @@
   import { computed, onErrorCaptured, ref } from 'vue'
   import { useQueryClient } from '@tanstack/vue-query'
   import { sanitizeAttackerText } from '@/utils/sanitize'
+  import { exitSplash } from '@/utils/splash'
 
   withDefaults(
     defineProps<{
@@ -33,6 +34,9 @@
   onErrorCaptured((err, _instance, info) => {
     if (import.meta.env.DEV) console.error('[ErrorBoundary]', err, info)
     error.value = toError(err)
+    // Showing this alert removes the Suspense below, so nothing else would tell the
+    // loading splash to leave, and the splash would stay on top of the alert.
+    exitSplash()
     return false
   })
 

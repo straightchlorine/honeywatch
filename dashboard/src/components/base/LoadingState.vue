@@ -1,67 +1,68 @@
 <script setup lang="ts">
-  import { computed } from 'vue'
-  import Spinner from './Spinner.vue'
-
-  type Variant = 'inline' | 'block' | 'overlay'
-  type Size = 'sm' | 'md' | 'lg'
-
-  const props = withDefaults(
-    defineProps<{
-      label?: string
-      variant?: Variant
-      size?: Size
-    }>(),
-    { label: 'Loading...', variant: 'block', size: 'md' },
-  )
-
-  const rootClass = computed(() => `loading loading-${props.variant}`)
+  /**
+   * Suspense fallback while a page loads during in-app navigation: the same turning
+   * hexagon as the full-screen loading splash (#hw-splash in index.html), centred. It
+   * fades in after 220ms, so quick navigations never show it.
+   */
+  import HexIcon from './HexIcon.vue'
 </script>
 
 <template>
-  <div :class="rootClass" role="status" aria-live="polite">
-    <Spinner :size="size" decorative />
-    <span class="loading-label">{{ label }}</span>
+  <div class="loading" role="status">
+    <HexIcon :size="36" class="loading-mark" />
+    <span class="visually-hidden">Loading</span>
   </div>
 </template>
 
 <style scoped>
   .loading {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--space-2);
-    color: var(--text-muted);
-    font-size: var(--type-sm);
-    line-height: var(--type-sm-lh);
-  }
-
-  .loading-block {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: var(--space-3);
-    padding: var(--space-6) var(--space-5);
-    width: 100%;
-    min-height: 120px;
-  }
-
-  .loading-overlay {
-    position: absolute;
+    position: fixed;
     inset: 0;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    gap: var(--space-3);
-    background: color-mix(in srgb, var(--bg-0) 70%, transparent);
-    backdrop-filter: blur(2px);
-    -webkit-backdrop-filter: blur(2px);
-    border-radius: inherit;
-    z-index: 10;
+    display: grid;
+    place-items: center;
+    pointer-events: none;
+    /* tokens.css's reduced-motion rule shortens durations but not delays, so the 220ms
+       wait always applies; fill mode "both" keeps the mark invisible until it ends. */
+    animation: loading-in 300ms ease 220ms both;
   }
 
-  .loading-label {
-    color: var(--text-muted);
-    font-size: var(--type-sm);
-    line-height: var(--type-sm-lh);
-    font-variant-numeric: tabular-nums;
+  /* tokens.css cuts animations to almost nothing for reduced motion. A fade is not
+     movement, so keep it rather than pop the mark in (index.html does the same). */
+  @media (prefers-reduced-motion: reduce) {
+    .loading {
+      animation-duration: 300ms !important;
+    }
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    /* Same turn as the splash logo (hw-turn in index.html): 60deg with a slight overshoot,
+       then a hold. A hexagon repeats every 60deg, so the loop restart is invisible. */
+    .loading-mark {
+      animation: loading-turn 1400ms linear 220ms infinite;
+    }
+  }
+
+  @keyframes loading-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+
+  @keyframes loading-turn {
+    0% {
+      transform: rotate(0);
+      animation-timing-function: cubic-bezier(0.62, 0, 0.22, 1);
+    }
+    34% {
+      transform: rotate(62.5deg);
+      animation-timing-function: cubic-bezier(0.3, 0, 0.3, 1);
+    }
+    46%,
+    100% {
+      transform: rotate(60deg);
+    }
   }
 </style>
