@@ -13,7 +13,7 @@ RUN pnpm build
 
 FROM nginx:1.31-alpine-slim@sha256:1870de6d59aafee152589b64404556d2535922cdd998e6dac1c4888c938ed8f9 AS runtime
 
-RUN apk upgrade --no-cache libssl3 libcrypto3 pcre2
+RUN apk upgrade --no-cache libssl3 libcrypto3 pcre2 zlib
 
 COPY --from=build /app/dist /usr/share/nginx/html
 COPY nginx.conf /etc/nginx/conf.d/default.conf
