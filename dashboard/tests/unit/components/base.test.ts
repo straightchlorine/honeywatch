@@ -1,10 +1,7 @@
 import { mount } from '@vue/test-utils'
 import { describe, expect, it } from 'vitest'
 import EmptyState from '@/components/base/EmptyState.vue'
-import Spinner from '@/components/base/Spinner.vue'
 import LoadingState from '@/components/base/LoadingState.vue'
-
-
 
 describe('EmptyState', () => {
   it('defaults to an h2 heading', () => {
@@ -22,27 +19,11 @@ describe('EmptyState', () => {
   })
 })
 
-
-
-describe('Spinner', () => {
-  it('exposes a status role with a hidden label by default', () => {
-    const w = mount(Spinner)
-    expect(w.get('span').attributes('role')).toBe('status')
-    expect(w.text()).toContain('Loading')
-  })
-
-  it('is aria-hidden with no role when decorative', () => {
-    const w = mount(Spinner, { props: { decorative: true } })
-    expect(w.get('span').attributes('aria-hidden')).toBe('true')
-    expect(w.get('span').attributes('role')).toBeUndefined()
-  })
-})
-
 describe('LoadingState', () => {
-  it('is a polite status region with a label', () => {
-    const w = mount(LoadingState, { props: { label: 'Loading data' } })
+  it('is a status region with a hidden label and a decorative mark', () => {
+    const w = mount(LoadingState)
     expect(w.get('.loading').attributes('role')).toBe('status')
-    expect(w.get('.loading').attributes('aria-live')).toBe('polite')
-    expect(w.text()).toContain('Loading data')
+    expect(w.get('.visually-hidden').text()).toBe('Loading')
+    expect(w.get('svg').attributes('aria-hidden')).toBe('true')
   })
 })

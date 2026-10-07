@@ -586,6 +586,22 @@
           </g>
         </g>
         <SensorMarker v-if="!helsinkiDot" :x="sensor[0]" :y="sensor[1]" />
+        <!-- Helsinki ring: as the loading splash leaves through its hexagon reveal, a hexagon
+             outline expands and fades on the honeypot marker. utils/splash.ts starts it by
+             setting data-hw-exit on <html>. -->
+        <g
+          :transform="`translate(${helsinkiDot?.x ?? sensor[0]},${helsinkiDot?.y ?? sensor[1]})`"
+          pointer-events="none"
+          aria-hidden="true"
+        >
+          <!-- Dark under-stroke first so the cream ring also reads over bright land. -->
+          <polygon
+            v-for="cls in ['boot-ping boot-ping-under', 'boot-ping']"
+            :key="cls"
+            :class="cls"
+            :points="hexPoints(0, 0, helsinkiDot ? helsinkiDot.r * 3.5 * cityScale : 3.2)"
+          />
+        </g>
         <!-- Fire-and-forget animation layer: every dot created into this
              inherits aria-hidden, so it can never leak into the a11y tree. -->
         <g ref="arcsGroup" class="arcs" aria-hidden="true" />
@@ -643,6 +659,43 @@
   .worldmap.panning .country,
   .worldmap.panning .city-hit {
     pointer-events: none;
+  }
+
+  .boot-ping {
+    fill: none;
+    stroke: var(--text);
+    stroke-width: 1.5;
+    vector-effect: non-scaling-stroke;
+    transform-box: fill-box;
+    transform-origin: center;
+    opacity: 0;
+  }
+
+  .boot-ping-under {
+    stroke: var(--bg-0);
+    stroke-width: 4;
+    stroke-opacity: 0.55;
+  }
+
+  /* The 250ms delay starts the ring when the growing edge of the hexagon reveal (hw-x-iris
+     in index.html) reaches Helsinki: measured at about 240ms on phones, 280ms on desktop. Retime it if that animation changes.
+     Keep the html[data-hw-exit] part unwrapped: inside :global() Vue's scoped-CSS compiler
+     drops the .boot-ping that follows, and the animation would land on <html> itself. */
+  @media (prefers-reduced-motion: no-preference) {
+    html[data-hw-exit] .boot-ping {
+      animation: boot-ping 760ms cubic-bezier(0.22, 0.61, 0.36, 1) 250ms forwards;
+    }
+  }
+
+  @keyframes boot-ping {
+    from {
+      transform: scale(0.8);
+      opacity: 0.9;
+    }
+    to {
+      transform: scale(3.4);
+      opacity: 0;
+    }
   }
 
   .graticule {

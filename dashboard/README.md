@@ -21,7 +21,7 @@ src/
     generated/    openapi-ts output (committed + drift-gated; regen via just openapi-regen)
   assets/         tokens.css and global styles
   components/
-    base/         reusable primitives (Card, Stat, Spinner, LoadingState, EmptyState, BarList, PageHeader, ErrorBoundary, Pagination)
+    base/         reusable primitives (Card, Stat, LoadingState, EmptyState, BarList, PageHeader, ErrorBoundary, Pagination)
     layout/       AppShell and friends
   views/          route-level components
   router/         vue-router config

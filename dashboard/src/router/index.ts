@@ -7,6 +7,7 @@
 import { createRouter, createWebHistory, type RouteRecordRaw } from 'vue-router'
 import { retryImport, isChunkLoadError, attemptStaleChunkReload } from '@/utils/retryImport'
 import { applyRouteHead, SITE_URL } from '@/seo/head'
+import { exitSplash } from '@/utils/splash'
 import seoRoutes from '@/seo/routes.json'
 
 // Per-route SEO copy (title / <title> / description) lives in routes.json so
@@ -110,8 +111,11 @@ const router = createRouter({
 
 // Backstop: if a lazy route chunk fails to load past retryImport's own
 // recovery, fall back to the same guarded reload (no-op if it just reloaded).
+// Without a reload (or for any other navigation error) no view will render, so remove
+// the loading splash rather than leave a loading screen that never finishes.
 router.onError((err) => {
-  if (isChunkLoadError(err)) attemptStaleChunkReload()
+  if (isChunkLoadError(err) && attemptStaleChunkReload()) return
+  exitSplash()
 })
 
 // Keep the document head in sync per route (title, description, canonical, og).

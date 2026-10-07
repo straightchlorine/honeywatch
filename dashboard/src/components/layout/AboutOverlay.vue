@@ -7,6 +7,7 @@
   import IconLink from '../IconLink.vue'
   import { ICONS } from '../icons'
   import { readStored, writeStored } from '@/utils/safeStorage'
+  import { afterSplash } from '@/utils/splash'
 
   const open = defineModel<boolean>({ default: false })
 
@@ -46,21 +47,28 @@
     if (location.hash === '#about') open.value = true
   }
 
+  // Open the card only once the loading splash is gone, so it does not open behind it
+  // and its 5.2s auto-dismiss timer does not run while nobody can see it.
+  let cancelAfterSplash = () => {}
+
   onMounted(() => {
     const firstVisit = !readStored('localStorage', SEEN_KEY)
-    if (location.hash === '#about') {
-      open.value = true // deep link: stays open, no timer
-    } else if (firstVisit) {
-      open.value = true
-      autoDismissing.value = true
-      autoTimer = setTimeout(dismiss, AUTO_DISMISS_MS)
-    }
-    if (firstVisit) writeStored('localStorage', SEEN_KEY, '1')
+    cancelAfterSplash = afterSplash(() => {
+      if (location.hash === '#about') {
+        open.value = true // deep link: stays open, no timer
+      } else if (firstVisit) {
+        open.value = true
+        autoDismissing.value = true
+        autoTimer = setTimeout(dismiss, AUTO_DISMISS_MS)
+      }
+      if (firstVisit) writeStored('localStorage', SEEN_KEY, '1')
+    })
     window.addEventListener('hashchange', onHashChange)
     window.addEventListener('keydown', onKeydown)
   })
 
   onUnmounted(() => {
+    cancelAfterSplash()
     clearTimeout(autoTimer)
     window.removeEventListener('hashchange', onHashChange)
     window.removeEventListener('keydown', onKeydown)

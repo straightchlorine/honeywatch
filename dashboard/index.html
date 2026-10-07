@@ -5,7 +5,130 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <link rel="icon" href="/favicon.ico" sizes="any" />
-    <meta name="theme-color" content="#1a1410" />
+    <meta name="theme-color" content="#120d09" />
+
+    <!-- prettier-ignore -->
+    <style>
+    /* Loading splash, shown from the first paint until the app has rendered. Plain CSS because the CSP forbids
+       inline script; src/utils/splash.ts decides when it leaves. Colours are copied from src/assets/tokens.css.
+       The wordmark is the TopBar's "Honeywatch" (Bricolage Grotesque 700) converted to an SVG path, so it needs
+       no web font; regenerate the path if the TopBar lettering changes. */
+    html{background:#120d09}  /* same dark as --bg-0, set here so it does not depend on the app stylesheet */
+    #hw-splash{
+      --hw-bg:#120d09;--hw-ac:#f59e0b;--hw-dim:#b45309;--hw-tx:#f5e6c8;--hw-mu:#b59c75;
+      --m:88px;                                     /* logo width; its height is 1.1 times this, like HexIcon */
+      --R:max(50vh + 28.87vw, 57.74vw);             /* radius (centre to corner) of a point-up hexagon that covers the whole viewport */
+      position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;
+      animation:hw-failsafe 400ms linear 12s forwards;  /* if the app never asks the splash to leave, it fades out by itself after 12s */
+    }
+    @supports (height:1lvh){#hw-splash{--R:max(50lvh + 28.87vw, 57.74vw)}}  /* lvh = height with phone toolbars hidden, so the hexagon still covers the screen when they slide away */
+    @media (max-width:640px){#hw-splash{--m:64px}}
+    #hw-splash>*,.hw-fg>*{position:absolute}
+    .hw-fg{inset:0}
+    .hw-sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+    /* .hw-cover is the dark sheet over the page. On exit a hexagonal hole opens in it, growing from radius --i0 to
+       --i1 (hw-x-iris). .hw-amber sits underneath with a slightly smaller hole, which shows as a thin amber rim. */
+    .hw-cover{inset:0;background:var(--hw-bg) radial-gradient(circle 45vmin at 50% 50%,rgba(245,158,11,.07),rgba(245,158,11,0));  /* fixed radius: a round glow, not an oval, on tall phones */
+      --i0:6px;--i1:calc(var(--R)*1.14 + 10.3px)}
+    .hw-amber{inset:0;background:var(--hw-ac);opacity:0;display:none;--i0:0px;--i1:calc(var(--R)*1.14 + 8px)}
+    /* Logo, centred with negative margins rather than a transform, because its scale-in animation sets transform. */
+    .hw-mark{left:50%;top:50%;width:var(--m);height:calc(var(--m)*1.1);margin:calc(var(--m)*-.55) 0 0 calc(var(--m)*-.5);
+      animation:hw-in 480ms cubic-bezier(.2,.7,.2,1) 160ms both}
+    .hw-mark>*{position:absolute}
+    .hw-glow{left:calc(var(--m)*-1.5);top:calc(var(--m)*-1.45);width:calc(var(--m)*4);height:calc(var(--m)*4)}
+    .hw-glow i{display:block;width:100%;height:100%;background:radial-gradient(closest-side,rgba(245,158,11,.16),rgba(245,158,11,0))}
+    /* A larger, dimmer hexagon behind the logo that turns the opposite way, a moment later. */
+    .hw-echo{left:-50%;top:-50%;width:200%;height:200%;opacity:.5}
+    .hw-ol,.hw-dot{inset:0}
+    .hw-svg{display:block;width:100%;height:100%;overflow:visible}
+    .hw-svg polygon{fill:none;stroke:var(--hw-ac);stroke-width:1.6}
+    .hw-echo .hw-svg polygon{stroke:var(--hw-dim);stroke-width:1px;vector-effect:non-scaling-stroke}
+    .hw-dot i{position:absolute;left:34%;top:calc(50% - var(--m)*.16);width:32%;height:calc(var(--m)*.32);border-radius:50%;background:var(--hw-ac)}
+    /* Caption: the wordmark, then the hint that appears after 5s if loading is slow. */
+    .hw-cap{left:0;right:0;top:calc(50% + var(--m)*.55 + 24px);text-align:center;animation:hw-in 500ms ease 320ms both}
+    .hw-wm{display:block;margin:0 auto;width:130px;height:29px;fill:var(--hw-tx)}
+    .hw-hint{display:block;margin-top:16px;font:500 14px/1.35 'Bricolage Grotesque Variable',ui-sans-serif,system-ui,-apple-system,'Segoe UI',sans-serif;letter-spacing:.02em;
+      color:var(--hw-mu);animation:hw-hint-in 900ms ease 5s both}
+    @media (max-width:640px){.hw-wm{width:108px;height:24px}}
+    /* Fade-ins for the logo (hw-in-s adds a slight scale-up when motion is allowed), caption and hint, and the 12s
+       failsafe fade-out. */
+    @keyframes hw-in{from{opacity:0}to{opacity:1}}
+    @keyframes hw-in-s{from{opacity:0;transform:scale(.88)}to{opacity:1;transform:none}}
+    @keyframes hw-hint-in{from{opacity:0;visibility:hidden}to{opacity:1}}  /* visibility, not just opacity, so screen readers do not announce the hint before it shows */
+    @keyframes hw-failsafe{to{opacity:0;visibility:hidden}}
+    @media (prefers-reduced-motion:no-preference){
+      /* The logo turns 60deg in a quick step with a slight overshoot, then holds. The loop restarts at 0deg, which looks
+         identical because a hexagon repeats every 60deg. With reduced motion nothing turns or scales. */
+      .hw-mark{animation-name:hw-in-s}
+      .hw-ol .hw-svg{animation:hw-turn 1400ms linear 380ms infinite}
+      .hw-echo .hw-svg{animation:hw-turn-b 1400ms linear 380ms infinite}
+      .hw-dot i{animation:hw-tick 1400ms linear 380ms infinite}
+      .hw-glow i{animation:hw-breathe 1400ms linear 380ms infinite}
+    }
+    @keyframes hw-turn{
+      0%{transform:rotate(0);animation-timing-function:cubic-bezier(.62,0,.22,1)}
+      34%{transform:rotate(62.5deg);animation-timing-function:cubic-bezier(.3,0,.3,1)}
+      46%,100%{transform:rotate(60deg)}}
+    @keyframes hw-turn-b{
+      0%,7%{transform:rotate(0);animation-timing-function:cubic-bezier(.62,0,.22,1)}
+      41%{transform:rotate(-61.5deg);animation-timing-function:cubic-bezier(.3,0,.3,1)}
+      53%,100%{transform:rotate(-60deg)}}
+    @keyframes hw-tick{
+      0%{transform:scale(1);animation-timing-function:ease-in}
+      22%{transform:scale(.8);animation-timing-function:cubic-bezier(.2,.9,.3,1.2)}
+      35%{transform:scale(1.17);animation-timing-function:ease-out}
+      50%,100%{transform:scale(1)}}
+    @keyframes hw-breathe{0%,100%{opacity:.5}35%{opacity:1}60%{opacity:.6}}
+
+    /* ---- EXIT: src/utils/splash.ts sets data-state="exit" once the app has rendered, plus data-fast if the splash was
+       visible for under 500ms. Slow loads end with the hexagon reveal: a hexagonal hole opens from the logo and grows
+       past the screen corners, uncovering the page. ---- */
+    /* Default exit is a plain fade: fast loads, reduced motion, and browsers that cannot clip to the hexagon shape. */
+    #hw-splash[data-state=exit]{animation:hw-x-gone 240ms linear forwards}
+    #hw-splash[data-state=exit] .hw-fg{animation:hw-x-fade 110ms ease-out forwards}
+    #hw-splash[data-state=exit] .hw-cover{animation:hw-x-fade 240ms ease-out forwards}
+    #hw-splash[data-fast] .hw-fg{animation-duration:60ms}   /* on a fast exit the logo has barely faded in, so fade it out quickly too rather than leave a faint logo */
+    @media (prefers-reduced-motion:no-preference){
+     @supports (clip-path:polygon(evenodd,0 0,9px 0,9px 9px)){
+      #hw-splash[data-state=exit]:not([data-fast]){animation:hw-x-gone 560ms linear forwards}
+      /* The hole starts 72ms into the exit, when the centre dot has faded out completely (hw-x-dot is transparent at
+         55% of its 130ms). It has a delay and no backwards fill, so no hole exists before then: one opening under the
+         half-visible dot looks like a glitch. It grows to 1.14x the radius that just covers the screen, so its sides leave the screen quickly
+         instead of creeping off the edges. 72ms + 488ms matches the 560ms of hw-x-gone above. */
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-amber{display:block;
+        animation:hw-x-iris 488ms cubic-bezier(.5,0,.5,.75) 72ms forwards,hw-x-ring 488ms linear 72ms forwards}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-cover{animation:hw-x-iris 488ms cubic-bezier(.5,0,.5,.75) 72ms forwards}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-ol{animation:hw-x-out 220ms cubic-bezier(.2,.7,.2,1) forwards}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-echo{animation:hw-x-fade 160ms ease-out forwards}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-dot{animation:hw-x-dot 130ms cubic-bezier(.2,.7,.2,1) forwards}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-fg{animation:none}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-glow{animation:hw-x-fade 200ms ease-out forwards}
+      #hw-splash[data-state=exit]:not([data-fast]) .hw-cap{animation:hw-x-fade 150ms ease-out forwards}
+     }
+    }
+    /* src/assets/tokens.css cuts every animation to 0.01ms (with !important) for users who prefer reduced motion. A fade
+       is not motion, so these more specific !important rules restore the fade durations; nothing here moves or scales. */
+    @media (prefers-reduced-motion:reduce){
+      .hw-mark{animation-duration:480ms!important}
+      .hw-cap{animation-duration:500ms!important}
+      .hw-hint{animation-duration:900ms!important}
+      #hw-splash:not([data-state]){animation-duration:400ms!important}
+      #hw-splash[data-state=exit],#hw-splash[data-state=exit] .hw-cover{animation-duration:240ms!important}
+      #hw-splash[data-state=exit] .hw-fg{animation-duration:110ms!important}
+      #hw-splash[data-fast] .hw-fg{animation-duration:60ms!important}
+    }
+    @keyframes hw-x-fade{to{opacity:0}}
+    @keyframes hw-x-gone{to{visibility:hidden}}
+    @keyframes hw-x-out{to{opacity:0;transform:scale(1.14)}}
+    @keyframes hw-x-dot{25%{opacity:1;transform:scale(1.2);animation-timing-function:linear}55%,to{opacity:0;transform:scale(1.5)}}
+    @keyframes hw-x-ring{0%{opacity:0}10%{opacity:1}70%{opacity:.9}100%{opacity:0}}
+    @keyframes hw-x-iris{
+      from{clip-path:polygon(evenodd,-50px -50px,calc(100% + 50px) -50px,calc(100% + 50px) calc(100% + 50px),-50px calc(100% + 50px),-50px -50px,calc(50% + var(--i0)*.866) calc(50% - var(--i0)*.5),calc(50% + var(--i0)*.866) calc(50% + var(--i0)*.5),50% calc(50% + var(--i0)),calc(50% - var(--i0)*.866) calc(50% + var(--i0)*.5),calc(50% - var(--i0)*.866) calc(50% - var(--i0)*.5),50% calc(50% - var(--i0)),calc(50% + var(--i0)*.866) calc(50% - var(--i0)*.5))}
+      to{clip-path:polygon(evenodd,-50px -50px,calc(100% + 50px) -50px,calc(100% + 50px) calc(100% + 50px),-50px calc(100% + 50px),-50px -50px,calc(50% + var(--i1)*.866) calc(50% - var(--i1)*.5),calc(50% + var(--i1)*.866) calc(50% + var(--i1)*.5),50% calc(50% + var(--i1)),calc(50% - var(--i1)*.866) calc(50% + var(--i1)*.5),calc(50% - var(--i1)*.866) calc(50% - var(--i1)*.5),50% calc(50% - var(--i1)),calc(50% + var(--i1)*.866) calc(50% - var(--i1)*.5))}}
+    </style>
+    <!-- Without JavaScript nothing would ever remove the splash, so hide it. -->
+    <!-- prettier-ignore -->
+    <noscript><style>#hw-splash{display:none}</style></noscript>
 
     <!-- Default/home SEO. Per-route titles, descriptions and canonicals are
          baked into each route's index.html at build time by
@@ -60,6 +183,23 @@
     <title>Honeywatch · SSH honeypot dashboard</title>
   </head>
   <body>
+    <!-- Loading splash, styled in the head and removed by src/utils/splash.ts. It sits outside #app so mounting Vue
+         does not replace it. -->
+    <!-- prettier-ignore -->
+    <div id="hw-splash" role="status" aria-live="polite">
+      <span class="hw-sr">Loading Honeywatch</span>
+      <div class="hw-amber"></div>
+      <div class="hw-cover"></div>
+      <div class="hw-fg">
+      <div class="hw-mark" aria-hidden="true">
+        <div class="hw-glow"><i></i></div>
+        <div class="hw-echo"><svg class="hw-svg" viewBox="-10 -11 40 44"><polygon points="23,3.5 23,18.5 10,26 -3,18.5 -3,3.5 10,-4"/></svg></div>
+        <div class="hw-ol"><svg class="hw-svg" viewBox="0 0 20 22"><polygon points="17.8,6.5 17.8,15.5 10,20 2.2,15.5 2.2,6.5 10,2"/></svg></div>
+        <div class="hw-dot"><i></i></div>
+      </div>
+      <div class="hw-cap"><svg class="hw-wm" aria-hidden="true" viewBox="0 0 108 24"><path d="M8.6 16.8V5.6H11V16.8ZM1.2 16.8V5.6H3.7V16.8ZM2.7 12.1V10.1H9.6V12.1ZM17.3 17Q16 17 15 16.5Q13.9 16 13.4 14.9Q12.8 13.9 12.8 12.3Q12.8 10.8 13.4 9.7Q14 8.7 15 8.2Q16 7.6 17.3 7.6Q18.7 7.6 19.7 8.2Q20.7 8.7 21.3 9.7Q21.9 10.8 21.9 12.4Q21.9 13.9 21.3 15Q20.7 16 19.7 16.5Q18.6 17 17.3 17ZM17.4 15.2Q18.1 15.2 18.5 14.9Q19 14.6 19.2 14Q19.4 13.4 19.4 12.5Q19.4 11.6 19.2 10.9Q18.9 10.2 18.5 9.9Q18 9.5 17.3 9.5Q16.6 9.5 16.2 9.8Q15.7 10.2 15.5 10.8Q15.2 11.4 15.2 12.3Q15.2 13.7 15.8 14.5Q16.4 15.2 17.4 15.2ZM23.5 16.8V11.4V7.9H25.5L25.5 10.6H25.8Q26 9.6 26.4 8.9Q26.8 8.3 27.4 8Q28.1 7.6 28.9 7.6Q30.5 7.6 31.3 8.7Q32.1 9.8 32.1 12.2V16.8H29.6V12.4Q29.6 11 29.2 10.3Q28.8 9.7 28 9.7Q27.3 9.7 26.8 10.1Q26.4 10.5 26.1 11.2Q25.9 11.9 25.9 12.8V16.8ZM38.8 17Q37.7 17 36.8 16.7Q35.9 16.4 35.3 15.9Q34.7 15.3 34.4 14.4Q34.1 13.6 34.1 12.5Q34.1 11.4 34.4 10.6Q34.7 9.7 35.3 9Q35.9 8.4 36.7 8Q37.5 7.6 38.6 7.6Q39.6 7.6 40.4 8Q41.2 8.3 41.7 9Q42.3 9.6 42.5 10.6Q42.8 11.6 42.7 12.8L35.7 12.9V11.5L41.3 11.5L40.4 12.1Q40.6 11.2 40.3 10.7Q40.1 10.1 39.6 9.8Q39.2 9.5 38.6 9.5Q38 9.5 37.5 9.9Q37 10.2 36.7 10.9Q36.5 11.5 36.5 12.5Q36.5 13.9 37.1 14.6Q37.7 15.3 38.8 15.3Q39.2 15.3 39.6 15.1Q39.9 15 40.1 14.8Q40.3 14.6 40.5 14.3Q40.6 14.1 40.7 13.8L42.8 14.3Q42.6 14.9 42.3 15.4Q42 15.9 41.6 16.3Q41.1 16.7 40.4 16.9Q39.7 17 38.8 17ZM48.2 19.9Q47.5 19.9 46.8 19.8Q46.1 19.6 45.5 19.4Q44.9 19.1 44.4 18.7L45.1 16.6Q45.7 17.2 46.5 17.5Q47.3 17.7 48.1 17.7Q49 17.7 49.6 17.4Q50.2 17 50.5 16.3Q50.8 15.5 50.9 14.4L51 12.8H50.6Q50.4 14 50 14.7Q49.6 15.4 49.1 15.7Q48.5 16 47.7 16Q46.7 16 46 15.5Q45.4 15 45.1 14.1Q44.7 13.1 44.7 11.6V7.9H47.2V11Q47.2 12.6 47.5 13.3Q47.9 14 48.6 14Q49 14 49.3 13.8Q49.7 13.6 49.9 13.2Q50.1 12.8 50.2 12.2Q50.4 11.6 50.4 10.8V7.9H52.8V14.5Q52.8 15.5 52.6 16.4Q52.4 17.3 52.1 17.9Q51.7 18.6 51.1 19Q50.6 19.5 49.9 19.7Q49.1 19.9 48.2 19.9ZM56.3 16.8 54.1 7.9H56.6L57.9 14.9H58.2L59.7 7.9H62.7L64.2 14.9H64.5L65.8 7.9H68.3L66 16.8H62.7L61.3 9.9H61L59.7 16.8ZM72.2 17Q71.5 17 70.9 16.8Q70.3 16.5 70 15.9Q69.7 15.3 69.7 14.5Q69.7 13.8 70 13.3Q70.2 12.8 70.8 12.5Q71.3 12.2 72.1 12Q72.9 11.8 74 11.6Q74.5 11.5 74.8 11.4Q75.2 11.4 75.4 11.2Q75.5 11 75.5 10.7Q75.5 10.2 75.2 9.9Q74.8 9.5 74.1 9.5Q73.6 9.5 73.2 9.7Q72.8 9.9 72.5 10.2Q72.2 10.5 72.1 11.1L69.9 10.4Q70.1 9.7 70.5 9.2Q70.9 8.7 71.4 8.3Q71.9 8 72.6 7.8Q73.4 7.6 74.2 7.6Q75.5 7.6 76.3 8.1Q77.1 8.5 77.5 9.4Q77.9 10.2 77.9 11.6V13.1Q77.9 13.7 78 14.3Q78 15 78 15.6Q78.1 16.2 78.1 16.8H76Q75.9 16.4 75.8 15.8Q75.8 15.3 75.7 14.7H75.5Q75.2 15.4 74.8 15.9Q74.3 16.4 73.7 16.7Q73 17 72.2 17ZM73.3 15.3Q73.6 15.3 73.9 15.2Q74.3 15.1 74.6 14.8Q74.9 14.6 75.2 14.3Q75.4 14 75.6 13.6L75.5 12.1L75.9 12.2Q75.6 12.4 75.2 12.6Q74.8 12.7 74.4 12.8Q73.9 12.8 73.5 12.9Q73.1 13 72.8 13.1Q72.4 13.3 72.2 13.5Q72 13.7 72 14.1Q72 14.7 72.4 15Q72.7 15.3 73.3 15.3ZM83.6 17Q82.1 17 81.4 16.2Q80.7 15.4 80.7 13.7V9.8H79.4L79.5 7.9H80.4Q80.9 7.9 81.1 7.7Q81.4 7.6 81.5 7.2L81.7 5.9H83.1V7.9H85.3V9.9H83.1V13.6Q83.1 14.2 83.4 14.5Q83.6 14.8 84.2 14.8Q84.5 14.8 84.8 14.7Q85.2 14.6 85.4 14.5V16.7Q84.8 16.9 84.4 17Q84 17 83.6 17ZM91.6 17Q90.4 17 89.6 16.7Q88.7 16.4 88.1 15.8Q87.6 15.2 87.3 14.3Q87 13.5 87 12.5Q87 11.4 87.3 10.5Q87.6 9.6 88.2 9Q88.7 8.4 89.6 8Q90.4 7.6 91.5 7.6Q92.6 7.6 93.4 8Q94.2 8.4 94.7 9Q95.2 9.6 95.4 10.5L93.2 11.2Q93.1 10.7 92.9 10.3Q92.7 9.9 92.3 9.7Q91.9 9.6 91.4 9.6Q90.9 9.6 90.6 9.7Q90.2 9.9 90 10.3Q89.7 10.7 89.6 11.2Q89.5 11.7 89.5 12.4Q89.5 13.3 89.7 13.9Q89.9 14.6 90.4 14.9Q90.9 15.2 91.6 15.2Q92.3 15.2 92.7 15Q93.1 14.7 93.3 14.3Q93.5 13.9 93.6 13.4L95.7 13.9Q95.6 14.5 95.3 15.1Q95.1 15.7 94.6 16.1Q94.1 16.6 93.3 16.8Q92.6 17 91.6 17ZM97.6 16.8V11.2V4.7H100.1V7.4Q100.1 7.8 100.1 8.2Q100 8.5 100 8.9Q99.9 9.3 99.9 9.7Q99.8 10.1 99.7 10.5H100.1Q100.4 9.6 100.7 9Q101.1 8.3 101.7 8Q102.3 7.6 103.1 7.6Q104.7 7.6 105.5 8.7Q106.3 9.8 106.3 12.1V16.8H103.8V12.5Q103.8 11.1 103.4 10.4Q103 9.7 102.1 9.7Q101.5 9.7 101 10.1Q100.6 10.5 100.3 11.2Q100.1 11.9 100.1 12.7V16.8Z"/></svg><span class="hw-hint">Still loading - hang tight.</span></div>
+      </div>
+    </div>
     <div id="app"></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
