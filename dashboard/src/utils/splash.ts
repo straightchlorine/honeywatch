@@ -1,13 +1,13 @@
 /**
  * Loading splash (#hw-splash in index.html) that covers the page until the app has
  * rendered. It animates in pure CSS because the CSP forbids inline script; this module
- * only decides when and how it leaves.
+ * only decides when and how it leaves, and replays its exit to end a slow page change.
  */
 
 const SPLASH_ID = 'hw-splash'
 const DONE_EVENT = 'hw-splash-done'
-// A splash visible for less than this just fades out. The slower exit, the hexagon
-// reveal in index.html (560ms), is not worth it after such a short wait.
+// After a wait shorter than this the loading splash just fades out, and a page change
+// gets no effect at all: the hexagon reveal in index.html (560ms) is not worth it.
 const FAST_MS = 500
 // Removes the splash if `animationend` never arrives; longer than the 560ms slowest exit.
 const REMOVE_AFTER_MS = 900
@@ -15,6 +15,10 @@ const REMOVE_AFTER_MS = 900
 // that expands and fades on the honeypot marker. Must outlast its 250ms delay + 760ms run.
 const PING_ATTR = 'data-hw-exit'
 const PING_MS = 1200
+
+// A copy of the loading splash, taken when this module loads (the splash is still on
+// screen then), so a slow page change can end with the same hexagon reveal.
+const template = document.getElementById(SPLASH_ID)?.cloneNode(true) as HTMLElement | undefined
 
 let started = false
 
@@ -26,7 +30,38 @@ export function exitSplash(): void {
   const el = document.getElementById(SPLASH_ID)
   if (started || !el) return
   started = true
+  leave(el, false)
+}
 
+/**
+ * End a page change that took `waitedMs` (the route loader, LoadingState, was up the
+ * whole time) with the hexagon reveal, if the wait was long enough to notice. Does
+ * nothing while the loading splash itself is still on screen. Call it in the same tick
+ * the new page is put in the DOM, so the copy covers the page before it is painted.
+ */
+export function revealPage(waitedMs: number): void {
+  if (waitedMs < FAST_MS || !template || document.getElementById(SPLASH_ID)) return
+  const el = template.cloneNode(true) as HTMLElement
+  // Keep only what the route loader showed: the hexagon and its dot, at its 36px size,
+  // on the plain page background, already fully visible (no fade-in).
+  el.querySelectorAll('.hw-cap, .hw-echo, .hw-glow').forEach((n) => n.remove())
+  el.setAttribute('aria-hidden', 'true') // the route loader already announced "Loading"
+  el.style.setProperty('--m', '36px')
+  el.querySelector<HTMLElement>('.hw-cover')?.style.setProperty('background', 'var(--hw-bg)')
+  el.querySelector<HTMLElement>('.hw-mark')?.style.setProperty('animation', 'none')
+  document.body.prepend(el)
+  // Carry on the loader's turn from where it was, so the hexagon does not jump. The
+  // loader's turn starts 220ms after it mounts (LoadingState.vue), the copy's at 380ms
+  // (hw-turn in index.html), and both repeat every 1400ms. Nothing turns with reduced motion.
+  const turn = el
+    .querySelector('.hw-ol .hw-svg')
+    ?.getAnimations?.()
+    .find((a) => (a as CSSAnimation).animationName === 'hw-turn')
+  if (turn) turn.currentTime = 380 + ((waitedMs - 220) % 1400)
+  leave(el, true)
+}
+
+function leave(el: HTMLElement, reveal: boolean): void {
   const remove = (): void => {
     if (!el.isConnected) return
     el.remove()
@@ -45,7 +80,8 @@ export function exitSplash(): void {
       // failsafe, which starts at first paint). performance.now() also counts the HTML
       // download, so it is only the fallback (jsdom has no getAnimations).
       const shown = Number(el.getAnimations?.()[0]?.currentTime ?? performance.now())
-      if (shown < FAST_MS) el.setAttribute('data-fast', '')
+      // A page-change copy has only just appeared, so its age says nothing about the wait.
+      if (!reveal && shown < FAST_MS) el.setAttribute('data-fast', '')
       el.setAttribute('data-state', 'exit')
       el.setAttribute('aria-hidden', 'true')
       el.addEventListener('animationend', (e) => {

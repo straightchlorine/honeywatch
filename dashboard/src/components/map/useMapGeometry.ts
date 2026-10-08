@@ -45,16 +45,30 @@ const PADDING = 8
 // render as plain land: nothing to join, nothing to select.
 const ALPHA2 = /^[A-Z]{2}$/
 
+// Parsing and projecting the world file blocks the main thread even when the browser has
+// it cached (measured about 200ms, 700ms on a 4x slower CPU), so do it once per page
+// load: coming back to Overview reuses the result instead of showing the loader again.
+let cached: Promise<MapGeometry> | undefined
+
 /**
  * Fetch and project the world TopoJSON to SVG paths. Feature ids are ISO
  * 3166-1 alpha-2 (the key the API joins on), eliminating lookup overhead.
- * Antarctica excluded at build time. Must be held in a `shallowRef` by callers
- * (255 paths re-diffing on every render wastes performance).
+ * Antarctica excluded at build time. The result is shared between mounts, so
+ * never mutate it; callers must hold it in a `shallowRef` (255 paths re-diffing
+ * on every render wastes performance).
  */
-export async function loadMapGeometry(
-  url = `${import.meta.env.BASE_URL}geo/countries.json`,
-  bordersUrl = `${import.meta.env.BASE_URL}geo/borders-disputed.json`,
-): Promise<MapGeometry> {
+export function loadMapGeometry(): Promise<MapGeometry> {
+  if (!cached) {
+    cached = buildMapGeometry()
+    // Forget a failed load, so the error boundary's "Try again" fetches again.
+    cached.catch(() => (cached = undefined))
+  }
+  return cached
+}
+
+async function buildMapGeometry(): Promise<MapGeometry> {
+  const url = `${import.meta.env.BASE_URL}geo/countries.json`
+  const bordersUrl = `${import.meta.env.BASE_URL}geo/borders-disputed.json`
   // Parallel so the borders add no latency at the Suspense boundary.
   const [res, bres] = await Promise.all([fetch(url), fetch(bordersUrl)])
   if (!res.ok) throw new Error(`world map geometry unavailable (${res.status})`)

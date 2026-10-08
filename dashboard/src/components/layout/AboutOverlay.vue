@@ -98,15 +98,32 @@
           Watch them on map, analyze commands they ran, what they downloaded and see what they were
           after.
         </p>
-        <details class="intro-more">
-          <summary>About the map</summary>
-          <p>Borders follow the Natural Earth dataset. Dotted lines mark disputed borders.</p>
-          <p>
-            Detailed borders can feel slow on a phone or a big screen. The
-            <strong>Map detail</strong> control starts at <i>Regular</i> - pick <i>Low</i> for
-            simpler outlines that draw faster, or <i>High</i> for the sharpest ones.
-          </p>
-        </details>
+        <p>
+          Map detail starts at <i>Regular</i>. If it feels slow on a phone or a bigger screen - pick
+          <i>Low</i> in the bottom right corner. <i>High</i> offers the highest quality.
+        </p>
+        <section class="intro-credits">
+          <h3>Map attributions</h3>
+          <dl>
+            <div>
+              <dt>Borders</dt>
+              <dd>
+                <a href="https://www.naturalearthdata.com" target="_blank" rel="noopener noreferrer"
+                  >Natural Earth</a
+                >. Dotted lines mark disputed borders.
+              </dd>
+            </div>
+            <div>
+              <dt>Locations</dt>
+              <dd>
+                Origins of the attacks are from GeoLite2 data created by
+                <a href="https://www.maxmind.com" target="_blank" rel="noopener noreferrer"
+                  >MaxMind</a
+                >.
+              </dd>
+            </div>
+          </dl>
+        </section>
         <div class="intro-authors">
           <span class="author">
             Piotr Krzysztof Lis
@@ -188,7 +205,8 @@
   .intro-card {
     margin: auto;
     flex: 0 0 auto;
-    width: min(480px, calc(100% - 48px));
+    /* Wide enough to keep each attribution on one line on desktop. */
+    width: min(560px, calc(100% - 48px));
     border-radius: var(--radius-lg);
     padding: 34px 38px 26px;
     text-align: center;
@@ -210,47 +228,52 @@
     color: var(--text-muted);
     font-size: 14px;
     line-height: 1.65;
+    /* No single word stranded on the last line of a centred paragraph. */
+    text-wrap: pretty;
   }
 
-  .intro-more {
+  /* Attribution fine print: smaller and dimmer than the intro text above it, centred
+     like the rest of the card, one label + text line per source. */
+  .intro-credits {
     width: 100%;
-    text-align: left;
+    font-size: 11.5px;
+    line-height: 1.5;
+    color: var(--text-dim);
+    text-wrap: pretty;
   }
 
-  .intro-more summary {
-    cursor: pointer;
-    text-align: center;
+  .intro-credits h3 {
+    margin: 0 0 8px;
     font: 500 11.5px var(--font-mono);
-    color: var(--text-dim);
-    list-style: none;
   }
 
-  .intro-more summary::-webkit-details-marker {
-    display: none;
+  .intro-credits dl {
+    display: grid;
+    gap: 6px;
+    margin: 0;
   }
 
-  .intro-more summary::after {
-    content: ' +';
+  /* Flex, not inline text: it drops the stray space Vue keeps before text that starts
+     on a new line, so every label sits the same 8px from its text. */
+  .intro-credits dl > div {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    column-gap: 8px;
   }
 
-  .intro-more[open] summary::after {
-    content: ' -';
+  .intro-credits dd {
+    margin: 0;
   }
 
-  .intro-more summary:hover {
+  .intro-credits dt {
     color: var(--text-muted);
-  }
-
-  .intro-more p {
-    margin: 10px 0 0;
-    color: var(--text-dim);
-    font-size: 12px;
-    line-height: 1.55;
-  }
-
-  .intro-more strong {
-    color: var(--accent-hot);
     font-weight: 650;
+  }
+
+  /* Underlined: the amber link alone is too close in contrast to the dim text around it. */
+  .intro-credits a {
+    text-decoration: underline;
   }
 
   /* One author per line, each line centred as a unit rather than left-aligned

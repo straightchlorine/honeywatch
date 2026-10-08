@@ -1,6 +1,11 @@
 import { describe, expect, it, vi } from 'vitest'
 
-import { loadMapGeometry } from '@/components/map/useMapGeometry'
+// The module caches each load, so every test starts from a fresh copy.
+async function loadMapGeometry() {
+  vi.resetModules()
+  const mod = await import('@/components/map/useMapGeometry')
+  return mod.loadMapGeometry()
+}
 
 // Two unit squares, ids as scripts/gen-world-geo.mjs emits them: ISO alpha-2
 // for real countries, a 3-letter Natural Earth ADM0_A3 for the areas that have
@@ -62,7 +67,7 @@ function mockFetch(ok = true): void {
 describe('loadMapGeometry', () => {
   it('uses the alpha-2 feature id directly as the data-join key', async () => {
     mockFetch()
-    const { countries } = await loadMapGeometry('/geo/countries.json')
+    const { countries } = await loadMapGeometry()
     const ua = countries.find((c) => c.id === 'UA')
     expect(ua?.a2).toBe('UA')
     expect(ua?.name).toBe('Ukraine')
@@ -73,30 +78,44 @@ describe('loadMapGeometry', () => {
     // Sovereign base areas (ESB), Bir Tawil and the disputed reefs have no ISO
     // alpha-2, so they carry a 3-letter ADM0_A3 id and render as inert land.
     mockFetch()
-    const { countries } = await loadMapGeometry('/geo/countries.json')
+    const { countries } = await loadMapGeometry()
     expect(countries.find((c) => c.id === 'ESB')?.a2).toBeNull()
   })
 
   it('keeps every id unique - WorldMap keys its country paths on it', async () => {
     mockFetch()
-    const { countries } = await loadMapGeometry('/geo/countries.json')
+    const { countries } = await loadMapGeometry()
     expect(new Set(countries.map((c) => c.id)).size).toBe(countries.length)
   })
 
   it('falls back to the id when a feature carries no name', async () => {
     mockFetch()
-    const { countries } = await loadMapGeometry('/geo/countries.json')
+    const { countries } = await loadMapGeometry()
     expect(countries.find((c) => c.id === 'XK')?.name).toBe('XK')
   })
 
   it('projects the disputed boundary lines into a single path', async () => {
     mockFetch()
-    const { disputedBorders } = await loadMapGeometry('/geo/countries.json')
+    const { disputedBorders } = await loadMapGeometry()
     expect(disputedBorders).toMatch(/^M/)
   })
 
   it('throws when the geometry file is missing', async () => {
     mockFetch(false)
-    await expect(loadMapGeometry('/geo/countries.json')).rejects.toThrow(/404/)
+    await expect(loadMapGeometry()).rejects.toThrow(/404/)
+  })
+
+  it('loads and projects once per page, and retries after a failure', async () => {
+    vi.resetModules()
+    const mod = await import('@/components/map/useMapGeometry')
+    mockFetch(false)
+    await expect(mod.loadMapGeometry()).rejects.toThrow(/404/)
+    mockFetch()
+    // Two mounts at once (or one after the other) share the same load.
+    const [first, second] = await Promise.all([mod.loadMapGeometry(), mod.loadMapGeometry()])
+    expect(second).toBe(first)
+    expect(await mod.loadMapGeometry()).toBe(first)
+    // Counted on the second mock only: one pair of requests (countries + borders) for all three calls.
+    expect(fetch).toHaveBeenCalledTimes(2)
   })
 })

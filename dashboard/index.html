@@ -21,6 +21,7 @@
       position:fixed;inset:0;z-index:2147483000;pointer-events:none;overflow:hidden;
       animation:hw-failsafe 400ms linear 12s forwards;  /* if the app never asks the splash to leave, it fades out by itself after 12s */
     }
+    vite-error-overlay{z-index:2147483001}  /* only exists on Vite's dev server: keep its error overlay above the splash, or a startup error hides behind it for 12s */
     @supports (height:1lvh){#hw-splash{--R:max(50lvh + 28.87vw, 57.74vw)}}  /* lvh = height with phone toolbars hidden, so the hexagon still covers the screen when they slide away */
     @media (max-width:640px){#hw-splash{--m:64px}}
     #hw-splash>*,.hw-fg>*{position:absolute}
@@ -82,7 +83,7 @@
 
     /* ---- EXIT: src/utils/splash.ts sets data-state="exit" once the app has rendered, plus data-fast if the splash was
        visible for under 500ms. Slow loads end with the hexagon reveal: a hexagonal hole opens from the logo and grows
-       past the screen corners, uncovering the page. ---- */
+       past the screen corners, uncovering the page. A slow page change replays it on a copy (revealPage). ---- */
     /* Default exit is a plain fade: fast loads, reduced motion, and browsers that cannot clip to the hexagon shape. */
     #hw-splash[data-state=exit]{animation:hw-x-gone 240ms linear forwards}
     #hw-splash[data-state=exit] .hw-fg{animation:hw-x-fade 110ms ease-out forwards}

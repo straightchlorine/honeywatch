@@ -371,7 +371,9 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/credentials')
     await dismissIntro(page)
     await expect(page.getByRole('heading', { level: 1, name: 'Credentials' })).toBeVisible()
-    await expect(page.getByRole('heading', { level: 2, name: /Username and password pairs/ })).toBeVisible()
+    await expect(
+      page.getByRole('heading', { level: 2, name: /Username and password pairs/ }),
+    ).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: 'What worked' })).toBeVisible()
     await expect(page.getByText('root:toor')).toBeVisible()
 
@@ -691,12 +693,12 @@ test.describe('dashboard accessibility smoke', () => {
   })
 })
 
-// Overview cannot render until /stats/map answers, so delaying it keeps the splash up
-// until release() is called.
-async function holdMap(page: Page): Promise<() => void> {
+// Delays every request matching `url` until the returned release() is called. Overview
+// cannot render until /stats/map answers, so holding that keeps the splash up.
+async function holdRequest(page: Page, url = '**/api/v1/stats/map'): Promise<() => void> {
   let release!: () => void
   const gate = new Promise<void>((r) => (release = r))
-  await page.route('**/api/v1/stats/map', async (route) => {
+  await page.route(url, async (route) => {
     await gate
     await route.fallback()
   })
@@ -723,7 +725,7 @@ test.describe('boot splash', () => {
       }).observe(document, { childList: true, subtree: true })
     })
     // Overview needs the map data to render; the .topbar check below confirms it has not.
-    const release = await holdMap(page)
+    const release = await holdRequest(page)
 
     await page.goto('/')
     const splash = page.locator('#hw-splash')
@@ -774,7 +776,7 @@ test.describe('boot splash', () => {
         attributeFilter: ['data-state'],
       })
     })
-    const release = await holdMap(page)
+    const release = await holdRequest(page)
     await page.goto('/')
     const splash = page.locator('#hw-splash')
     // Skip the waits: jump the 5s hint and the 12s failsafe fade-out to their end.
@@ -801,7 +803,7 @@ test.describe('boot splash', () => {
   test('the hexagon reveal ends with a ring centred on the honeypot marker', async ({ page }) => {
     // Release the map once the splash has been up 800ms (on its own clock, as splash.ts reads
     // it), past the 500ms fast-exit limit, so it leaves through the hexagon reveal.
-    const release = await holdMap(page)
+    const release = await holdRequest(page)
     await page.goto('/')
     await page.waitForFunction(
       () => Number(document.getElementById('hw-splash')?.getAnimations()[0]?.currentTime) > 800,
@@ -826,5 +828,59 @@ test.describe('boot splash', () => {
 
     // The attribute leaves, so coming back to Overview later never replays it.
     await expect(page.locator('html')).not.toHaveAttribute('data-hw-exit', '')
+  })
+
+  test('reduced motion: the exit is a short fade and the Helsinki ring stays still', async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: 'reduce' })
+    // Read the cover's fade length as the exit starts (the node is gone 240ms later). tokens.css
+    // would cut it to 0.01ms under reduced motion; index.html restores 240ms.
+    await page.addInitScript(() => {
+      new MutationObserver((records) => {
+        const el = records[0]!.target as HTMLElement
+        const cover = el.id === 'hw-splash' && el.querySelector('.hw-cover')
+        if (cover) Object.assign(window, { exitFade: getComputedStyle(cover).animationDuration })
+      }).observe(document, { subtree: true, attributes: true, attributeFilter: ['data-state'] })
+    })
+    const release = await holdRequest(page)
+    await page.goto('/')
+    await page.waitForFunction(
+      () => Number(document.getElementById('hw-splash')?.getAnimations()[0]?.currentTime) > 800,
+    )
+    release()
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
+    expect(await page.evaluate(() => (window as unknown as { exitFade: string }).exitFade)).toBe(
+      '0.24s',
+    )
+    await expect(page.locator('.boot-ping').last()).toHaveCSS('animation-name', 'none')
+  })
+
+  test('a slow page change ends with the hexagon reveal, a fast one does not', async ({ page }) => {
+    await page.goto('/')
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
+    await dismissIntro(page)
+    // Sets window.revealed if a splash copy is ever added (only revealPage does that).
+    await page.evaluate(() => {
+      new MutationObserver(() => {
+        if (document.getElementById('hw-splash')) Object.assign(window, { revealed: true })
+      }).observe(document.body, { childList: true })
+    })
+    const revealed = () => page.evaluate(() => 'revealed' in window)
+
+    // Fast: Credentials answers from the mock straight away.
+    await page.getByRole('link', { name: 'Credentials', exact: true }).first().click()
+    await expect(page.getByRole('heading', { level: 1, name: 'Credentials' })).toBeVisible()
+    expect(await revealed()).toBe(false)
+
+    // Slow: Pulse waits for its heatmap; hold it for 700ms, past the 500ms limit.
+    const release = await holdRequest(page, '**/api/v1/stats/heatmap*')
+    await page.getByRole('link', { name: 'Pulse', exact: true }).first().click()
+    await expect(page.locator('.loading[role="status"]')).toBeVisible()
+    await page.waitForTimeout(700)
+    release()
+    await expect(page.locator('#hw-splash[data-state="exit"]')).toHaveCount(1)
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
+    expect(await revealed()).toBe(true)
   })
 })
