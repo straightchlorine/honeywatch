@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
-// Module state (the once-flag) is per import, so each test loads a fresh copy.
+// Module state (the once-flag, and the copy of the splash taken at import) is per
+// import, so each test loads a fresh copy.
 async function load() {
   vi.resetModules()
   return import('@/utils/splash')
@@ -135,6 +136,52 @@ describe('splash', () => {
     exitSplash()
     expect(el.isConnected).toBe(false)
     expect(el.hasAttribute('data-state')).toBe(false)
+  })
+
+  it('ends a slow page change with a small copy of the splash and its hexagon reveal', async () => {
+    // The module copies the splash when it is imported, so it must be in the page first.
+    const boot = mountSplash()
+    boot.innerHTML =
+      '<div class="hw-cover"></div><div class="hw-mark"><div class="hw-glow"></div>' +
+      '<div class="hw-echo"></div><div class="hw-ol"><svg class="hw-svg"></svg></div></div>' +
+      '<div class="hw-cap"></div>'
+    const { revealPage } = await load()
+    boot.remove()
+    // jsdom runs no CSS animations; hand every element the outline's turn instead.
+    const turn = { animationName: 'hw-turn', currentTime: 0 }
+    Object.assign(Element.prototype, { getAnimations: () => [turn] })
+    try {
+      revealPage(800)
+    } finally {
+      delete (Element.prototype as { getAnimations?: unknown }).getAnimations
+    }
+    const copy = document.getElementById('hw-splash')!
+    expect(copy.getAttribute('data-state')).toBe('exit')
+    // Never the plain fade: the copy has only just appeared, so its age says nothing.
+    expect(copy.hasAttribute('data-fast')).toBe(false)
+    expect(copy.style.getPropertyValue('--m')).toBe('36px')
+    expect(copy.querySelector('.hw-cap, .hw-echo, .hw-glow')).toBeNull()
+    expect(copy.querySelector<HTMLElement>('.hw-cover')!.style.background).toBe('var(--hw-bg)')
+    expect(copy.querySelector<HTMLElement>('.hw-mark')!.style.animation).toBe('none')
+    expect(copy.getAttribute('aria-hidden')).toBe('true')
+    // The loader turned for 800 - 220 = 580ms, so the copy's turn (starting at 380ms) resumes there.
+    expect(turn.currentTime).toBe(960)
+  })
+
+  it('does nothing when the page had no splash to copy', async () => {
+    const { revealPage } = await load()
+    expect(() => revealPage(800)).not.toThrow()
+    expect(document.getElementById('hw-splash')).toBeNull()
+  })
+
+  it('skips the reveal after a short wait, or while the boot splash is still up', async () => {
+    const boot = mountSplash()
+    const { revealPage } = await load()
+    revealPage(800) // the splash is still in the page, so no copy is added
+    expect(document.querySelectorAll('#hw-splash')).toHaveLength(1)
+    boot.remove()
+    revealPage(300)
+    expect(document.getElementById('hw-splash')).toBeNull()
   })
 
   it('afterSplash waits for the done event and can be cancelled', async () => {

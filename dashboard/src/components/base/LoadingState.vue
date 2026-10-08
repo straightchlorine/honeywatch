@@ -36,7 +36,9 @@
 
   @media (prefers-reduced-motion: no-preference) {
     /* Same turn as the splash logo (hw-turn in index.html): 60deg with a slight overshoot,
-       then a hold. A hexagon repeats every 60deg, so the loop restart is invisible. */
+       then a hold. A hexagon repeats every 60deg, so the loop restart is invisible.
+       revealPage in utils/splash.ts relies on this 1400ms period, the 220ms delay and the
+       36px size to continue the turn; change them together. */
     .loading-mark {
       animation: loading-turn 1400ms linear 220ms infinite;
     }
