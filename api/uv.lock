@@ -225,7 +225,7 @@ wheels = [
 
 [[package]]
 name = "honeywatch-api"
-version = "0.7.9"
+version = "0.7.10"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
