@@ -2,7 +2,7 @@
   /**
    * First-visit overlay: auto-dismisses after ~5s. Opened via link/deep link: stays until dismissed.
    */
-  import { onMounted, onUnmounted, ref } from 'vue'
+  import { nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
   import HexIcon from '../base/HexIcon.vue'
   import IconLink from '../IconLink.vue'
   import { ICONS } from '../icons'
@@ -22,6 +22,21 @@
     clearTimeout(autoTimer)
     autoDismissing.value = false
   }
+
+  const card = useTemplateRef<HTMLElement>('card')
+  let returnFocusTo: HTMLElement | null = null
+
+  // Move focus into the dialog on open, hand it back on close.
+  watch(open, async (isOpen) => {
+    if (isOpen) {
+      returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      await nextTick()
+      card.value?.focus({ preventScroll: true })
+    } else {
+      returnFocusTo?.focus({ preventScroll: true })
+      returnFocusTo = null
+    }
+  })
 
   function stripHash(): void {
     if (location.hash === '#about') {
@@ -87,7 +102,13 @@
       @click="onBackdropClick"
     >
       <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
-      <div class="intro-card glass" @click="holdOpen">
+      <div
+        ref="card"
+        class="intro-card glass"
+        tabindex="-1"
+        @click="holdOpen"
+        @keydown="holdOpen"
+      >
         <HexIcon :size="44" />
         <h2>Honeywatch</h2>
         <p>
@@ -292,6 +313,10 @@
     display: inline-flex;
     align-items: center;
     gap: 8px;
+  }
+
+  .intro-card:focus {
+    outline: none;
   }
 
   .intro-enter {

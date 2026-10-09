@@ -5,6 +5,7 @@
    */
   import { computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
   import { useQuery } from '@tanstack/vue-query'
+  import { RouterLink, useRoute } from 'vue-router'
   import {
     statsDownloadsOptions,
     statsTcpipDestinationsOptions,
@@ -14,13 +15,12 @@
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import HwCard from '@/components/base/HwCard.vue'
-  import { benignContent } from '@/utils/knownDigests'
+  import { benignContent, vtUrl } from '@/utils/knownDigests'
   import StatTile from '@/components/base/StatTile.vue'
   import InfoDot from '@/components/base/InfoDot.vue'
   import RankList, { type RankRow } from '@/components/base/RankList.vue'
   import InsightNote from '@/components/base/InsightNote.vue'
   import { useCountryFlag } from '@/composables/useCountryFlag'
-  import { RouterLink } from 'vue-router'
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { countryDisplayName } from '@/utils/countries'
   import { fmtNumber, fmtRelativeTime } from '@/utils/format'
@@ -49,6 +49,13 @@
 
   const checkSpecimens = useMoreFade('specimensEl')
 
+  // Deep link from the Sessions row. :target never matches (the list renders after navigation), so mark it by class.
+  const hash = useRoute().hash
+  onMounted(() => {
+    if (hash.startsWith('#spec-'))
+      document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'center' })
+  })
+
   const POLL_MS = 60_000
   const SPECIMEN_TOP_N = 50
   const RELAY_TOP_N = 12
@@ -66,7 +73,6 @@
 
   await Promise.all([downloadsQ.suspense(), tcpipQ.suspense(), outcomesQ.suspense()])
 
-
   const downloads = computed<PayloadDownloadResponse[]>(() => downloadsQ.data.value ?? [])
   const tcpip = computed<TcpipDestinationResponse[]>(() => tcpipQ.data.value ?? [])
 
@@ -82,9 +88,7 @@
     return `1 in ${fmtNumber(Math.round(whole / part))}`
   }
 
-  const fetchedLabel = computed(() =>
-    outcomes.value ? fmtNumber(outcomes.value.downloads) : '-',
-  )
+  const fetchedLabel = computed(() => (outcomes.value ? fmtNumber(outcomes.value.downloads) : '-'))
   const fetchedMeta = computed(() => {
     const o = outcomes.value
     if (!o) return ''
@@ -100,14 +104,21 @@
   })
 
   /** Inclusive span of the shelf, not of the honeypot's uptime. */
-  const windowLabel = computed(() => {
-    const first = downloads.value.map((d) => d.first_seen).filter(Boolean).sort()[0]
+  const span = computed(() => {
+    const first = downloads.value
+      .map((d) => d.first_seen)
+      .filter(Boolean)
+      .sort()[0]
     const last = downloads.value
       .map((d) => d.last_seen)
       .filter(Boolean)
       .sort()
       .at(-1)
-    if (!first || !last) return '-'
+    return first && last ? { first, last } : null
+  })
+  const windowLabel = computed(() => {
+    if (!span.value) return '-'
+    const { first, last } = span.value
     // Calendar days, not elapsed hours: the meta line names two DATES, so a
     // span half a day short would print "87 days" under "May 31 to Aug 27".
     const day = (iso: string) => Math.floor(new Date(iso).getTime() / 86_400_000)
@@ -115,17 +126,10 @@
     return days < 1 ? 'one day' : `${fmtNumber(days)} days`
   })
   const windowMeta = computed(() => {
-    const first = downloads.value.map((d) => d.first_seen).filter(Boolean).sort()[0]
-    const last = downloads.value
-      .map((d) => d.last_seen)
-      .filter(Boolean)
-      .sort()
-      .at(-1)
-    if (!first || !last) return ''
+    if (!span.value) return ''
+    const { first, last } = span.value
     return `${fmtShortDate(first)} to ${fmtShortDate(last)}, newest ${fmtRelativeTime(last)}`
   })
-
-  const shownDownloads = computed(() => downloads.value)
 
   function shaPrefix(sha: string): string {
     return sha.slice(0, 12)
@@ -167,6 +171,11 @@
       ? `Fetched from ${countryLabel(d.countries)}`
       : 'Origin could not be resolved'
   }
+  function onFlagsFocus(e: FocusEvent, d: PayloadDownloadResponse): void {
+    tt.show(originLabel(d))
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    tt.move({ clientX: r.left, clientY: r.bottom })
+  }
   function flagsFor(codes: string[]): string {
     return codes.length ? codes.map((c) => useCountryFlag(c)).join(' ') : '-'
   }
@@ -178,9 +187,6 @@
     const d = new Date(iso)
     if (Number.isNaN(d.getTime())) return '-'
     return d.toLocaleDateString('en', { month: 'short', day: '2-digit', timeZone: 'UTC' })
-  }
-  function vtUrl(sha256: string): string {
-    return `https://www.virustotal.com/gui/file/${sha256}`
   }
 
   // Interpret the port, never the attacker's intent.
@@ -198,6 +204,7 @@
     445: 'SMB',
     465: 'SMTPS',
     587: 'SMTP submission',
+    2525: 'SMTP (alt)',
     993: 'IMAPS',
     995: 'POP3S',
     1433: 'MSSQL',
@@ -219,10 +226,11 @@
   function portService(port: number): string {
     return PORT_SERVICES[port] ?? `Port ${port}`
   }
+  // Mail ports distinguish relay probes from ordinary outbound noise.
+  const MAIL_PORTS = new Set([25, 465, 587, 2525])
   /** Classify by port number, not outcome label, so renaming a label can never flip the badge color. */
-  const MAIL = new Set([25, 465, 587, 2525])
   function portBadgeClass(port: number): RankRow['badgeClass'] {
-    if (MAIL.has(port)) return 'bad'
+    if (MAIL_PORTS.has(port)) return 'bad'
     if (port === 53 || port === 3478) return 'dim'
     return 'amber'
   }
@@ -243,13 +251,11 @@
         frac: frac(t.sessions),
         badge: String(t.port),
         badgeClass: portBadgeClass(t.port),
-        sub: `${portService(t.port)} . ${fmtNumber(t.hosts)} host${t.hosts === 1 ? '' : 's'} . ${where}`,
+        sub: `${portService(t.port)} - ${fmtNumber(t.hosts)} host${t.hosts === 1 ? '' : 's'} - ${where}`,
       }
     })
   })
 
-  // Mail ports distinguish relay probes from ordinary outbound noise.
-  const MAIL_PORTS = new Set([25, 465, 587])
   const relayInsight = computed(() => {
     const mail = tcpip.value.filter((t) => MAIL_PORTS.has(t.port))
     if (!mail.length) return ''
@@ -259,7 +265,6 @@
       'as a relay, not browsed.'
     )
   })
-
 </script>
 
 <template>
@@ -294,7 +299,8 @@
             />
           </template>
           <template #meta>
-            {{ singletonCount }} seen only once - {{ fmtNumber(captureCount) }} files in all
+            {{ fmtNumber(singletonCount) }} seen only once - {{ fmtNumber(captureCount) }} files in
+            all
           </template>
         </StatTile>
         <StatTile label="Date range" :value="windowLabel">
@@ -330,17 +336,27 @@
             aria-label="Captured files"
             @scroll.passive="checkSpecimens"
           >
-            <li v-for="d in shownDownloads" :key="d.sha256" :class="{ recurring: d.sessions > 1 }" class="spec">
+            <li
+              v-for="d in downloads"
+              :id="'spec-' + d.sha256"
+              :key="d.sha256"
+              :class="{ recurring: d.sessions > 1, picked: hash === '#spec-' + d.sha256 }"
+              class="spec"
+            >
               <RouterLink class="spec-link" :to="sessionsFor(d)">
                 <span class="mono head-sha" aria-hidden="true">{{ shaPrefix(d.sha256) }}</span>
                 <span class="visually-hidden">{{ cardLabel(d) }}</span>
               </RouterLink>
               <span
                 class="flags"
-                aria-hidden="true"
+                role="img"
+                tabindex="0"
+                :aria-label="originLabel(d)"
                 @pointerenter="tt.show(originLabel(d))"
                 @pointermove="tt.move($event)"
                 @pointerleave="tt.hide()"
+                @focus="onFlagsFocus($event, d)"
+                @blur="tt.hide()"
                 >{{ flagsFor(d.countries) }}</span
               >
               <span v-if="benignContent(d.sha256)" class="benign">not malware</span>
@@ -360,7 +376,7 @@
                 </template>
               </p>
             </li>
-            <li v-if="!shownDownloads.length" class="empty">No files captured yet.</li>
+            <li v-if="!downloads.length" class="empty">No files captured yet.</li>
           </ul>
         </HwCard>
 
@@ -370,12 +386,7 @@
             :note="`top ${tcpip.length} networks attackers tried to reach`"
             class="relay-card"
           >
-            <RankList
-              class="relay-rank"
-              :rows="relayRows"
-              label-width="150px"
-              badge-width="46px"
-            />
+            <RankList class="relay-rank" :rows="relayRows" label-width="150px" badge-width="46px" />
             <p v-if="!tcpip.length" class="empty">No relay attempts recorded yet.</p>
             <InsightNote v-if="relayInsight" class="relay-insight">{{ relayInsight }}</InsightNote>
           </HwCard>
@@ -424,18 +435,6 @@
     gap: 12px;
   }
 
-  .tile-muted :deep(.value) {
-    color: var(--text-muted);
-  }
-
-  .tile-meta-text {
-    display: block;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
   .grid-main {
     flex: 1;
     min-height: 0;
@@ -462,7 +461,6 @@
     overflow-y: auto;
     min-height: 0;
     flex: 1 1 auto;
-    align-content: start;
     scrollbar-width: thin;
     scrollbar-color: var(--border-strong) transparent;
     scrollbar-gutter: stable;
@@ -480,7 +478,6 @@
     mask-image: linear-gradient(#000 calc(100% - 22px), transparent);
   }
 
-
   /* Constant card height is load-bearing: layout fits viewport without scroll. */
   .spec {
     position: relative;
@@ -492,7 +489,7 @@
     border-radius: var(--radius-md);
     padding: 8px 12px;
     display: grid;
-    grid-template-columns: auto auto 1fr auto;
+    grid-template-columns: auto minmax(0, 1fr) auto;
     align-content: center;
     column-gap: 8px;
     row-gap: 2px;
@@ -504,7 +501,8 @@
   }
 
   .spec:hover,
-  .spec:focus-within {
+  .spec:focus-within,
+  .spec.picked {
     border-color: var(--accent-dim);
     background: var(--surface-hover);
   }
@@ -545,6 +543,10 @@
     border-radius: inherit;
   }
 
+  .spec-link:focus-visible {
+    outline: none;
+  }
+
   .spec-link:focus-visible::before {
     outline: 2px solid var(--accent);
     outline-offset: -3px;
@@ -560,10 +562,20 @@
     grid-column: 2;
     grid-row: 1;
     position: relative;
+    justify-self: start;
+    max-width: 100%;
     font-size: 11px;
     line-height: 1;
     letter-spacing: 1.5px;
     align-self: center;
+    min-width: 0;
+    overflow: hidden;
+    white-space: nowrap;
+  }
+
+  .spec .flags:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
 
   /* Numbers emphasized for scanners; plain text for readers. */
@@ -592,7 +604,7 @@
   /* Raised above the card overlay so they stay independently clickable. */
   .spec .vt,
   .spec .benign {
-    grid-column: 4;
+    grid-column: 3;
     grid-row: 1;
     position: relative;
     z-index: 1;
@@ -664,25 +676,6 @@
     padding-top: 12px;
     font-size: 12px;
   }
-
-
-
-
-
-
-
-
-  .benign {
-    font-size: 10px;
-    font-weight: 600;
-    letter-spacing: 0.04em;
-    padding: 2px 7px;
-    border-radius: 999px;
-    color: var(--text-dim);
-    border: 1px solid var(--border-strong);
-    white-space: nowrap;
-  }
-
 
   .mono {
     font-family: var(--font-mono);

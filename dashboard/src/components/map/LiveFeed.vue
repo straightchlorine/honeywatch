@@ -7,7 +7,9 @@
   import { useReducedMotion } from '@/composables/useReducedMotion'
   import { fmtUtcClock } from '@/utils/format'
 
-  const emit = defineEmits<{ arrive: [payload: { a2: string; lat: number | null; lon: number | null }] }>()
+  const emit = defineEmits<{
+    arrive: [payload: { a2: string; lat: number | null; lon: number | null }]
+  }>()
 
   const router = useRouter()
   const paused = ref(false)
@@ -90,7 +92,6 @@
 
   onUnmounted(() => staggerTimers.forEach(clearTimeout))
 
-
   function openSession(id: string): void {
     router.push({ name: 'sessions', query: { open: id, sort: 'recent' } })
   }
@@ -117,6 +118,15 @@
       </button>
     </h2>
     <div class="feed-rows">
+      <p v-if="!rows.length" class="feed-empty" role="status">
+        {{
+          feedQ.isError.value
+            ? 'Could not load live sessions. Retrying.'
+            : feedQ.isPending.value
+              ? 'Loading sessions...'
+              : 'No sessions yet.'
+        }}
+      </p>
       <button
         v-for="r in rows.slice(0, VISIBLE_ROWS)"
         :key="r.id"
@@ -129,9 +139,12 @@
         <span aria-hidden="true">{{ r.flag }}</span>
         <span class="country">{{ r.country }}</span>
         <span class="label">{{ r.label }}</span>
-        <span class="res" :class="r.ok ? 'ok' : 'no'" :aria-label="r.ok ? 'accepted' : 'rejected'">{{
-          r.ok ? '+' : 'x'
-        }}</span>
+        <span
+          class="res"
+          :class="r.ok ? 'ok' : 'no'"
+          :aria-label="r.ok ? 'accepted' : 'rejected'"
+          >{{ r.ok ? '+' : 'x' }}</span
+        >
       </button>
     </div>
   </div>
@@ -172,7 +185,7 @@
     height: 8px;
     border-radius: 50%;
     background: var(--accent);
-    box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.6);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 60%, transparent);
     animation: live-pulse 2.4s ease-out infinite;
   }
 
@@ -207,13 +220,13 @@
 
   @keyframes live-pulse {
     0% {
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0.55);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent);
     }
     70% {
-      box-shadow: 0 0 0 9px rgba(245, 158, 11, 0);
+      box-shadow: 0 0 0 9px color-mix(in srgb, var(--accent) 0%, transparent);
     }
     100% {
-      box-shadow: 0 0 0 0 rgba(245, 158, 11, 0);
+      box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 0%, transparent);
     }
   }
 
@@ -221,6 +234,14 @@
     display: flex;
     flex-direction: column;
     gap: 1px;
+    min-height: 4.5rem;
+  }
+
+  .feed-empty {
+    margin: 0;
+    padding: 4px 2px;
+    font: 500 11.5px var(--font-mono);
+    color: var(--text-dim);
   }
 
   .feed-row {
@@ -228,7 +249,6 @@
     border: none;
     background: none;
     width: 100%;
-    font: inherit;
     text-align: left;
     display: grid;
     grid-template-columns: 58px 20px minmax(90px, 1fr) minmax(120px, 1.2fr) 20px;
@@ -241,11 +261,11 @@
     cursor: pointer;
   }
   .feed-row:hover {
-    background: rgba(255, 255, 255, 0.03);
+    background: var(--surface-hover);
   }
   .feed-row:focus-visible {
-    outline: 1px solid var(--accent);
-    outline-offset: -1px;
+    outline: 2px solid var(--accent);
+    outline-offset: -2px;
   }
 
   .feed-row .t {
@@ -276,8 +296,11 @@
       right: 12px;
       bottom: 62px;
       width: auto;
+      background: color-mix(in srgb, var(--surface, #14110c) 88%, transparent);
+    }
+    .feed-row {
+      grid-template-columns: 50px 18px minmax(110px, 1.4fr) minmax(70px, 0.9fr) 16px;
+      gap: 6px;
     }
   }
-
-
 </style>

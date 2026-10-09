@@ -14,6 +14,7 @@
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import StatTile from '@/components/base/StatTile.vue'
+  import HwBadge from '@/components/base/HwBadge.vue'
   import HwCard from '@/components/base/HwCard.vue'
   import ChipButton from '@/components/base/ChipButton.vue'
   import InfoDot from '@/components/base/InfoDot.vue'
@@ -45,6 +46,9 @@
   // API max is 100 (validate.Range in common.py); HexMatrix reports actual
   // drawn count via @shown, so fetch conservatively.
   const MATRIX_PASSWORDS_TOP_N = 100
+  const PAIRS_TOP_N = 100
+  const WORKED_PAIRS_TOP_N = 10
+  const DRILL_TOP_N = 25
 
   const usersQ = useQuery({
     ...statsTopCredentialsOptions({ query: { by: 'username', top_n: MATRIX_USERS } }),
@@ -56,11 +60,11 @@
   })
   // Top pairs overall (any outcome); matrix cells use real counts, not estimates.
   const pairsQ = useQuery({
-    ...statsTopCredentialsOptions({ query: { by: 'pair', top_n: 100 } }),
+    ...statsTopCredentialsOptions({ query: { by: 'pair', top_n: PAIRS_TOP_N } }),
     refetchInterval: POLL_MS,
   })
   const workedQ = useQuery({
-    ...statsTopCredentialsOptions({ query: { by: 'pair', outcome: 'success', top_n: 10 } }),
+    ...statsTopCredentialsOptions({ query: { by: 'pair', outcome: 'success', top_n: WORKED_PAIRS_TOP_N } }),
     refetchInterval: POLL_MS,
   })
   const outcomesQ = useQuery({
@@ -188,7 +192,7 @@
   const selectedLength = ref<number | null>(null)
   const passwordsByLengthQ = useQuery(
     computed(() => ({
-      ...statsPasswordsByLengthOptions({ query: { length: selectedLength.value ?? 0, top_n: 25 } }),
+      ...statsPasswordsByLengthOptions({ query: { length: selectedLength.value ?? 0, top_n: DRILL_TOP_N } }),
       enabled: selectedLength.value !== null,
       refetchInterval: POLL_MS,
       placeholderData: keepPreviousData,
@@ -453,8 +457,8 @@
 
       <DrawerShell :open="!!selectedCell" :title="cellTitle" @close="closeCellDrawer">
         <template v-if="selectedCell" #head-extra>
-          <span v-if="selectedCell.accepted" class="pd-badge ok">accepted</span>
-          <span v-else-if="!selectedCell.observed" class="pd-badge dim">never tried</span>
+          <HwBadge v-if="selectedCell.accepted" tone="ok">accepted</HwBadge>
+          <HwBadge v-else-if="!selectedCell.observed" tone="dim">never tried</HwBadge>
         </template>
         <template v-if="selectedCell">
           <div class="pd-hero">
@@ -592,7 +596,7 @@
   .cap {
     display: flex;
     justify-content: space-between;
-    font: 500 11.5px var(--font-mono);
+    font: 500 12px var(--font-mono);
     color: var(--text-dim);
     margin: 6px 0 8px;
   }
@@ -703,7 +707,7 @@
   .hist-tick {
     flex: 1 1 0;
     text-align: center;
-    font: 500 9.5px var(--font-mono);
+    font: 500 10px var(--font-mono);
     color: var(--text-dim);
     overflow: visible;
     white-space: nowrap;
@@ -803,27 +807,6 @@
     font-size: 12px;
   }
 
-  .pd-badge {
-    font: 600 10px var(--font-mono);
-    letter-spacing: 0.04em;
-    text-transform: uppercase;
-    padding: 3px 8px;
-    border-radius: 999px;
-    border: 1px solid transparent;
-  }
-
-  .pd-badge.ok {
-    color: var(--ok);
-    background: rgba(132, 204, 22, 0.1);
-    border-color: rgba(132, 204, 22, 0.28);
-  }
-
-  .pd-badge.dim {
-    color: var(--text-dim);
-    background: var(--surface-2);
-    border-color: var(--border);
-  }
-
   .pd-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -863,7 +846,7 @@
   }
 
   .pd-share-label {
-    font-size: 11.5px;
+    font-size: 12px;
     color: var(--text-muted);
   }
 

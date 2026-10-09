@@ -239,6 +239,7 @@
   }
   // Tooltip on focus for keyboard users: aria-label can't carry IPs/share/auth data.
   function onFocus(c: MapCountry, e: FocusEvent): void {
+    rovingId.value = c.id
     // Country paths are focusable, so a pointer press lands focus on whatever
     // is under the cursor - including a middle-button drag used only to pan.
     // Gate on :focus-visible so the ring and the tooltip are a keyboard
@@ -261,11 +262,37 @@
   function onClick(c: MapCountry): void {
     if (c.a2 && byA2.value.has(c.a2)) emit('select', c.a2)
   }
+  // Roving tabindex: the 157 country paths are ONE tab stop (the busiest country,
+  // then wherever focus last was); arrows move between them, busiest first.
+  // ponytail: no type-ahead, and the pan/zoom view does not follow focus.
+  const navList = computed(() =>
+    geometry.countries
+      .filter((c) => c.a2 && byA2.value.has(c.a2))
+      .sort((a, b) => byA2.value.get(b.a2!)!.sessions - byA2.value.get(a.a2!)!.sessions),
+  )
+  const rovingId = ref<string | null>(null)
+  const tabId = computed(() =>
+    navList.value.some((c) => c.id === rovingId.value) ? rovingId.value : navList.value[0]?.id,
+  )
+  const NAV_STEP: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }
   function onKeydown(c: MapCountry, e: KeyboardEvent): void {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onClick(c)
+      return
     }
+    const list = navList.value
+    const i = list.findIndex((x) => x.id === c.id)
+    const last = list.length - 1
+    const to =
+      e.key === 'Home' ? 0 : e.key === 'End' ? last : i < 0 || !(e.key in NAV_STEP) ? -1 : i + NAV_STEP[e.key]!
+    if (to < 0 || to > last) {
+      if (e.key in NAV_STEP || e.key === 'Home' || e.key === 'End') e.preventDefault()
+      return
+    }
+    e.preventDefault()
+    rovingId.value = list[to]!.id
+    svgEl.value?.querySelector<SVGElement>(`[data-cid="${list[to]!.id}"]`)?.focus()
   }
   // The selection/focus ring is drawn as a separate overlay pair rather than as
   // a stroke on the country itself: no single colour clears 4.5:1 against the
@@ -504,9 +531,12 @@
       <defs></defs>
       <g :transform="transform">
         <path class="graticule" :d="geometry.graticule" aria-hidden="true" />
+        <g role="group" aria-label="World map - arrow keys move between countries">
         <!-- SVG data-viz: pointer handlers without a static role are standard
              here - role/tabindex are set conditionally per country below,
-             which the linter can't see through. -->
+             which the linter can't see through. tabindex -1 on no-data countries:
+             Blink makes an SVG element with a focus listener focusable, so -1
+             keeps them out of the Tab order. -->
         <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
         <path
           v-for="c in geometry.countries"
@@ -515,7 +545,8 @@
           :class="{ selected: !!c.a2 && c.a2 === selected }"
           :d="detail.countries.get(c.id) ?? c.d"
           :fill="fillFor(c.a2)"
-          :tabindex="c.a2 && byA2.has(c.a2) ? 0 : undefined"
+          :data-cid="c.id"
+          :tabindex="c.a2 && byA2.has(c.a2) ? (c.id === tabId ? 0 : -1) : -1"
           :role="c.a2 && byA2.has(c.a2) ? 'button' : undefined"
           :aria-label="c.a2 && byA2.has(c.a2) ? ariaLabelFor(c) : undefined"
           :aria-hidden="c.a2 && byA2.has(c.a2) ? undefined : 'true'"
@@ -528,6 +559,7 @@
           @keydown="onKeydown(c, $event)"
         />
         <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
+        </g>
         <!-- Boundaries Natural Earth does not class as settled: the Kashmir
              Line of Control, the Korean MDL, the Green Line, Abyei and the
              like. The casing is the load-bearing part - it is opaque and wider
@@ -636,7 +668,7 @@
     min-height: 0;
     overflow: hidden;
     background:
-      radial-gradient(1200px 700px at 50% 42%, rgba(245, 158, 11, 0.06), transparent 65%),
+      radial-gradient(1200px 700px at 50% 42%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 65%),
       var(--map-ocean);
   }
 
@@ -700,7 +732,7 @@
 
   .graticule {
     fill: none;
-    stroke: rgba(245, 158, 11, 0.05);
+    stroke: var(--map-graticule);
     vector-effect: non-scaling-stroke;
   }
 

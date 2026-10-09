@@ -51,6 +51,7 @@
     display: flex;
     align-items: center;
     gap: 4px;
+    flex-wrap: nowrap;
   }
 
   .label {
@@ -59,6 +60,13 @@
     letter-spacing: 0.09em;
     text-transform: uppercase;
     color: var(--text-dim);
+    min-width: 0;
+  }
+
+  @media (max-width: 480px) {
+    .label {
+      letter-spacing: 0.05em;
+    }
   }
 
   .spark {

@@ -61,3 +61,30 @@ describe('SessionRow interest badge', () => {
     expect(w.find('.score-hex b').text()).toBe('0')
   })
 })
+
+describe('SessionRow roving tabindex', () => {
+  it('is tabbable only when it is the grid tab stop, copy button included', () => {
+    const on = mount(SessionRow, { props: { row: baseRow, expanded: false, maxInterest: 56 } })
+    const off = mount(SessionRow, {
+      props: { row: baseRow, expanded: false, maxInterest: 56, tabbable: false },
+    })
+    expect(on.find('tr.srow').attributes('tabindex')).toBe('0')
+    expect(off.find('tr.srow').attributes('tabindex')).toBe('-1')
+    expect(
+      off.find('.sid-copy').exists() ? off.find('.sid-copy').attributes('tabindex') : '-1',
+    ).toBe('-1')
+  })
+
+  it('ArrowRight expands and ArrowLeft collapses', async () => {
+    const closed = mount(SessionRow, { props: { row: baseRow, expanded: false, maxInterest: 56 } })
+    await closed.find('tr.srow').trigger('keydown', { key: 'ArrowRight' })
+    await closed.find('tr.srow').trigger('keydown', { key: 'ArrowLeft' })
+    expect(closed.emitted('toggle')).toHaveLength(1)
+    const open = mount(SessionRow, {
+      props: { row: baseRow, expanded: true, maxInterest: 56 },
+      global: { stubs: { SessionExpansion: true } },
+    })
+    await open.find('tr.srow').trigger('keydown', { key: 'ArrowLeft' })
+    expect(open.emitted('toggle')).toHaveLength(1)
+  })
+})

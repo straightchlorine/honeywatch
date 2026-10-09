@@ -127,7 +127,7 @@ describe('CityDot component', () => {
     const hitCircle = w.get('.city-hit')
     expect(hitCircle.attributes('role')).toBe('button')
     expect(hitCircle.attributes('aria-label')).toBe('New York (US)')
-    expect(hitCircle.attributes('tabindex')).toBe('0')
+    expect(hitCircle.attributes('tabindex')).toBe('-1')
   })
 
   it('emits select with country_code on click', async () => {

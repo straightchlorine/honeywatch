@@ -258,7 +258,15 @@
       );
     }
 
+    .nav a,
+    .tb-about {
+      display: inline-flex;
+      align-items: center;
+      min-height: 40px;
+    }
+
     .nav a {
+      flex: none;
       white-space: nowrap;
     }
   }

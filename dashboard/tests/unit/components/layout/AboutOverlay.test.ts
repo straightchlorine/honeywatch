@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { nextTick } from 'vue'
 import AboutOverlay from '@/components/layout/AboutOverlay.vue'
@@ -50,5 +50,18 @@ describe('AboutOverlay first visit', () => {
     await nextTick()
     // The visit was never shown, so the card must still appear next time.
     expect(localStorage.getItem(SEEN_KEY)).toBeNull()
+  })
+
+  it('a keypress inside the card holds the first-visit auto-dismiss open', async () => {
+    vi.useFakeTimers()
+    const w = mount(AboutOverlay, { attachTo: document.body })
+    window.dispatchEvent(new Event('hw-splash-done'))
+    await nextTick()
+    await w.find('.intro-card').trigger('keydown', { key: 'ArrowDown' })
+    vi.advanceTimersByTime(6000)
+    await nextTick()
+    expect(w.find('[role="dialog"]').exists()).toBe(true)
+    w.unmount()
+    vi.useRealTimers()
   })
 })

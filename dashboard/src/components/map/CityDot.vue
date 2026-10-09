@@ -52,7 +52,7 @@
     <circle
       class="city-hit"
       :r="hitR"
-      :tabindex="0"
+      :tabindex="-1"
       role="button"
       :aria-label="`${city.city} (${city.country_code})`"
       @pointerenter="onEnter"

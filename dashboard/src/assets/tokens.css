@@ -149,6 +149,7 @@
     box-shadow: var(--shadow-lift);
     min-width: 150px;
     max-width: min(280px, calc(100vw - 16px));
+    overflow-wrap: anywhere;
     opacity: 0;
     transition: opacity var(--motion-fast);
   }
@@ -207,6 +208,12 @@
     line-height: var(--type-base-lh);
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  a:focus-visible,
+  button:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   a {

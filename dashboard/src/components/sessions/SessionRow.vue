@@ -12,10 +12,17 @@
   import HwBadge from '../base/HwBadge.vue'
   import SessionExpansion from './SessionExpansion.vue'
 
-  const { row, expanded, maxInterest } = defineProps<{
+  // tabbable: the grid's roving tab stop - exactly one row (and its copy button) is 0, the rest -1.
+  const {
+    row,
+    expanded,
+    maxInterest,
+    tabbable = true,
+  } = defineProps<{
     row: SessionSummaryResponse
     expanded: boolean
     maxInterest: number
+    tabbable?: boolean
   }>()
   const emit = defineEmits<{ toggle: [] }>()
 
@@ -24,7 +31,9 @@
   // Tuned thresholds: glow starts at 60% of the top score; below interest=5
   // there's too little activity to color, so the hex stays neutral grey.
   const hot = computed(() => frac.value > 0.6)
-  const hexFill = computed(() => (row.interest > 5 ? seq(Math.pow(frac.value, 0.9)) : 'var(--surface-2)'))
+  const hexFill = computed(() =>
+    row.interest > 5 ? seq(Math.pow(frac.value, 0.9)) : 'var(--surface-2)',
+  )
   // Normalized 0-100: hottest session reads as 100, others scale beneath it.
   const displayScore = computed(() => Math.round((100 * row.interest) / Math.max(1, maxInterest)))
   const points = hexPoints(15, 16.5, 14)
@@ -39,13 +48,16 @@
     if (!city) return null
     return city.toLowerCase() === countryText.value.trim().toLowerCase() ? null : city
   })
-  const originFull = computed(() => (cityText.value ? `${countryText.value}, ${cityText.value}` : countryText.value))
+  const originFull = computed(() =>
+    cityText.value ? `${countryText.value}, ${cityText.value}` : countryText.value,
+  )
   const duration = computed(() => humanizeDuration(row.started_at, row.ended_at))
   const started = computed(() => (row.started_at ? fmtRelativeTime(row.started_at) : '-'))
 
   // Prose accessibility: visible 12-char id is visual only, not read by screen readers.
   const ariaLabel = computed(
-    () => `Session from ${originFull.value}, interest score ${displayScore.value} of 100, lasting ${duration.value}`,
+    () =>
+      `Session from ${originFull.value}, interest score ${displayScore.value} of 100, lasting ${duration.value}`,
   )
 
   const copied = ref(false)
@@ -65,7 +77,11 @@
   const tooltip = useHwTooltip()
 
   function onKeydown(e: KeyboardEvent): void {
+  if (e.target !== e.currentTarget) return
     if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault()
+      emit('toggle')
+    } else if ((e.key === 'ArrowRight' && !expanded) || (e.key === 'ArrowLeft' && expanded)) {
       e.preventDefault()
       emit('toggle')
     }
@@ -77,56 +93,69 @@
   <tr
     class="srow"
     :class="{ quiet: row.interest < 4 }"
-    tabindex="0"
+    :data-id="row.id"
+    :tabindex="tabbable ? 0 : -1"
     :aria-expanded="expanded"
     :aria-label="ariaLabel"
     @click="emit('toggle')"
     @keydown="onKeydown"
   >
     <td class="session">
-      <span class="chevron" :class="{ rotated: expanded }" aria-hidden="true">
-        <svg viewBox="0 0 24 24" width="14" height="14">
-          <path :d="ICONS['chevron-right']" fill="currentColor" />
-        </svg>
-      </span>
-      <button
-        type="button"
-        class="score-hex"
-        :class="{ hot }"
-        :aria-label="`Interest score ${displayScore} of 100`"
-        @pointerenter="tooltip.show('Interest score - higher when a session ran commands, dropped files, got control or tried to relay')"
-        @pointermove="tooltip.move($event as PointerEvent)"
-        @pointerleave="tooltip.hide()"
-        @focus="tooltip.show('Interest score - higher when a session ran commands, dropped files, got control or tried to relay')"
-        @blur="tooltip.hide()"
-      >
-        <svg viewBox="0 0 30 33" aria-hidden="true">
-          <polygon
-            :points="points"
-            :fill="hexFill"
-            stroke="var(--border-strong)"
-            :stroke-width="row.interest > 5 ? 0 : 1"
-          />
-        </svg>
-        <b aria-hidden="true">{{ displayScore }}</b>
-      </button>
-      <span class="sid-wrap">
-        <span class="sid">{{ row.id.slice(0, 12) }}</span>
-        <button
-          v-if="canCopy"
-          type="button"
-          class="sid-copy"
-          :class="{ done: copied }"
-          :aria-label="copied ? 'Session id copied' : `Copy session id ${row.id}`"
-          @click.stop="copyId"
-          @keydown.enter.stop
-          @keydown.space.stop
-        >
-          <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-            <path :d="copied ? ICONS.check : ICONS.copy" />
+      <div class="cell">
+        <span class="chevron" :class="{ rotated: expanded }" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="14" height="14">
+            <path :d="ICONS['chevron-right']" fill="currentColor" />
           </svg>
+        </span>
+        <button
+          type="button"
+          class="score-hex"
+          :class="{ hot }"
+          tabindex="-1"
+          :aria-label="`Interest score ${displayScore} of 100`"
+          @pointerenter="
+            tooltip.show(
+              'Interest score - higher when a session ran commands, dropped files, got control or tried to relay',
+            )
+          "
+          @pointermove="tooltip.move($event as PointerEvent)"
+          @pointerleave="tooltip.hide()"
+          @focus="
+            tooltip.show(
+              'Interest score - higher when a session ran commands, dropped files, got control or tried to relay',
+            )
+          "
+          @blur="tooltip.hide()"
+        >
+          <svg viewBox="0 0 30 33" aria-hidden="true">
+            <polygon
+              :points="points"
+              :fill="hexFill"
+              stroke="var(--border-strong)"
+              :stroke-width="row.interest > 5 ? 0 : 1"
+            />
+          </svg>
+          <b aria-hidden="true">{{ displayScore }}</b>
         </button>
-      </span>
+        <span class="sid-wrap">
+          <span class="sid">{{ row.id.slice(0, 12) }}</span>
+          <button
+            v-if="canCopy"
+            type="button"
+            class="sid-copy"
+            :class="{ done: copied }"
+            :tabindex="tabbable ? 0 : -1"
+            :aria-label="copied ? 'Session id copied' : `Copy session id ${row.id}`"
+            @click.stop="copyId"
+            @keydown.enter.stop
+            @keydown.space.stop
+          >
+            <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+              <path :d="copied ? ICONS.check : ICONS.copy" />
+            </svg>
+          </button>
+        </span>
+      </div>
     </td>
     <td class="story">
       <span class="badges">
@@ -142,15 +171,18 @@
             <path :d="ICONS[b.icon]" />
           </svg>
         </HwBadge>
+        <span class="dur" :title="`Lasted ${duration}`">{{ duration }}</span>
       </span>
     </td>
     <td class="origin">
-      <span class="flag" aria-hidden="true">{{ flag }}</span>
-      <span class="country">{{ countryText }}</span>
-      <template v-if="cityText">
-        <span class="dot" aria-hidden="true">&middot;</span>
-        <span class="city">{{ cityText }}</span>
-      </template>
+      <div class="cell">
+        <span class="flag" aria-hidden="true">{{ flag }}</span>
+        <span class="country">{{ countryText }}</span>
+        <template v-if="cityText">
+          <span class="dot" aria-hidden="true">&middot;</span>
+          <span class="city">{{ cityText }}</span>
+        </template>
+      </div>
     </td>
     <td class="spacer"></td>
     <td class="r num duration">{{ duration }}</td>
@@ -173,9 +205,12 @@
      outranks scoped class). */
   .session {
     padding: 3px 10px 3px 16px !important;
+  }
+  .cell {
     display: flex;
     align-items: center;
     gap: 6px;
+    min-width: 0;
   }
 
   .chevron {
@@ -226,9 +261,6 @@
      under the middle of the row, where a tap meant to expand hit copy instead. */
   .sid-copy {
     margin-left: auto;
-  }
-
-  .sid-copy {
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
@@ -245,8 +277,8 @@
        from shifting sideways when it appears. */
     opacity: 0;
     transition:
-      opacity 120ms ease,
-      color 120ms ease;
+      opacity var(--motion-fast),
+      color var(--motion-fast);
   }
   .srow:hover .sid-copy,
   .srow:focus-within .sid-copy,
@@ -271,6 +303,13 @@
   @media (hover: none) {
     .sid-copy {
       opacity: 1;
+    }
+  }
+  @media (pointer: coarse) {
+    .sid-copy {
+      width: 32px;
+      height: 32px;
+      margin: -6px 0;
     }
   }
 
@@ -330,8 +369,17 @@
 
   .story .badges {
     display: inline-flex;
+    align-items: center;
     gap: 6px;
     flex-wrap: wrap;
+  }
+
+  /* Tie-breaker between look-alike rows (duration is the field that varies in real data).
+     ponytail: mobile only - desktop already has a Duration column. */
+  .dur {
+    display: none;
+    font: 10.5px var(--font-mono);
+    color: var(--text-dim);
   }
 
   /* The count carries the number; the glyph says what was counted, so the badge
@@ -346,8 +394,8 @@
   .origin {
     padding: 3px 10px !important;
     min-width: 0;
-    display: flex;
-    align-items: center;
+  }
+  .origin .cell {
     gap: 7px;
   }
 
@@ -414,10 +462,14 @@
   }
 
   @media (max-width: 760px) {
-    /* Hide origin/duration/started on mobile (shown in expansion instead).
-       Child combinator ensures :nth-child(n+3) targets row cells only. */
+    /* Origin/duration/started are hidden on mobile. Child combinator ensures
+       :nth-child(n+3) targets row cells only. */
     .srow > td:nth-child(n + 3) {
       display: none;
+    }
+
+    .dur {
+      display: inline;
     }
   }
 </style>

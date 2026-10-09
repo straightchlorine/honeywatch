@@ -12,6 +12,8 @@
   import { redactIps } from '@/utils/redactIps'
   import { ICONS } from '@/components/icons'
   import HwBadge from '../base/HwBadge.vue'
+  import { benignContent, vtUrl } from '@/utils/knownDigests'
+  import { useHwTooltip } from '@/composables/useHwTooltip'
 
   const { sessionId } = defineProps<{ sessionId: string }>()
 
@@ -32,7 +34,28 @@
     }))
   })
 
-  const download = computed(() => detailQ.data.value?.downloads[0] ?? null)
+  const tt = useHwTooltip()
+
+  // One row per distinct sha256 (a session can fetch the same file twice); nulls only if nothing else.
+  const files = computed(() => {
+    const counts = new Map<string, number>()
+    let unhashed = false
+    for (const d of detailQ.data.value?.downloads ?? []) {
+      if (d.sha256) counts.set(d.sha256, (counts.get(d.sha256) ?? 0) + 1)
+      else unhashed = true
+    }
+    const rows = [...counts].map(([sha, n]) => ({ sha, n, benign: benignContent(sha) }))
+    // ponytail: no per-file cap; the rail scrolls
+    return rows.length || !unhashed ? rows : [{ sha: '', n: 1, benign: null }]
+  })
+  function showTip(e: Event, f: { sha: string; n: number; benign: string | null }): void {
+    const rows: [string, string][] = []
+    if (f.benign) rows.push(['Content', f.benign])
+    if (f.n > 1) rows.push(['Fetched', `${f.n} times in this session`])
+    tt.show(f.sha, rows)
+    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
+    tt.move({ clientX: r.left, clientY: r.bottom })
+  }
   const clientLine = computed(() => {
     const s = detailQ.data.value
     if (!s) return ''
@@ -66,15 +89,38 @@
             </div>
           </div>
         </div>
-        <div v-if="download">
-          <h2>Files</h2>
-          <RouterLink :to="{ name: 'payloads' }" class="mono">
-            <HwBadge tone="amber">{{ download.sha256?.slice(0, 16) ?? 'download' }}</HwBadge>
-          </RouterLink>
-        </div>
-        <div>
-          <h2>Software used</h2>
-          <span class="mono">{{ clientLine }}</span>
+        <div class="side">
+          <div v-if="files.length">
+            <h2>Files</h2>
+            <div v-for="f in files" :key="f.sha" class="file">
+              <RouterLink
+                v-if="f.sha"
+                :to="{ name: 'payloads', hash: '#spec-' + f.sha }"
+                class="mono"
+                @pointerenter="showTip($event, f)"
+                @pointerleave="tt.hide()"
+                @focus="showTip($event, f)"
+                @blur="tt.hide()"
+              >
+                <HwBadge tone="amber">{{ f.sha.slice(0, 16) }}</HwBadge>
+              </RouterLink>
+              <HwBadge v-else tone="dim">download</HwBadge>
+              <span v-if="f.benign" class="benign">not malware</span>
+              <a
+                v-else-if="f.sha"
+                class="vt mono"
+                :href="vtUrl(f.sha)"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open on VirusTotal"
+                >VT</a
+              >
+            </div>
+          </div>
+          <div>
+            <h2>Software used</h2>
+            <span class="mono">{{ clientLine }}</span>
+          </div>
         </div>
         <div class="detail-actions">
           <RouterLink
@@ -141,9 +187,10 @@
   }
 
   .facts {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 10px 12px;
     font-size: 12.5px;
     min-width: 0;
     min-height: 0;
@@ -151,6 +198,34 @@
   }
 
   /* Credential list scrolls independently; Files, Software used, and action button stay pinned. */
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+  }
+  .file {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  .vt {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    color: var(--accent-hot);
+    font-size: 10.5px;
+    font-weight: 650;
+  }
+  .benign {
+    color: var(--text-dim);
+    font-size: 10.5px;
+  }
   .creds-block {
     display: flex;
     flex-direction: column;
@@ -194,7 +269,7 @@
   }
 
   .detail-actions {
-    margin-top: auto;
+    grid-column: 1 / -1;
     display: flex;
     gap: 8px;
   }
@@ -254,6 +329,11 @@
 
     .term {
       max-height: 200px;
+    }
+
+    .facts {
+      display: flex;
+      flex-direction: column;
     }
   }
 </style>

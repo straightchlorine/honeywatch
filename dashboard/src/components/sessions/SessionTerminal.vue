@@ -1,15 +1,48 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
-  import type { SessionDetailResponse } from '@/api/generated/types.gen'
+  import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+  import type { SessionDetailResponse, SessionSummaryResponse } from '@/api/generated/types.gen'
   import { buildTranscript } from './useTerminalTranscript'
   import TerminalLine from './TerminalLine.vue'
   import { humanizeDuration } from '@/utils/duration'
   import { sanitizeAttackerText } from '@/utils/sanitize'
+  import { seq } from '@/composables/useSeqScale'
+  import { hexPoints } from '@/utils/hex'
+  import { buildStory, scoreFrac } from '@/utils/sessionStory'
   import { ICONS } from '../icons'
+  import HwBadge from '../base/HwBadge.vue'
 
-  const props = defineProps<{ session: SessionDetailResponse }>()
+  // `row` is this session's list-page summary (the detail response has no interest score or
+  // tcpip count); the view passes it only when the list page is cached.
+  const props = defineProps<{
+    session: SessionDetailResponse
+    row?: SessionSummaryResponse
+    maxInterest?: number
+  }>()
 
   const lines = computed(() => buildTranscript(props.session))
+  const nothingTyped = computed(() =>
+    lines.value.every((l) => l.kind === 'banner' || l.kind === 'closed'),
+  )
+
+  const sid = computed(() => props.session.id.slice(0, 12))
+  // ponytail: without the list row, pills count the transcript (compound commands double-count)
+  // and tcpip reads 0; the hex needs the dataset max, so it shows only with the row.
+  const story = computed(() =>
+    buildStory(
+      props.row ?? {
+        n_commands: props.session.commands.length,
+        n_downloads: props.session.downloads.length,
+        n_tcpip: 0,
+        auth_success: props.session.auth_attempts.some((a) => a.success),
+      },
+    ),
+  )
+  const frac = computed(() => scoreFrac(props.row?.interest ?? 0, props.maxInterest ?? 0))
+  const hexFill = computed(() =>
+    (props.row?.interest ?? 0) > 5 ? seq(Math.pow(frac.value, 0.9)) : 'var(--surface-2)',
+  )
+  const displayScore = computed(() => Math.round(100 * frac.value))
+  const points = hexPoints(15, 16.5, 14)
 
   function field(raw: string): string {
     return sanitizeAttackerText(raw, { mode: 'escape', allowWhitespace: false })
@@ -38,6 +71,19 @@
     if (duration.value !== '-') parts.push(duration.value)
     return parts.join(' - ')
   })
+
+  // Desktop shows the note always (summary hidden), so a closed <details> must be open there.
+  const noteOpen = ref(false)
+  let noteMq: MediaQueryList | null = null
+  const syncNote = () => {
+    if (noteMq?.matches) noteOpen.value = true
+  }
+  onMounted(() => {
+    noteMq = window.matchMedia('(min-width: 769px)')
+    syncNote()
+    noteMq.addEventListener('change', syncNote)
+  })
+  onBeforeUnmount(() => noteMq?.removeEventListener('change', syncNote))
 
   const copied = ref(false)
   const termBody = ref<HTMLElement | null>(null)
@@ -99,6 +145,32 @@
     <header class="term-bar">
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
+      <span class="term-tags">
+        <span
+          v-if="row && maxInterest"
+          class="score-hex"
+          :class="{ hot: frac > 0.6 }"
+          role="img"
+          :aria-label="`Interest score ${displayScore} of 100`"
+        >
+          <svg viewBox="0 0 30 33" aria-hidden="true">
+            <polygon
+              :points="points"
+              :fill="hexFill"
+              stroke="var(--border-strong)"
+              :stroke-width="row.interest > 5 ? 0 : 1"
+            />
+          </svg>
+          <b aria-hidden="true">{{ displayScore }}</b>
+        </span>
+        <span class="sid">{{ sid }}</span>
+        <HwBadge v-for="(b, i) in story" :key="i" :tone="b.tone" :title="b.title" :aria-label="b.title">
+          {{ b.label }}
+          <svg v-if="b.icon" class="badge-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path :d="ICONS[b.icon]" />
+          </svg>
+        </HwBadge>
+      </span>
       <span class="term-meta">
         <span class="term-id">{{ idLine }}</span>
         <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
@@ -129,9 +201,10 @@
       :aria-label="`Session transcript, ${lines.length} lines`"
     >
       <TerminalLine v-for="line in lines" :key="line.id" :line="line" />
+      <p v-if="nothingTyped" class="term-empty">Nothing typed in this session.</p>
     </div>
 
-    <details class="term-note">
+    <details class="term-note" :open="noteOpen">
       <summary>About this replay</summary>
       <p class="note-body">
         Rebuilt from what the honeypot recorded. Lines in &lt;...&gt; are our notes, not the attacker's. Highlighted text is what they typed to log in. Addresses are hidden, and the honeypot's replies were not recorded.
@@ -144,7 +217,6 @@
   .terminal {
     display: flex;
     flex-direction: column;
-    height: 100%;
     min-height: 0;
     background: var(--bg-0);
     border: 1px solid var(--border);
@@ -202,6 +274,60 @@
     display: none;
   }
 
+  .term-tags {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .sid {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--accent);
+  }
+
+  .score-hex {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 26px;
+  }
+
+  .score-hex svg {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .score-hex b {
+    position: relative;
+    font: 700 10px var(--font-mono);
+    color: var(--text);
+  }
+
+  .score-hex.hot b {
+    color: var(--bg-0);
+  }
+
+  .badge-icon {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+  }
+
+  .term-empty {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: var(--type-xs);
+    line-height: var(--type-xs-lh);
+  }
+
   .copy-btn {
     flex: 0 0 auto;
     display: inline-flex;
@@ -240,7 +366,8 @@
 
   .term-body {
     flex: 1 1 auto;
-    min-height: 0;
+    /* About six lines; a short transcript no longer stretches to the viewport. */
+    min-height: 9rem;
     overflow-y: auto;
     padding: var(--space-3);
     background: var(--bg-0);
@@ -265,6 +392,12 @@
     cursor: pointer;
     list-style: none;
     color: var(--text-dim);
+  }
+
+  .term-note > summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--control-h);
   }
 
   .term-note > summary::-webkit-details-marker {
@@ -299,8 +432,9 @@
     .copy-btn {
       order: 2;
       margin-left: auto;
-      /* Icon only; 5px padding maintains >=24px tap target (WCAG 2.5.8). */
-      min-height: auto;
+      /* Icon only; full control-size tap target. */
+      min-width: var(--control-h);
+      justify-content: center;
       padding: 5px;
       background: transparent;
       border-color: transparent;
@@ -319,8 +453,12 @@
     .copy-label {
       display: none;
     }
-    .term-meta {
+    .term-tags {
       order: 3;
+      flex-basis: 100%;
+    }
+    .term-meta {
+      order: 4;
       flex-basis: 100%;
       display: flex;
       flex-direction: column;

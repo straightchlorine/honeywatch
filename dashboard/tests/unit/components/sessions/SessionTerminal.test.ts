@@ -62,4 +62,17 @@ describe('SessionTerminal', () => {
     // Section element requires aria-label for implicit ARIA landmark.
     expect(w.find('section.terminal').attributes('aria-label')).toContain('Replay of the')
   })
+
+  it('shows the short session id and a muted line when nothing was typed', () => {
+    const w = mount(SessionTerminal, {
+      props: { session: session({ id: 'abcdef0123456789', auth_attempts: [], commands: [] }) },
+    })
+    expect(w.find('.term-tags .sid').text()).toBe('abcdef012345')
+    expect(w.find('.term-empty').text()).toBe('Nothing typed in this session.')
+  })
+
+  it('omits the empty line when the attacker typed something', () => {
+    const w = mount(SessionTerminal, { props: { session: session() } })
+    expect(w.find('.term-empty').exists()).toBe(false)
+  })
 })

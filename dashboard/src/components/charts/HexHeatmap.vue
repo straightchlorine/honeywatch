@@ -390,6 +390,11 @@
       flex-wrap: wrap;
     }
 
+    .hot-list {
+      flex-wrap: wrap;
+      row-gap: 6px;
+    }
+
     .hex-legend {
       margin-left: 0;
     }

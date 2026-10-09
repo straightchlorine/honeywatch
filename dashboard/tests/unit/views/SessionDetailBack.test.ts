@@ -2,7 +2,8 @@ import { defineComponent, h, Suspense } from 'vue'
 import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { VueQueryPlugin } from '@tanstack/vue-query'
-import type { SessionDetailResponse } from '@/api/generated/types.gen'
+import type { SessionDetailResponse, SessionSummaryResponse } from '@/api/generated/types.gen'
+import { listSessionsOptions } from '@/api/generated/@tanstack/vue-query.gen'
 import { newTestQueryClient } from '../../helpers/mount'
 
 // Both SessionDetailView and PageShell call useRoute(), so share one mock.
@@ -48,8 +49,7 @@ function setHistoryBack(back: string | null) {
 
 // Top-level suspense requires a <Suspense> wrapper. Stubs (PageShell renders slot,
 // SessionTerminal stubbed) isolate the .back button test.
-async function mountView() {
-  const queryClient = newTestQueryClient()
+async function mountView(queryClient = newTestQueryClient()) {
   const Wrapper = defineComponent({
     render: () => h(Suspense, null, { default: () => h(SessionDetailView) }),
   })
@@ -59,6 +59,7 @@ async function mountView() {
       stubs: {
         PageShell: { template: '<div><slot /></div>' },
         SessionTerminal: true,
+        RouterLink: { props: ['to'], template: '<a :data-id="to.params.id"><slot /></a>' },
       },
     },
   })
@@ -110,5 +111,36 @@ describe('SessionDetailView back navigation', () => {
     expect(back.element.tagName).toBe('BUTTON')
     expect(back.attributes('type')).toBe('button')
     expect(back.text()).toContain('All sessions')
+  })
+})
+
+describe('SessionDetailView previous / next', () => {
+  const item = (id: string) => ({ id }) as SessionSummaryResponse
+  // Same query SessionsView builds for `/sessions?sort=recent&page=2`.
+  async function mountWithCachedPage(ids: string[], back: string | null) {
+    const queryClient = newTestQueryClient()
+    const key = listSessionsOptions({
+      query: { page: 2, per_page: 40, sort: 'recent' },
+    }).queryKey
+    queryClient.setQueryData(key, { items: ids.map(item), max_interest: 9, meta: {} } as never)
+    setHistoryBack(back)
+    return mountView(queryClient)
+  }
+  const links = (w: Awaited<ReturnType<typeof mountWithCachedPage>>) =>
+    w.findAll('a').map((a) => `${a.text()}:${a.attributes('data-id')}`)
+
+  it('links to the neighbours of the session in the cached list page', async () => {
+    const w = await mountWithCachedPage(['a', 'sess-1', 'c'], '/sessions?sort=recent&page=2')
+    expect(links(w)).toEqual(['Previous:a', 'Next:c'])
+  })
+
+  it('hides the link at the page edge', async () => {
+    const w = await mountWithCachedPage(['sess-1', 'c'], '/sessions?sort=recent&page=2')
+    expect(links(w)).toEqual(['Next:c'])
+  })
+
+  it('shows neither when the list page is not cached or not the origin', async () => {
+    expect(links(await mountWithCachedPage(['a', 'sess-1'], '/sessions?sort=recent&page=3'))).toEqual([])
+    expect(links(await mountWithCachedPage(['a', 'sess-1'], null))).toEqual([])
   })
 })

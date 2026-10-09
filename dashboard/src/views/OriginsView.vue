@@ -94,21 +94,19 @@
   const netScale = computed(() => cappedFracs((asnsQ.data.value ?? []).map((a) => a.sessions)))
   const networkRows = computed<RankRow[]>(() => {
     const items = asnsQ.data.value ?? []
-    return items.map((a) => {
-      return {
-        label: a.as_org ?? (a.asn !== null ? `AS${a.asn}` : 'Unknown network'),
-        // The visible label is ellipsized, so the tooltip carries the full
-        // operator name and AS number when the name is shown.
-        title: [
-          a.as_org ?? 'Unknown network',
-          ...(a.as_org && a.asn !== null ? [`AS${a.asn}`] : []),
-          `${fmtNumber(a.sessions)} sessions`,
-          `${fmtNumber(a.distinct_ips)} address${a.distinct_ips === 1 ? '' : 'es'}`,
-        ].join(' - '),
-        value: fmtCompact(a.sessions),
-        frac: netScale.value.frac(a.sessions),
-        }
-    })
+    return items.map((a) => ({
+      label: a.as_org ?? (a.asn !== null ? `AS${a.asn}` : 'Unknown network'),
+      // The visible label is ellipsized, so the tooltip carries the full
+      // operator name and AS number when the name is shown.
+      title: [
+        a.as_org ?? 'Unknown network',
+        ...(a.as_org && a.asn !== null ? [`AS${a.asn}`] : []),
+        `${fmtNumber(a.sessions)} sessions`,
+        `${fmtNumber(a.distinct_ips)} address${a.distinct_ips === 1 ? '' : 'es'}`,
+      ].join(' - '),
+      value: fmtCompact(a.sessions),
+      frac: netScale.value.frac(a.sessions),
+    }))
   })
 
   const clientView = ref<'clients' | 'keys'>('clients')
@@ -294,10 +292,6 @@
     font-size: 13px;
   }
 
-  .page-head .spacer {
-    flex: 1;
-  }
-
   .stat-row {
     display: grid;
     grid-auto-flow: column;
@@ -355,12 +349,6 @@
     align-items: center;
   }
 
-  .toggle-item {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-  }
-
   @media (max-width: 900px) {
     .page-head {
       flex-wrap: wrap;
@@ -397,11 +385,6 @@
     .grid-main {
       display: flex;
       flex-direction: column;
-    }
-
-    .hive-legend {
-      flex-wrap: wrap;
-      justify-content: center;
     }
 
     .right-col {

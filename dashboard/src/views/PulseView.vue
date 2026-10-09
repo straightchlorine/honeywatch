@@ -91,16 +91,13 @@
   // Sparkline needs >= 2 points to draw a line.
   const spark = computed(() => {
     const vals = days.value.slice(-7).map((b) => b.count)
-    return vals.length > 1 ? vals : [0, 0]
+    return vals.length > 1 ? vals : undefined
   })
 
   const totalHeatmapSessions = computed(() =>
     heatmapPoints.value.reduce((sum, p) => sum + p.count, 0),
   )
-  const total30dSessions = computed(() =>
-    days.value.reduce((sum, b) => sum + b.count, 0),
-  )
-
+  const total30dSessions = computed(() => days.value.reduce((sum, b) => sum + b.count, 0))
 
   function setCountry(value: string): void {
     const query = { ...route.query }
@@ -155,7 +152,10 @@
     if (total > 0) {
       rows.push(['Share', `${((bDay.value.count / total) * 100).toFixed(1)}% of all sessions`])
     }
-    rows.push(['Single-day peak', `${pDay.value.value} (${fmtNumber(pDay.value.count)}, last 30 days)`])
+    rows.push([
+      'Single-day peak',
+      `${pDay.value.value} (${fmtNumber(pDay.value.count)}, last 30 days)`,
+    ])
     tt.show('Busiest day', rows)
     moveIfPositioned(e)
   }
@@ -192,7 +192,6 @@
         </span>
       </div>
 
-
       <div class="grid-main">
         <HwCard
           title="Session rhythm &middot; hour &times; weekday"
@@ -204,35 +203,35 @@
 
         <div class="bottom-row">
           <div class="kpi-grid">
-            <StatTile
-              label="7-day trend"
-              :value="fmtNumber(trend?.current ?? 0)"
-              :spark="spark"
-            >
+            <StatTile label="7-day trend" :value="fmtNumber(trend?.current ?? 0)" :spark="spark">
               <template #label-extra>
-                <InfoDot title="7-day trend" text="Sessions in the last 7 days compared with the 7 days before." />
+                <InfoDot
+                  title="7-day trend"
+                  text="Sessions in the last 7 days compared with the 7 days before."
+                />
               </template>
               <template #meta>
-                <span
-                  class="trend-delta"
+                <button
+                  type="button"
+                  class="kpi-meta-button"
                   :class="`trend-${trendTone}`"
-                  role="button"
-                  tabindex="0"
                   aria-label="7-day trend: sessions this week compared with last week"
                   @pointerenter="showTrendTooltip($event)"
                   @pointermove="tt.move($event)"
                   @pointerleave="tt.hide()"
                   @focus="showTrendTooltip({})"
                   @blur="tt.hide()"
-                  @keydown.enter.space.prevent="showTrendTooltip({})"
                 >
                   {{ trendLabel }}
-                </span>
+                </button>
               </template>
             </StatTile>
             <StatTile label="Busiest hour" :value="bHour.value">
               <template #label-extra>
-                <InfoDot title="Busiest hour" text="The hour of day (UTC) with the most sessions, over all time." />
+                <InfoDot
+                  title="Busiest hour"
+                  text="The hour of day (UTC) with the most sessions, over all time."
+                />
               </template>
               <template v-if="sessionsDelta(bHour.count)" #meta>
                 <button
@@ -251,7 +250,10 @@
             </StatTile>
             <StatTile label="Busiest day" :value="bDay.value">
               <template #label-extra>
-                <InfoDot title="Busiest day" text="The weekday with the most sessions on average, over all time." />
+                <InfoDot
+                  title="Busiest day"
+                  text="The weekday with the most sessions on average, over all time."
+                />
               </template>
               <template v-if="sessionsDelta(bDay.count)" #meta>
                 <button
@@ -270,7 +272,10 @@
             </StatTile>
             <StatTile label="Peak day" :value="pDay.value">
               <template #label-extra>
-                <InfoDot title="Peak day" text="The date with the most sessions in the last 30 days." />
+                <InfoDot
+                  title="Peak day"
+                  text="The date with the most sessions in the last 30 days."
+                />
               </template>
               <template v-if="sessionsDelta(pDay.count)" #meta>
                 <button
@@ -350,7 +355,6 @@
     min-width: 148px;
   }
 
-
   .grid-main {
     /* Reserve space for chrome (~134px) and bottom row (262px: 3 readings at 2 lines
        = 206px + 24px heading + 32px padding) to prevent content overflow at viewports
@@ -403,23 +407,13 @@
 
   .kpi-grid :deep(.stat-tile) {
     min-height: 88px;
-    /* safe center prevents clipping overfull content at the top. */
-    justify-content: safe center;
-    align-items: safe center;
+    justify-content: flex-start;
+    align-items: center;
+    padding-top: 14px;
     text-align: center;
   }
 
-  .trend-up {
-    color: var(--ok);
-  }
-  .trend-down {
-    color: var(--bad);
-  }
-  .trend-neutral {
-    color: var(--text-muted);
-  }
-
-  /* .trend-delta must not have button reset or color:inherit will silently override .trend-up/.trend-down. */
+  /* Trend tone classes come after this reset so color:inherit does not override them. */
   .kpi-meta-button {
     appearance: none;
     background: transparent;
@@ -428,16 +422,22 @@
     color: inherit;
     font: inherit;
   }
-  .trend-delta,
+  .kpi-meta-button.trend-up {
+    color: var(--ok);
+  }
+  .kpi-meta-button.trend-down {
+    color: var(--bad);
+  }
+  .kpi-meta-button.trend-neutral {
+    color: var(--text-muted);
+  }
   .kpi-meta-button {
     cursor: pointer;
     transition: opacity var(--motion-fast);
   }
-  .trend-delta:hover,
   .kpi-meta-button:hover {
     opacity: 0.8;
   }
-  .trend-delta:focus-visible,
   .kpi-meta-button:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
@@ -449,24 +449,23 @@
     min-height: 0;
   }
 
-  /* Three readings max; safe center prevents overflow clipping the first. */
+  /* Three readings max, top-aligned. */
   .readings-notes {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    justify-content: safe center;
+    justify-content: flex-start;
   }
 
   .readings-notes :deep(.insight) {
     padding: 8px 12px;
     line-height: 1.45;
     align-items: center;
-    text-align: center;
+    text-align: left;
   }
 
-  /* Lets the text centre in the leftover width while the bullet stays pinned left. */
   .readings-notes :deep(.insight) > span {
     flex: 1;
   }
@@ -486,6 +485,10 @@
     .comb-card {
       max-height: none;
       overflow: visible;
+    }
+
+    .country-select {
+      flex: 1 1 100%;
     }
 
     .bottom-row {
