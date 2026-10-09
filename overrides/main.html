@@ -3,7 +3,7 @@
 {% block extrahead %}
   {{ super() }}
   {#- 404.html renders through this block too but has nothing to describe -#}
-  {% set real_page = page and page.file and page.url != "404.html" %}
+  {% set real_page = page and page.url != "404.html" %}
   {% if real_page %}
     {% set site = config.site_url %}
     {% set is_home = page.is_homepage %}
@@ -40,8 +40,7 @@
           "name": {{ config.site_name | tojson }},
           "url": {{ site | tojson }},
           "description": {{ config.site_description | tojson }},
-          "inLanguage": "en",
-          "author": {{ authors | tojson }}
+          "inLanguage": "en"
         },
         {
           "@type": "Person",
@@ -79,8 +78,7 @@
           "dateModified": {{ page.meta.git_revision_date_localized_raw_iso_date | tojson }},
           {%- endif %}
           "isPartOf": { "@id": {{ (site ~ "#website") | tojson }} },
-          "about": { "@id": {{ (config.repo_url ~ "#code") | tojson }} },
-          "author": {{ authors | tojson }}
+          "about": { "@id": {{ (config.repo_url ~ "#code") | tojson }} }
         }
       ]
     }
