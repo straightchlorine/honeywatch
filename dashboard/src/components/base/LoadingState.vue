@@ -2,13 +2,16 @@
   /**
    * Suspense fallback while a page loads during in-app navigation: the same turning
    * hexagon as the full-screen loading splash (#hw-splash in index.html), centred. It
-   * fades in after 220ms, so quick navigations never show it.
+   * fades in after 220ms, so quick navigations never show it. On a page change App.vue
+   * has already kept the old page up for that long, so `immediate` skips the second wait.
    */
   import HexIcon from './HexIcon.vue'
+
+  defineProps<{ immediate?: boolean }>()
 </script>
 
 <template>
-  <div class="loading" role="status">
+  <div class="loading" :class="{ immediate }" role="status">
     <HexIcon :size="36" class="loading-mark" />
     <span class="visually-hidden">Loading</span>
   </div>
@@ -25,6 +28,9 @@
        wait always applies; fill mode "both" keeps the mark invisible until it ends. */
     animation: loading-in 300ms ease 220ms both;
   }
+  .loading.immediate {
+    animation-delay: 0s;
+  }
 
   /* tokens.css cuts animations to almost nothing for reduced motion. A fade is not
      movement, so keep it rather than pop the mark in (index.html does the same). */
@@ -36,11 +42,12 @@
 
   @media (prefers-reduced-motion: no-preference) {
     /* Same turn as the splash logo (hw-turn in index.html): 60deg with a slight overshoot,
-       then a hold. A hexagon repeats every 60deg, so the loop restart is invisible.
-       revealPage in utils/splash.ts relies on this 1400ms period, the 220ms delay and the
-       36px size to continue the turn; change them together. */
+       then a hold. */
     .loading-mark {
       animation: loading-turn 1400ms linear 220ms infinite;
+    }
+    .immediate .loading-mark {
+      animation-delay: 0s;
     }
   }
 

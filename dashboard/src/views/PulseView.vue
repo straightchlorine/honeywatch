@@ -110,30 +110,27 @@
     return count > 0 ? `${fmtNumber(count)} sessions` : undefined
   }
 
-  /** Skip tooltip repositioning when clientX/clientY are undefined (focus events carry no coordinates). */
-  function moveIfPositioned(e: { clientX?: number; clientY?: number }): void {
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tt.move({ clientX: e.clientX, clientY: e.clientY })
-    }
-  }
-
   function showTrendTooltip(e: { clientX?: number; clientY?: number }): void {
-    tt.show('7-day trend', [
-      ['This week', fmtNumber(trend.value?.current ?? 0)],
-      ['Prior week', fmtNumber(trend.value?.previous ?? 0)],
+    tt.show(
+      '7-day trend',
       [
-        'Change',
-        trend.value
-          ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change })
-          : 'n/a',
-        trend.value && trend.value.delta > 0
-          ? 'pos'
-          : trend.value && trend.value.delta < 0
-            ? 'neg'
-            : undefined,
+        ['This week', fmtNumber(trend.value?.current ?? 0)],
+        ['Prior week', fmtNumber(trend.value?.previous ?? 0)],
+        [
+          'Change',
+          trend.value
+            ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change })
+            : 'n/a',
+          trend.value && trend.value.delta > 0
+            ? 'pos'
+            : trend.value && trend.value.delta < 0
+              ? 'neg'
+              : undefined,
+        ],
       ],
-    ])
-    moveIfPositioned(e)
+      undefined,
+      e,
+    )
   }
 
   function showBusiestHourTooltip(e: { clientX?: number; clientY?: number }): void {
@@ -142,8 +139,7 @@
       total > 0
         ? [['Share', `${((bHour.value.count / total) * 100).toFixed(1)}% of all sessions`]]
         : []
-    tt.show('Busiest hour', rows)
-    moveIfPositioned(e)
+    tt.show('Busiest hour', rows, undefined, e)
   }
 
   function showBusiestDayTooltip(e: { clientX?: number; clientY?: number }): void {
@@ -156,8 +152,7 @@
       'Single-day peak',
       `${pDay.value.value} (${fmtNumber(pDay.value.count)}, last 30 days)`,
     ])
-    tt.show('Busiest day', rows)
-    moveIfPositioned(e)
+    tt.show('Busiest day', rows, undefined, e)
   }
 
   function showPeakDayTooltip(e: { clientX?: number; clientY?: number }): void {
@@ -166,8 +161,7 @@
     if (total > 0) {
       rows.push(['Share', `${((pDay.value.count / total) * 100).toFixed(1)}% of the 30-day total`])
     }
-    tt.show('Peak day', rows)
-    moveIfPositioned(e)
+    tt.show('Peak day', rows, undefined, e)
   }
 </script>
 
@@ -407,13 +401,12 @@
 
   .kpi-grid :deep(.stat-tile) {
     min-height: 88px;
-    justify-content: flex-start;
+    justify-content: safe center;
     align-items: center;
-    padding-top: 14px;
     text-align: center;
   }
 
-  /* Trend tone classes come after this reset so color:inherit does not override them. */
+  /* The .trend-* colors below use the compound selector because this reset's color:inherit would otherwise override them. */
   .kpi-meta-button {
     appearance: none;
     background: transparent;
@@ -449,14 +442,13 @@
     min-height: 0;
   }
 
-  /* Three readings max, top-aligned. */
   .readings-notes {
     flex: 1;
     min-height: 0;
     display: flex;
     flex-direction: column;
     gap: 8px;
-    justify-content: flex-start;
+    justify-content: safe center;
   }
 
   .readings-notes :deep(.insight) {

@@ -65,6 +65,12 @@
       }) ?? [],
   )
 
+  const statusText = computed(() => {
+    if (rows.value.length) return ''
+    if (feedQ.isError.value) return 'Could not load live sessions. Retrying.'
+    return feedQ.isPending.value ? 'Loading sessions...' : 'No sessions yet.'
+  })
+
   let seen = new Set<string>()
   let firstLoad = true
   // Stagger emissions over the poll interval to avoid firing all arcs in one frame.
@@ -118,15 +124,8 @@
       </button>
     </h2>
     <div class="feed-rows">
-      <p v-if="!rows.length" class="feed-empty" role="status">
-        {{
-          feedQ.isError.value
-            ? 'Could not load live sessions. Retrying.'
-            : feedQ.isPending.value
-              ? 'Loading sessions...'
-              : 'No sessions yet.'
-        }}
-      </p>
+      <!-- Always mounted: a live region announces text changes, not nodes inserted with their text. -->
+      <p class="feed-empty" role="status">{{ statusText }}</p>
       <button
         v-for="r in rows.slice(0, VISIBLE_ROWS)"
         :key="r.id"
@@ -242,6 +241,11 @@
     padding: 4px 2px;
     font: 500 11.5px var(--font-mono);
     color: var(--text-dim);
+  }
+
+  /* Kept in the DOM while empty (see template) but must not take up a row. */
+  .feed-empty:empty {
+    padding: 0;
   }
 
   .feed-row {

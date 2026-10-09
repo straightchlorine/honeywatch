@@ -112,7 +112,7 @@ describe('CityDot component', () => {
     expect(r2).toBe(r1 * 2)
   })
 
-  it('has accessible hit circle with role="button" and aria-label', () => {
+  it('hides the pointer-only hit circle from assistive tech and the tab order', () => {
     const city = createCity({ city: 'New York', country_code: 'US' })
     const w = mount(CityDot, {
       props: {
@@ -125,9 +125,9 @@ describe('CityDot component', () => {
     })
 
     const hitCircle = w.get('.city-hit')
-    expect(hitCircle.attributes('role')).toBe('button')
-    expect(hitCircle.attributes('aria-label')).toBe('New York (US)')
-    expect(hitCircle.attributes('tabindex')).toBe('-1')
+    expect(hitCircle.attributes('aria-hidden')).toBe('true')
+    expect(hitCircle.attributes('role')).toBeUndefined()
+    expect(hitCircle.attributes('tabindex')).toBeUndefined()
   })
 
   it('emits select with country_code on click', async () => {
@@ -238,99 +238,6 @@ describe('CityDot component', () => {
     expect(w.emitted('tooltip-leave')).toBeTruthy()
   })
 
-  it('emits select on Enter key when country_code is present', async () => {
-    const city = createCity({ country_code: 'IT' })
-    const w = mount(CityDot, {
-      props: {
-        x: 100,
-        y: 200,
-        r: 5,
-        city,
-        scale: 1,
-      },
-    })
-
-    const hitCircle = w.get('.city-hit')
-    await hitCircle.trigger('keydown', { key: 'Enter' })
-
-    expect(w.emitted('select')).toBeTruthy()
-    expect(w.emitted('select')![0]![0]).toBe('IT')
-  })
-
-  it('emits select on Space key when country_code is present', async () => {
-    const city = createCity({ country_code: 'JP' })
-    const w = mount(CityDot, {
-      props: {
-        x: 100,
-        y: 200,
-        r: 5,
-        city,
-        scale: 1,
-      },
-    })
-
-    const hitCircle = w.get('.city-hit')
-    await hitCircle.trigger('keydown', { key: ' ' })
-
-    expect(w.emitted('select')).toBeTruthy()
-    expect(w.emitted('select')![0]![0]).toBe('JP')
-  })
-
-  it('prevents default on Enter/Space keydown when country_code is present', async () => {
-    const city = createCity({ country_code: 'CA' })
-    const w = mount(CityDot, {
-      props: {
-        x: 100,
-        y: 200,
-        r: 5,
-        city,
-        scale: 1,
-      },
-    })
-
-    const hitCircle = w.get('.city-hit')
-    await hitCircle.trigger('keydown', { key: 'Enter' })
-    expect(w.emitted('select')).toBeTruthy()
-  })
-
-  it('does not emit select on other keys (ArrowUp, Tab, etc)', async () => {
-    const city = createCity({ country_code: 'AU' })
-    const w = mount(CityDot, {
-      props: {
-        x: 100,
-        y: 200,
-        r: 5,
-        city,
-        scale: 1,
-      },
-    })
-
-    const hitCircle = w.get('.city-hit')
-    await hitCircle.trigger('keydown', { key: 'ArrowUp' })
-    await hitCircle.trigger('keydown', { key: 'Tab' })
-    await hitCircle.trigger('keydown', { key: 'a' })
-
-    expect(w.emitted('select')).toBeFalsy()
-  })
-
-  it('does not emit select on Enter/Space if country_code is empty', async () => {
-    const city = createCity({ country_code: '' })
-    const w = mount(CityDot, {
-      props: {
-        x: 100,
-        y: 200,
-        r: 5,
-        city,
-        scale: 1,
-      },
-    })
-
-    const hitCircle = w.get('.city-hit')
-    await hitCircle.trigger('keydown', { key: 'Enter' })
-
-    expect(w.emitted('select')).toBeFalsy()
-  })
-
   it('visible dot has correct fill color', () => {
     const w = mount(CityDot, {
       props: {
@@ -380,25 +287,6 @@ describe('CityDot component', () => {
 
     expect(visibleDot.attributes('r')).toBe('2.5')
     expect(hitCircle.attributes('r')).toBe('4')
-  })
-
-  it('city data is accurately reflected in aria-label', () => {
-    const city = createCity({
-      city: 'Amsterdam',
-      country_code: 'NL',
-    })
-    const w = mount(CityDot, {
-      props: {
-        x: 100,
-        y: 200,
-        r: 5,
-        city,
-        scale: 1,
-      },
-    })
-
-    const hitCircle = w.get('.city-hit')
-    expect(hitCircle.attributes('aria-label')).toBe('Amsterdam (NL)')
   })
 
   it('emits all events in correct sequence for full interaction', async () => {

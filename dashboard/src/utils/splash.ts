@@ -51,7 +51,8 @@ export function revealPage(waitedMs: number): void {
   el.querySelector<HTMLElement>('.hw-mark')?.style.setProperty('animation', 'none')
   document.body.prepend(el)
   // Carry on the loader's turn from where it was, so the hexagon does not jump. The
-  // loader's turn starts 220ms after it mounts (LoadingState.vue), the copy's at 380ms
+  // loader's turn starts 220ms after the page change began (App.vue waits that long before
+  // mounting it, LoadingState.vue), the copy's at 380ms
   // (hw-turn in index.html), and both repeat every 1400ms. Nothing turns with reduced motion.
   const turn = el
     .querySelector('.hw-ol .hw-svg')

@@ -2,17 +2,15 @@
   import { computed, ref } from 'vue'
   import type { SessionSummaryResponse } from '@/api/generated/types.gen'
   import { useCountryFlag } from '@/composables/useCountryFlag'
-  import { useHwTooltip } from '@/composables/useHwTooltip'
-  import { seq } from '@/composables/useSeqScale'
-  import { hexPoints } from '@/utils/hex'
   import { fmtRelativeTime } from '@/utils/format'
   import { humanizeDuration } from '@/utils/duration'
   import { buildStory, scoreFrac } from '@/utils/sessionStory'
   import { ICONS } from '@/components/icons'
   import HwBadge from '../base/HwBadge.vue'
+  import ScoreHex from './ScoreHex.vue'
   import SessionExpansion from './SessionExpansion.vue'
 
-  // tabbable: the grid's roving tab stop - exactly one row (and its copy button) is 0, the rest -1.
+  // tabbable: this row is the grid's single Tab stop (its copy button too); others get tabindex -1.
   const {
     row,
     expanded,
@@ -27,17 +25,6 @@
   const emit = defineEmits<{ toggle: [] }>()
 
   const story = computed(() => buildStory(row))
-  const frac = computed(() => scoreFrac(row.interest, maxInterest))
-  // Tuned thresholds: glow starts at 60% of the top score; below interest=5
-  // there's too little activity to color, so the hex stays neutral grey.
-  const hot = computed(() => frac.value > 0.6)
-  const hexFill = computed(() =>
-    row.interest > 5 ? seq(Math.pow(frac.value, 0.9)) : 'var(--surface-2)',
-  )
-  // Normalized 0-100: hottest session reads as 100, others scale beneath it.
-  const displayScore = computed(() => Math.round((100 * row.interest) / Math.max(1, maxInterest)))
-  const points = hexPoints(15, 16.5, 14)
-
   const flag = computed(() => useCountryFlag(row.country_code))
   // Fallback chain: country name -> code -> "Unknown"; never a bare underscore or empty cell.
   const countryText = computed(() => row.country ?? row.country_code ?? 'Unknown')
@@ -52,6 +39,8 @@
     cityText.value ? `${countryText.value}, ${cityText.value}` : countryText.value,
   )
   const duration = computed(() => humanizeDuration(row.started_at, row.ended_at))
+  // Normalized 0-100 against the dataset max; ScoreHex shows the same number.
+  const displayScore = computed(() => Math.round(scoreFrac(row.interest, maxInterest) * 100))
   const started = computed(() => (row.started_at ? fmtRelativeTime(row.started_at) : '-'))
 
   // Prose accessibility: visible 12-char id is visual only, not read by screen readers.
@@ -74,17 +63,16 @@
     }
   }
 
-  const tooltip = useHwTooltip()
-
   function onKeydown(e: KeyboardEvent): void {
-  if (e.target !== e.currentTarget) return
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      emit('toggle')
-    } else if ((e.key === 'ArrowRight' && !expanded) || (e.key === 'ArrowLeft' && expanded)) {
-      e.preventDefault()
-      emit('toggle')
-    }
+    if (e.target !== e.currentTarget) return
+    const toggles =
+      e.key === 'Enter' ||
+      e.key === ' ' ||
+      (e.key === 'ArrowRight' && !expanded) ||
+      (e.key === 'ArrowLeft' && expanded)
+    if (!toggles) return
+    e.preventDefault()
+    emit('toggle')
   }
 </script>
 
@@ -107,36 +95,7 @@
             <path :d="ICONS['chevron-right']" fill="currentColor" />
           </svg>
         </span>
-        <button
-          type="button"
-          class="score-hex"
-          :class="{ hot }"
-          tabindex="-1"
-          :aria-label="`Interest score ${displayScore} of 100`"
-          @pointerenter="
-            tooltip.show(
-              'Interest score - higher when a session ran commands, dropped files, got control or tried to relay',
-            )
-          "
-          @pointermove="tooltip.move($event as PointerEvent)"
-          @pointerleave="tooltip.hide()"
-          @focus="
-            tooltip.show(
-              'Interest score - higher when a session ran commands, dropped files, got control or tried to relay',
-            )
-          "
-          @blur="tooltip.hide()"
-        >
-          <svg viewBox="0 0 30 33" aria-hidden="true">
-            <polygon
-              :points="points"
-              :fill="hexFill"
-              stroke="var(--border-strong)"
-              :stroke-width="row.interest > 5 ? 0 : 1"
-            />
-          </svg>
-          <b aria-hidden="true">{{ displayScore }}</b>
-        </button>
+        <ScoreHex :interest="row.interest" :ceiling="maxInterest" interactive />
         <span class="sid-wrap">
           <span class="sid">{{ row.id.slice(0, 12) }}</span>
           <button
@@ -184,7 +143,7 @@
         </template>
       </div>
     </td>
-    <td class="spacer"></td>
+    <td class="spacer" aria-hidden="true"></td>
     <td class="r num duration">{{ duration }}</td>
     <td class="r dim small started">{{ started }}</td>
   </tr>
@@ -326,43 +285,6 @@
     outline-offset: -2px;
   }
 
-  .score-hex {
-    appearance: none;
-    padding: 0;
-    border: none;
-    background: transparent;
-    font: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    position: relative;
-    width: 26px;
-    height: 29px;
-    flex: 0 0 auto;
-  }
-
-  .score-hex:focus-visible {
-    outline: 2px solid var(--accent-hot);
-    outline-offset: 1px;
-    border-radius: var(--radius-sm);
-  }
-
-  .score-hex svg {
-    position: absolute;
-    inset: 0;
-  }
-
-  .score-hex b {
-    position: relative;
-    font: 650 10px var(--font-mono);
-    color: var(--text);
-  }
-
-  .score-hex.hot b {
-    color: var(--bg-0);
-  }
-
   .story {
     padding: 3px 10px !important;
   }
@@ -374,8 +296,7 @@
     flex-wrap: wrap;
   }
 
-  /* Tie-breaker between look-alike rows (duration is the field that varies in real data).
-     ponytail: mobile only - desktop already has a Duration column. */
+  /* Mobile only: the Duration column is hidden here, and duration is what tells look-alike rows apart. */
   .dur {
     display: none;
     font: 10.5px var(--font-mono);
@@ -462,8 +383,7 @@
   }
 
   @media (max-width: 760px) {
-    /* Origin/duration/started are hidden on mobile. Child combinator ensures
-       :nth-child(n+3) targets row cells only. */
+    /* Hide origin/spacer/duration/started; scoped to .srow so the colspan expansion cell stays visible. */
     .srow > td:nth-child(n + 3) {
       display: none;
     }

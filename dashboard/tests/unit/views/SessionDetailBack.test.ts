@@ -134,9 +134,18 @@ describe('SessionDetailView previous / next', () => {
     expect(links(w)).toEqual(['Previous:a', 'Next:c'])
   })
 
-  it('hides the link at the page edge', async () => {
+  it('keeps the edge control as aria-disabled text so focus is not lost', async () => {
     const w = await mountWithCachedPage(['sess-1', 'c'], '/sessions?sort=recent&page=2')
     expect(links(w)).toEqual(['Next:c'])
+    const off = w.get('span.pager-link')
+    expect(off.text()).toBe('Previous')
+    expect(off.attributes('aria-disabled')).toBe('true')
+  })
+
+  it('offers no neighbours when this session is not in the cached page', async () => {
+    const w = await mountWithCachedPage(['a', 'b', 'c'], '/sessions?sort=recent&page=2')
+    expect(links(w)).toEqual([])
+    expect(w.find('.pager').exists()).toBe(false)
   })
 
   it('shows neither when the list page is not cached or not the origin', async () => {

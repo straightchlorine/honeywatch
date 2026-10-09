@@ -24,8 +24,9 @@
   import { ICONS } from '@/components/icons'
   import { fmtNumber } from '@/utils/format'
   import { useCountryOptions } from '@/composables/useCountryOptions'
+  import { SCORE_TIP } from '@/utils/sessionStory'
+  import { SESSIONS_PER_PAGE, sessionsListQuery } from '@/utils/pagination'
 
-  const PER_PAGE = 40
   // Debounce the *fetch*, not the keystroke: the box updates instantly, the
   // URL/query only commits once typing pauses.
   const SEARCH_DEBOUNCE_MS = 250
@@ -197,21 +198,11 @@
   // Never sent below the API's 2-char floor - the box can hold a shorter
   // in-progress term without ever producing a request for it.
   const searchActive = computed(() => search.value.length >= MIN_QUERY_LEN)
-  const qParam = computed(() => (searchActive.value ? search.value : undefined))
 
   const sessionsQ = useQuery(
     computed(() => ({
       ...listSessionsOptions({
-        query: {
-          page: currentPage.value,
-          per_page: PER_PAGE,
-          sort: sort.value,
-          order: order.value,
-          has: hasValue.value || undefined,
-          country: country.value || undefined,
-          q: qParam.value,
-          sha256: shaFilter.value,
-        },
+        query: sessionsListQuery((k) => route.query[k]),
       }),
       // Hold the previous page on screen while the next one loads. Without it
       // rows collapses to [] on every page change and the flex-sized table
@@ -301,24 +292,38 @@
     updateQuery({ sha256: undefined, page: undefined, open: undefined })
   }
 
-  // Treegrid roving tabindex: one row is the tab stop (the last focused, else the first), so Tab
-  // crosses the grid in one stop. Rows are queried from the DOM, not tracked.
+  // Treegrid roving tabindex: the last focused row is the Tab stop. It falls back to the first
+  // row when that id is not on the current page, so a page change never leaves zero stops.
   const focusedId = ref<string | null>(null)
   const stopId = computed(() =>
     rows.value.some((r) => r.id === focusedId.value) ? focusedId.value : rows.value[0]?.id,
   )
-  let focusFirstOnLoad = false
-  watch(
-    () => sessionsQ.data.value?.items,
-    async () => {
-      if (!focusFirstOnLoad) return
-      focusFirstOnLoad = false
-      await nextTick()
-      scrollEl.value?.querySelector<HTMLElement>('tr.srow')?.focus()
-    },
-  )
-  watch(sessionsQ.isError, (err) => {
-    if (err) focusFirstOnLoad = false
+
+  // PageUp/PageDown move focus to the new page's first row. focusPage is the page we are waiting
+  // on: armed only when the page really changes, dropped on error or if the route lands elsewhere,
+  // so a later refetch (sort change) cannot steal focus. Compared with the page the response says
+  // it is, because the route changes a tick before the query switches keys.
+  let focusPage: number | null = null
+  const loadedPage = computed(() => sessionsQ.data.value?.meta.page)
+  const settled = computed(() => !sessionsQ.isPlaceholderData.value && !sessionsQ.isFetching.value)
+  const pageStatus = ref('')
+  let announcedPage = loadedPage.value
+  watch([loadedPage, settled, sessionsQ.isError], async ([page, ok, err]) => {
+    if (err) focusPage = null
+    if (!ok || err || page === undefined) return
+    if (page !== announcedPage) {
+      announcedPage = page
+      const n = rows.value.length
+      pageStatus.value = `Page ${page} of ${pageCount.value}, ${n} session${n === 1 ? '' : 's'}`
+    }
+    if (focusPage === null) return
+    if (focusPage !== page) {
+      if (currentPage.value !== focusPage) focusPage = null
+      return
+    }
+    focusPage = null
+    await nextTick()
+    scrollEl.value?.querySelector<HTMLElement>('tr.srow')?.focus()
   })
   function onGridFocus(e: FocusEvent): void {
     const id = (e.target as HTMLElement).closest<HTMLElement>('tr.srow')?.dataset.id
@@ -337,29 +342,28 @@
       const down = e.key === 'PageDown'
       if (sessionsQ.isFetching.value || !(down ? canNext.value : canPrevious.value)) return
       e.preventDefault()
-      focusFirstOnLoad = true
+      const from = currentPage.value
+      const to = goToPage(from + (down ? 1 : -1))
+      if (to === from) return
+      focusPage = to
       focusedId.value = null
-      if (down) nextPage()
-      else prevPage()
     }
   }
 
   function toggleRow(id: string): void {
     expandedId.value = expandedId.value === id ? null : id
   }
-  function goToPage(p: number): void {
+  // Returns the clamped page it navigated to.
+  function goToPage(p: number): number {
     const clamped = Math.max(1, Math.min(p, pageCount.value))
     currentPage.value = clamped
+    return clamped
   }
-  // Empty/NaN input is ignored, and the box is resynced either way so a value
-  // that clamps to the current page does not leave stale typed text behind.
+  // Empty/NaN input is ignored. Always resync the box so a value that clamps to the current page leaves no stale text.
   function onPageChange(e: Event): void {
     const el = e.target as HTMLInputElement
     const n = parseInt(el.value, 10)
-    if (!Number.isNaN(n)) goToPage(n)
-    el.value = String(
-      Number.isNaN(n) ? currentPage.value : Math.max(1, Math.min(n, pageCount.value)),
-    )
+    el.value = String(Number.isNaN(n) ? currentPage.value : goToPage(n))
   }
   function prevPage(): void {
     if (canPrevious.value) goToPage(currentPage.value - 1)
@@ -367,6 +371,22 @@
   function nextPage(): void {
     if (canNext.value) goToPage(currentPage.value + 1)
   }
+
+  // Header order; 'spacer' is the unlabeled 4th column (see the width rules in the styles).
+  const COLUMNS: (
+    { key: SortId; label: string; hint: string; right?: boolean } | { key: 'spacer' }
+  )[] = [
+    {
+      key: 'interest',
+      label: 'Session',
+      hint: `Sort by interest: how much the attacker did. ${SCORE_TIP}`,
+    },
+    { key: 'active', label: 'Story', hint: 'Sort by activity: SSH commands issued' },
+    { key: 'country', label: 'Origin', hint: 'Sort by origin: alphabetically' },
+    { key: 'spacer' },
+    { key: 'duration', label: 'Duration', hint: 'Sort by duration: longest first', right: true },
+    { key: 'recent', label: 'Started', hint: 'Sort by recency: newest first', right: true },
+  ]
 
   const sortOptions = computed(() => SORTS.map((s) => ({ value: s.id, label: s.label })))
 </script>
@@ -510,59 +530,23 @@
         <table class="data" role="treegrid" aria-label="Sessions">
           <thead>
             <tr>
-              <SortableTh
-                v-model:sort="sort"
-                v-model:order="order"
-                sort-key="interest"
-                :dir="SORT_DIR.interest"
-                hint="Sort by interest: how much the attacker did"
+              <template v-for="c in COLUMNS" :key="c.key">
+                <th v-if="c.key === 'spacer'" aria-hidden="true"></th>
+                <SortableTh
+                  v-else
+                  v-model:sort="sort"
+                  v-model:order="order"
+                  :sort-key="c.key"
+                  :dir="SORT_DIR[c.key]"
+                  :hint="c.hint"
+                  :class="{ r: c.right }"
                 >
-Session
-</SortableTh
-              >
-              <SortableTh
-                v-model:sort="sort"
-                v-model:order="order"
-                sort-key="active"
-                :dir="SORT_DIR.active"
-                hint="Sort by activity: SSH commands issued"
-                >
-Story<span class="story-key" aria-hidden="true">commands &middot; files &middot; relays</span>
-</SortableTh
-              >
-              <SortableTh
-                v-model:sort="sort"
-                v-model:order="order"
-                sort-key="country"
-                :dir="SORT_DIR.country"
-                hint="Sort by origin: alphabetically"
-                >
-Origin
-</SortableTh
-              >
-              <th aria-hidden="true"></th>
-              <SortableTh
-                v-model:sort="sort"
-                v-model:order="order"
-                sort-key="duration"
-                :dir="SORT_DIR.duration"
-                hint="Sort by duration: longest first"
-                class="r"
-                >
-Duration
-</SortableTh
-              >
-              <SortableTh
-                v-model:sort="sort"
-                v-model:order="order"
-                sort-key="recent"
-                :dir="SORT_DIR.recent"
-                hint="Sort by recency: newest first"
-                class="r"
-                >
-Started
-</SortableTh
-              >
+                  {{ c.label
+                  }}<span v-if="c.key === 'active'" class="story-key" aria-hidden="true"
+                    >commands &middot; files &middot; relays</span
+                  >
+                </SortableTh>
+              </template>
             </tr>
           </thead>
           <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -- delegated treegrid keys; the focusable rows are the targets -->
@@ -581,9 +565,12 @@ Started
       </div>
     </HwCard>
 
+    <span class="visually-hidden" role="status" aria-live="polite">{{ pageStatus }}</span>
+
     <div class="foot-line">
       <span>
-        <b>{{ PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }} {{ scopeClause ?? 'sessions'
+        <b>{{ SESSIONS_PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }}
+        {{ scopeClause ?? 'sessions'
         }}<span v-if="!scopeClause" class="hint-tail">
           &middot; rows expand in place - the list never navigates away</span
         >
@@ -631,7 +618,7 @@ Started
 </template>
 
 <style scoped>
-  /* Visible key for the Story pills. ponytail: hidden on phones (no header room); pills keep their title attrs. */
+  /* Visible key for the Story pills; hidden on phones, where the pills keep their title attrs. */
   .story-key {
     margin-left: 8px;
     font-weight: 400;
@@ -857,7 +844,7 @@ Started
     text-align: right;
   }
   /* Session / Story / Origin / spacer / Duration / Started column widths.
-     4th column carries no width so fixed layout hands it all leftover space.
+     Column 4 (spacer) has no width so fixed layout gives it all leftover space.
      border-box: widths are the column's actual width, padding included. */
   table.data th {
     box-sizing: border-box;
@@ -943,7 +930,7 @@ Started
     transition: opacity var(--motion-fast);
   }
   .tbl-scroll.stale {
-    opacity: 0.55;
+    opacity: 0.7;
   }
   .load-error {
     display: flex;

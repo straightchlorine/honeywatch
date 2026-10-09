@@ -3,7 +3,7 @@
    * Payloads: captured files as "specimens". Backend has no "kind" field
    * (miner/botnet/dropper), so kind filter is omitted to avoid UI controls without data.
    */
-  import { computed, onMounted, onUnmounted, useTemplateRef } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
   import { useQuery } from '@tanstack/vue-query'
   import { RouterLink, useRoute } from 'vue-router'
   import {
@@ -49,12 +49,16 @@
 
   const checkSpecimens = useMoreFade('specimensEl')
 
-  // Deep link from the Sessions row. :target never matches (the list renders after navigation), so mark it by class.
-  const hash = useRoute().hash
-  onMounted(() => {
-    if (hash.startsWith('#spec-'))
-      document.getElementById(hash.slice(1))?.scrollIntoView({ block: 'center' })
-  })
+  // Deep link: scroll to #spec-<sha>. :target cannot match (the list renders after navigation),
+  // so the template marks it with .picked. Only the top-N specimens render; a hash for any other sha does nothing.
+  const route = useRoute()
+  const hash = computed(() => route.hash)
+  function scrollToPicked(): void {
+    if (hash.value.startsWith('#spec-'))
+      document.getElementById(hash.value.slice(1))?.scrollIntoView({ block: 'center' })
+  }
+  onMounted(scrollToPicked)
+  watch(hash, () => nextTick(scrollToPicked))
 
   const POLL_MS = 60_000
   const SPECIMEN_TOP_N = 50
@@ -172,9 +176,7 @@
       : 'Origin could not be resolved'
   }
   function onFlagsFocus(e: FocusEvent, d: PayloadDownloadResponse): void {
-    tt.show(originLabel(d))
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    tt.move({ clientX: r.left, clientY: r.bottom })
+    tt.showAt(e.currentTarget as HTMLElement, originLabel(d))
   }
   function flagsFor(codes: string[]): string {
     return codes.length ? codes.map((c) => useCountryFlag(c)).join(' ') : '-'
@@ -226,7 +228,7 @@
   function portService(port: number): string {
     return PORT_SERVICES[port] ?? `Port ${port}`
   }
-  // Mail ports distinguish relay probes from ordinary outbound noise.
+  // Mail ports mark relay probes.
   const MAIL_PORTS = new Set([25, 465, 587, 2525])
   /** Classify by port number, not outcome label, so renaming a label can never flip the badge color. */
   function portBadgeClass(port: number): RankRow['badgeClass'] {

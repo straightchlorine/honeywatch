@@ -2,12 +2,11 @@
   import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
   import type { SessionDetailResponse, SessionSummaryResponse } from '@/api/generated/types.gen'
   import { buildTranscript } from './useTerminalTranscript'
+  import ScoreHex from './ScoreHex.vue'
   import TerminalLine from './TerminalLine.vue'
   import { humanizeDuration } from '@/utils/duration'
   import { sanitizeAttackerText } from '@/utils/sanitize'
-  import { seq } from '@/composables/useSeqScale'
-  import { hexPoints } from '@/utils/hex'
-  import { buildStory, scoreFrac } from '@/utils/sessionStory'
+  import { buildStory } from '@/utils/sessionStory'
   import { ICONS } from '../icons'
   import HwBadge from '../base/HwBadge.vue'
 
@@ -25,8 +24,8 @@
   )
 
   const sid = computed(() => props.session.id.slice(0, 12))
-  // ponytail: without the list row, pills count the transcript (compound commands double-count)
-  // and tcpip reads 0; the hex needs the dataset max, so it shows only with the row.
+  // Without the list row the pills count the transcript, so compound commands double-count and
+  // tcpip is 0; the hex needs the dataset max, so it needs the row too.
   const story = computed(() =>
     buildStory(
       props.row ?? {
@@ -37,12 +36,6 @@
       },
     ),
   )
-  const frac = computed(() => scoreFrac(props.row?.interest ?? 0, props.maxInterest ?? 0))
-  const hexFill = computed(() =>
-    (props.row?.interest ?? 0) > 5 ? seq(Math.pow(frac.value, 0.9)) : 'var(--surface-2)',
-  )
-  const displayScore = computed(() => Math.round(100 * frac.value))
-  const points = hexPoints(15, 16.5, 14)
 
   function field(raw: string): string {
     return sanitizeAttackerText(raw, { mode: 'escape', allowWhitespace: false })
@@ -146,23 +139,7 @@
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
       <span class="term-tags">
-        <span
-          v-if="row && maxInterest"
-          class="score-hex"
-          :class="{ hot: frac > 0.6 }"
-          role="img"
-          :aria-label="`Interest score ${displayScore} of 100`"
-        >
-          <svg viewBox="0 0 30 33" aria-hidden="true">
-            <polygon
-              :points="points"
-              :fill="hexFill"
-              stroke="var(--border-strong)"
-              :stroke-width="row.interest > 5 ? 0 : 1"
-            />
-          </svg>
-          <b aria-hidden="true">{{ displayScore }}</b>
-        </span>
+        <ScoreHex v-if="row && maxInterest" :interest="row.interest" :ceiling="maxInterest" />
         <span class="sid">{{ sid }}</span>
         <HwBadge v-for="(b, i) in story" :key="i" :tone="b.tone" :title="b.title" :aria-label="b.title">
           {{ b.label }}
@@ -289,32 +266,6 @@
     color: var(--accent);
   }
 
-  .score-hex {
-    position: relative;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 24px;
-    height: 26px;
-  }
-
-  .score-hex svg {
-    position: absolute;
-    inset: 0;
-    width: 100%;
-    height: 100%;
-  }
-
-  .score-hex b {
-    position: relative;
-    font: 700 10px var(--font-mono);
-    color: var(--text);
-  }
-
-  .score-hex.hot b {
-    color: var(--bg-0);
-  }
-
   .badge-icon {
     width: 11px;
     height: 11px;
@@ -366,7 +317,7 @@
 
   .term-body {
     flex: 1 1 auto;
-    /* About six lines; a short transcript no longer stretches to the viewport. */
+    /* Floor so a short transcript does not collapse to a sliver. */
     min-height: 9rem;
     overflow-y: auto;
     padding: var(--space-3);

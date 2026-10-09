@@ -96,8 +96,7 @@
     const items = asnsQ.data.value ?? []
     return items.map((a) => ({
       label: a.as_org ?? (a.asn !== null ? `AS${a.asn}` : 'Unknown network'),
-      // The visible label is ellipsized, so the tooltip carries the full
-      // operator name and AS number when the name is shown.
+      // Label is ellipsized, so the tooltip carries the full operator name and AS number.
       title: [
         a.as_org ?? 'Unknown network',
         ...(a.as_org && a.asn !== null ? [`AS${a.asn}`] : []),

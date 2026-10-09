@@ -125,6 +125,7 @@ describe('SessionExpansion', () => {
     })
     expect(w.findAll('.file')).toHaveLength(2)
     const vt = w.findAll('a.vt')
+    expect(vt[0]?.attributes('aria-label')).toBe('VT: open aaaaaaaa on VirusTotal (new tab)')
     expect(vt.map((l) => l.attributes('href'))).toEqual([
       `https://www.virustotal.com/gui/file/${a}`,
       `https://www.virustotal.com/gui/file/${b}`,

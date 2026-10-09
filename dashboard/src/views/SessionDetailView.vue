@@ -1,13 +1,14 @@
 <script setup lang="ts">
-  import { computed } from 'vue'
+  import { computed, nextTick, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/vue-query'
-  import type { ListSessionsData, ListSessionsResponse } from '@/api/generated/types.gen'
+  import type { ListSessionsResponse } from '@/api/generated/types.gen'
   import { getSessionByIdOptions } from '@/api/queries'
   import { listSessionsOptions } from '@/api/generated/@tanstack/vue-query.gen'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import SessionTerminal from '@/components/sessions/SessionTerminal.vue'
+  import { sessionsListQuery } from '@/utils/pagination'
 
   const route = useRoute()
   const router = useRouter()
@@ -15,8 +16,7 @@
 
   const queryClient = useQueryClient()
 
-  // keepPreviousData: Previous/Next swap the id on this same instance, so hold the old
-  // session on screen until the neighbour arrives instead of rendering undefined.
+  // Previous/Next swap the id on this instance; keepPreviousData holds the old session until the new one lands.
   const detailQ = useQuery(
     computed(() => ({
       ...getSessionByIdOptions({ path: { session_id: sessionId.value } }),
@@ -36,41 +36,34 @@
     return cameFromList ? back : null
   }
 
-  // Must equal SessionsView's page size, or the query key misses its cache.
-  const LIST_PER_PAGE = 40
-  type ListQuery = NonNullable<ListSessionsData['query']>
-
-  // Neighbours come from the list page already in the cache (no fetch). Rebuilds the
-  // exact query SessionsView ran from the list URL. Nothing cached, or this session
-  // not on that page: no links.
-  // ponytail: no cross-page stepping - the first/last row of a page has one neighbour only.
+  // Neighbours come from the cached list page, rebuilt from the list URL's query. No cache, or
+  // this session not on that page, means no links; the first/last row of a page has one neighbour.
   const nav = computed(() => {
     const back = listBack()
     if (!back) return null
     const q = new URL(back, window.location.origin).searchParams
-    const term = q.get('q') ?? ''
-    const sha = q.get('sha256') ?? ''
-    const opts = listSessionsOptions({
-      query: {
-        page: Math.max(1, parseInt(q.get('page') ?? '', 10) || 1),
-        per_page: LIST_PER_PAGE,
-        sort: (q.get('sort') as ListQuery['sort']) || 'interest',
-        order: (q.get('order') as ListQuery['order']) || undefined,
-        has: q.get('has') || undefined,
-        country: q.get('country') || undefined,
-        q: term.length >= 2 ? term : undefined,
-        sha256: /^[0-9a-f]{64}$/.test(sha) ? sha : undefined,
-      },
-    })
+    const opts = listSessionsOptions({ query: sessionsListQuery((k) => q.get(k) ?? undefined) })
     const page = queryClient.getQueryData<ListSessionsResponse>(opts.queryKey)
     const i = page?.items.findIndex((r) => r.id === sessionId.value) ?? -1
     if (!page || i < 0) return null
     return {
       row: page.items[i]!,
+      position: i + 1,
+      count: page.items.length,
       maxInterest: page.max_interest,
       prev: page.items[i - 1]?.id,
       next: page.items[i + 1]?.id,
     }
+  })
+
+  // Previous/Next only change the id on this instance, so nothing tells a screen reader the page
+  // changed and focus would sit on a link that now points elsewhere (WCAG 4.1.3, 2.4.3).
+  const heading = ref<HTMLElement | null>(null)
+  const announcement = ref('')
+  watch(sessionId, async () => {
+    await nextTick()
+    heading.value?.focus({ preventScroll: true })
+    announcement.value = nav.value ? `Session ${nav.value.position} of ${nav.value.count} on this page` : ''
   })
 
   function goBack() {
@@ -90,7 +83,7 @@
 
     <div class="session-detail">
       <div class="page-head">
-        <h1>Session replay</h1>
+        <h1 ref="heading" tabindex="-1">Session replay</h1>
         <span class="sub">What the honeypot recorded, step by step.</span>
       </div>
 
@@ -108,6 +101,7 @@
 Previous
 </RouterLink
           >
+          <span v-else class="pager-link disabled" aria-disabled="true">Previous</span>
           <RouterLink
             v-if="nav.next"
             :to="{ name: 'session-detail', params: { id: nav.next } }"
@@ -117,8 +111,10 @@ Previous
 Next
 </RouterLink
           >
+          <span v-else class="pager-link disabled" aria-disabled="true">Next</span>
         </div>
       </div>
+      <span class="visually-hidden" role="status" aria-live="polite">{{ announcement }}</span>
       <SessionTerminal
         :session="session"
         :row="nav?.row"
@@ -178,6 +174,17 @@ Next
 
   .pager-link:hover {
     color: var(--text);
+  }
+
+  .pager-link.disabled,
+  .pager-link.disabled:hover {
+    color: var(--text-dim);
+    opacity: 0.6;
+    cursor: default;
+  }
+
+  h1:focus {
+    outline: none;
   }
 
   .pager-link:focus-visible {

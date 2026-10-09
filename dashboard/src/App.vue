@@ -6,10 +6,19 @@
   import { exitSplash, revealPage } from './utils/splash'
 
   const route = useRoute()
+  // How long the old page stays up before the loader replaces it. Without this wait the
+  // swap blanks the screen for the whole load: the loader itself only fades in later.
+  const LOADER_WAIT_MS = 220
   // When the current page change started, so a slow one can end with the hexagon reveal.
   // Pending, not fallback: Vue fires pending on every page change, also for views that
   // render at once and never show the fallback, so the time is never left over.
   let pendingAt = 0
+
+  // While the first-load splash is up there is no old page to wait on, so the loader keeps
+  // its own delay.
+  function splashUp(): boolean {
+    return !!document.getElementById('hw-splash')
+  }
 
   function onPending(): void {
     pendingAt = performance.now()
@@ -29,10 +38,10 @@
 <template>
   <ErrorBoundary>
     <RouterView v-slot="{ Component }">
-      <Suspense :timeout="0" @pending="onPending" @resolve="onResolve">
+      <Suspense :timeout="LOADER_WAIT_MS" @pending="onPending" @resolve="onResolve">
         <component :is="Component" />
         <template #fallback>
-          <LoadingState />
+          <LoadingState :immediate="!splashUp()" />
         </template>
       </Suspense>
     </RouterView>

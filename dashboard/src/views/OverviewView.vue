@@ -100,28 +100,27 @@
   const tt = useHwTooltip()
   type Pt = { clientX?: number; clientY?: number }
   function showTip(e: Pt, title: string, rows: [string, string, ('pos' | 'neg')?][]): void {
-    tt.show(title, rows)
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tt.move({ clientX: e.clientX, clientY: e.clientY })
-    }
+    tt.show(title, rows, undefined, e)
   }
 
   const INFO = {
     sessions: {
       title: 'Sessions',
       text: 'One session is one visit to the honeypot, from connecting to leaving.',
+      label: 'Sessions: One session is one visit to the honeypot, from connecting to leaving.',
     },
     logins: {
       title: 'Login attempts',
       text: 'Every username and password tried, across all sessions. One session can try many.',
+      label: 'Login attempts: Every username and password tried, across all sessions. One session can try many.',
     },
     ips: {
       title: 'Unique IPs',
       text: 'How many different addresses attacked, not how many times they connected.',
+      label: 'Unique IPs: How many different addresses attacked, not how many times they connected.',
     },
   }
   type InfoKey = keyof typeof INFO
-  const infoLabel = (k: InfoKey): string => `${INFO[k].title}: ${INFO[k].text}`
   const showInfo = (k: InfoKey): void => showTip({}, INFO[k].title, [['', INFO[k].text]])
 
   function showTrendTooltip(e: Pt): void {
@@ -170,15 +169,17 @@
     if (isError) console.error('map data failed to load', mapQ.error.value)
   })
 
-  // If detail fetch errors, drawer collapses but ?country= persists; this catches Escape in that half-open state
+  // ?country= persists after a failed detail fetch (the drawer then shows only an error); Escape must still close it
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape' && selectedCountry.value) closeDrawer()
   }
   onMounted(() => {
     window.addEventListener('keydown', onKeydown)
-    kpisMql = window.matchMedia('(max-width: 900px)')
-    syncKpis()
-    kpisMql.addEventListener('change', syncKpis)
+    if (typeof window.matchMedia === 'function') {
+      kpisMql = window.matchMedia('(max-width: 900px)')
+      syncKpis()
+      kpisMql.addEventListener('change', syncKpis)
+    }
   })
   onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown)
@@ -214,7 +215,7 @@
             <button
               type="button"
               class="info-btn"
-              :aria-label="infoLabel('sessions')"
+              :aria-label="INFO.sessions.label"
               @pointerenter="showInfo('sessions')"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
@@ -248,7 +249,7 @@
             <button
               type="button"
               class="info-btn"
-              :aria-label="infoLabel('logins')"
+              :aria-label="INFO.logins.label"
               @pointerenter="showInfo('logins')"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
@@ -281,7 +282,7 @@
             <button
               type="button"
               class="info-btn"
-              :aria-label="infoLabel('ips')"
+              :aria-label="INFO.ips.label"
               @pointerenter="showInfo('ips')"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"

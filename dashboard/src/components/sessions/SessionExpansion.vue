@@ -36,25 +36,16 @@
 
   const tt = useHwTooltip()
 
-  // One row per distinct sha256 (a session can fetch the same file twice); nulls only if nothing else.
+  // One row per distinct sha256 (a session can fetch the same file twice); a single blank row only if
+  // every download is unhashed. No per-file cap: the rail scrolls instead.
   const files = computed(() => {
-    const counts = new Map<string, number>()
-    let unhashed = false
-    for (const d of detailQ.data.value?.downloads ?? []) {
-      if (d.sha256) counts.set(d.sha256, (counts.get(d.sha256) ?? 0) + 1)
-      else unhashed = true
-    }
-    const rows = [...counts].map(([sha, n]) => ({ sha, n, benign: benignContent(sha) }))
-    // ponytail: no per-file cap; the rail scrolls
-    return rows.length || !unhashed ? rows : [{ sha: '', n: 1, benign: null }]
+    const downloads = detailQ.data.value?.downloads ?? []
+    const shas = [...new Set(downloads.map((d) => d.sha256).filter((s): s is string => !!s))]
+    if (!shas.length) return downloads.length ? [{ sha: '', benign: null }] : []
+    return shas.map((sha) => ({ sha, benign: benignContent(sha) }))
   })
-  function showTip(e: Event, f: { sha: string; n: number; benign: string | null }): void {
-    const rows: [string, string][] = []
-    if (f.benign) rows.push(['Content', f.benign])
-    if (f.n > 1) rows.push(['Fetched', `${f.n} times in this session`])
-    tt.show(f.sha, rows)
-    const r = (e.currentTarget as HTMLElement).getBoundingClientRect()
-    tt.move({ clientX: r.left, clientY: r.bottom })
+  function showTip(e: Event, f: { sha: string; benign: string | null }): void {
+    tt.showAt(e.currentTarget as HTMLElement, f.sha, f.benign ? [['Content', f.benign]] : [])
   }
   const clientLine = computed(() => {
     const s = detailQ.data.value
@@ -112,7 +103,7 @@
                 :href="vtUrl(f.sha)"
                 target="_blank"
                 rel="noopener noreferrer"
-                aria-label="Open on VirusTotal"
+                :aria-label="`VT: open ${f.sha.slice(0, 8)} on VirusTotal (new tab)`"
                 >VT</a
               >
             </div>
@@ -197,7 +188,7 @@
     max-height: var(--detail-max);
   }
 
-  /* Credential list scrolls independently; Files, Software used, and action button stay pinned. */
+  /* The credential list and this Files/Software rail scroll independently; the action row stays pinned. */
   .side {
     display: flex;
     flex-direction: column;
@@ -205,14 +196,25 @@
     min-height: 0;
     overflow-y: auto;
     scrollbar-width: thin;
+    /* The scroll box clips the 2px focus ring (plus its 2px offset) on the file links; the
+       padding gives it room and the negative margin keeps the layout where it was. */
+    padding: 4px;
+    margin: -4px;
   }
   .file {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
     margin-bottom: 4px;
   }
+  /* The badge is a pill; the link's focus ring takes the link's own radius, so match it. */
+  .file a.mono {
+    display: inline-flex;
+    border-radius: 999px;
+  }
   .vt {
+    border-radius: 999px;
     display: inline-flex;
     align-items: center;
     justify-content: center;

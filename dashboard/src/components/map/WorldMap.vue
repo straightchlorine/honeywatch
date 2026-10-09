@@ -247,9 +247,21 @@
     const t = e.target as SVGGraphicsElement | null
     if (!t?.matches?.(':focus-visible')) return
     if (c.a2) focusedA2.value = c.a2
+    panToFocus(c)
     const b = t.getBoundingClientRect?.()
     showCountryTip(c)
     if (b) tooltip.move({ clientX: b.left + b.width / 2, clientY: b.top } as PointerEvent)
+  }
+  // Keep a keyboard-focused country on screen: pan (at the current zoom) only when
+  // it is wholly outside the svg, so a partly visible country does not make the map jump.
+  // Pixel rects, not centroid math, because the svg is letterboxed.
+  function panToFocus(c: MapCountry): void {
+    const svg = svgEl.value?.getBoundingClientRect()
+    const el = svgEl.value?.querySelector<SVGElement>(`[data-cid="${c.id}"]`)
+    const r = el?.getBoundingClientRect()
+    if (!svg || !r || !svg.width || !svg.height) return
+    const outside = r.right < svg.left || r.left > svg.right || r.bottom < svg.top || r.top > svg.bottom
+    if (outside) flyTo(c.centroid[0], c.centroid[1], k.value)
   }
   function onBlur(): void {
     focusedA2.value = null
@@ -262,9 +274,7 @@
   function onClick(c: MapCountry): void {
     if (c.a2 && byA2.value.has(c.a2)) emit('select', c.a2)
   }
-  // Roving tabindex: the 157 country paths are ONE tab stop (the busiest country,
-  // then wherever focus last was); arrows move between them, busiest first.
-  // ponytail: no type-ahead, and the pan/zoom view does not follow focus.
+  // Roving tabindex: countries with data share one Tab stop (busiest first); arrows walk them in that order.
   const navList = computed(() =>
     geometry.countries
       .filter((c) => c.a2 && byA2.value.has(c.a2))
@@ -293,6 +303,7 @@
     e.preventDefault()
     rovingId.value = list[to]!.id
     svgEl.value?.querySelector<SVGElement>(`[data-cid="${list[to]!.id}"]`)?.focus()
+    panToFocus(list[to]!)
   }
   // The selection/focus ring is drawn as a separate overlay pair rather than as
   // a stroke on the country itself: no single colour clears 4.5:1 against the
@@ -531,7 +542,7 @@
       <defs></defs>
       <g :transform="transform">
         <path class="graticule" :d="geometry.graticule" aria-hidden="true" />
-        <g role="group" aria-label="World map - arrow keys move between countries">
+        <g role="group" aria-label="World map, ordered by sessions - arrow keys move between countries">
         <!-- SVG data-viz: pointer handlers without a static role are standard
              here - role/tabindex are set conditionally per country below,
              which the linter can't see through. tabindex -1 on no-data countries:

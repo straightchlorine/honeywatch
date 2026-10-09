@@ -32,6 +32,11 @@ export function buildStory(row: {
   return badges
 }
 
+// Shared by the hex tooltip and the Session column header, so keyboard users (the hex is not a
+// Tab stop) get the same explanation.
+export const SCORE_TIP =
+  'Interest score - higher when a session ran commands, dropped files, got control or tried to relay'
+
 /**
  * Normalize interest score against dataset ceiling so full color saturation aligns with actual data, not a guessed constant.
  */
