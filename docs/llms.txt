@@ -1,0 +1,25 @@
+# Honeywatch
+
+> SSH honeypot with a live attack dashboard: Cowrie, PostgreSQL, a read-only API and a Vue dashboard in five Docker containers.
+
+Honeywatch answers SSH on port 22 pretending to be a neglected CentOS box, records every session into PostgreSQL, and serves aggregates (world map, activity heatmap, credential leaderboards, session replays) through a read-only Flask API and a Vue dashboard. These docs cover running your own instance and how it works.
+
+## Docs
+
+- [Home](https://docs.honeywatch.piotrkrzysztof.dev/): what Honeywatch is and how the pieces fit
+- [Quick Start](https://docs.honeywatch.piotrkrzysztof.dev/getting-started/quick-start/): bring the stack up locally with Docker Compose
+- [Configuration](https://docs.honeywatch.piotrkrzysztof.dev/getting-started/configuration/): every environment variable, its default and what breaks when it is wrong
+- [Deploy the Stack](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/): deploy on a VPS with every port pinned to loopback
+- [Exposing Port 22](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/exposing/): move real SSH off port 22 and hand it to the honeypot
+- [Watching It Remotely](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/remote-access/): reach the dashboard and API over an SSH port forward
+- [Operating It](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/operations/): logs, updates, GeoLite2 refresh, backups, pruning and metrics
+- [How It Works](https://docs.honeywatch.piotrkrzysztof.dev/architecture/): Cowrie, the ingestor, the Postgres schema, the API and the dashboard
+- [REST API](https://docs.honeywatch.piotrkrzysztof.dev/reference/api/): every endpoint, conventions and privacy guarantees
+- [Development](https://docs.honeywatch.piotrkrzysztof.dev/reference/development/): toolchain, test gates, migrations and CI
+- [Troubleshooting](https://docs.honeywatch.piotrkrzysztof.dev/reference/troubleshooting/): symptoms and fixes for the failures the stack produces
+- [Operating This Instance](https://docs.honeywatch.piotrkrzysztof.dev/reference/maintainer-runbook/): how the public instance is released and rolled back
+
+## Optional
+
+- [Source repository](https://github.com/straightchlorine/honeywatch): code, issues and releases
+- [Live dashboard](https://honey.piotrkrzysztof.dev): the public instance

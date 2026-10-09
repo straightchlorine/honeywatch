@@ -1,6 +1,6 @@
 site_name: Honeywatch
 site_description: SSH honeypot with attack visualization and threat analysis
-site_author: Piotr Krzysztof Lis
+site_author: Piotr Krzysztof Lis, Jakub Kucharski
 site_url: https://docs.honeywatch.piotrkrzysztof.dev
 
 repo_name: straightchlorine/honeywatch
@@ -44,6 +44,8 @@ theme:
     - content.code.annotate
     - content.tabs.link
     - toc.follow
+    - content.action.edit
+    - content.action.view
 
   icon:
     repo: fontawesome/brands/github
@@ -59,6 +61,10 @@ theme:
 plugins:
   - search:
       lang: en
+  - privacy:
+      assets_exclude:
+        - honeywatch.docs.codextechnologies.org/*
+        - img.shields.io/*
   - git-revision-date-localized:
       enable_creation_date: true
       enable_git_follow: false

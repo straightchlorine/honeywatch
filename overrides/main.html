@@ -1,40 +1,88 @@
 {% extends "base.html" %}
 
 {% block extrahead %}
-  {% if page and page.meta %}
-    {% set og_title = page.meta.title if page.meta.title else (page.title ~ " - " ~ config.site_name if page.title else config.site_name) %}
+  {{ super() }}
+  {#- 404.html renders through this block too but has nothing to describe -#}
+  {% set real_page = page and page.file and page.url != "404.html" %}
+  {% if real_page %}
+    {% set site = config.site_url %}
+    {% set is_home = page.is_homepage %}
+    {#- same Person id on every site, so crawlers merge them into one entity -#}
+    {% set person = "https://piotrkrzysztof.dev/#piotr" %}
+    {% set jakub = "https://piotrkrzysztof.dev/#jakub" %}
+    {% set authors = [{"@id": person}, {"@id": jakub}] %}
+    {#- mirrors Material's <title> logic -#}
+    {% set t = page.meta.title or (page.title if not is_home) %}
+    {% set og_title = t ~ " - " ~ config.site_name if t else config.site_name %}
     {% set og_desc = page.meta.description if page.meta.description else config.site_description %}
-    <meta property="og:type" content="website">
+    {% set og_image = "https://honeywatch.docs.codextechnologies.org/github/og.png" %}
+    <meta property="og:type" content="{{ 'website' if is_home else 'article' }}">
+    <meta property="og:locale" content="en_US">
     <meta property="og:site_name" content="{{ config.site_name }}">
     <meta property="og:title" content="{{ og_title }}">
     <meta property="og:description" content="{{ og_desc }}">
     <meta property="og:url" content="{{ page.canonical_url }}">
-    <meta property="og:image" content="https://honeywatch.docs.codextechnologies.org/github/og.png">
+    <meta property="og:image" content="{{ og_image }}">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Honeywatch: SSH honeypot with a live attack dashboard">
     <meta name="twitter:card" content="summary_large_image">
     <meta name="twitter:title" content="{{ og_title }}">
     <meta name="twitter:description" content="{{ og_desc }}">
-    <meta name="twitter:image" content="https://honeywatch.docs.codextechnologies.org/github/og.png">
-    {# Ties the docs to the same Person entity piotrkrzysztof.dev declares. #}
+    <meta name="twitter:image" content="{{ og_image }}">
     <script type="application/ld+json">
     {
       "@context": "https://schema.org",
-      "@type": "WebSite",
-      "name": "{{ config.site_name }}",
-      "url": "{{ config.site_url }}",
-      "description": "{{ config.site_description }}",
-      "author": {
-        "@type": "Person",
-        "name": "Piotr Krzysztof Lis",
-        "url": "https://piotrkrzysztof.dev",
-        "sameAs": ["https://github.com/straightchlorine"]
-      },
-      "about": {
-        "@type": "SoftwareSourceCode",
-        "name": "Honeywatch",
-        "codeRepository": "{{ config.repo_url }}",
-        "url": "https://honey.piotrkrzysztof.dev",
-        "license": "https://opensource.org/licenses/MIT"
-      }
+      "@graph": [
+        {
+          "@type": "WebSite",
+          "@id": {{ (site ~ "#website") | tojson }},
+          "name": {{ config.site_name | tojson }},
+          "url": {{ site | tojson }},
+          "description": {{ config.site_description | tojson }},
+          "inLanguage": "en",
+          "author": {{ authors | tojson }}
+        },
+        {
+          "@type": "Person",
+          "@id": {{ person | tojson }},
+          "name": "Piotr Krzysztof Lis",
+          "alternateName": "Piotr Krzysztof",
+          "url": "https://piotrkrzysztof.dev",
+          "sameAs": ["https://github.com/straightchlorine", "https://codeberg.org/piotrkrzysztof", "https://pypi.org/user/straightchlorine", "https://hub.docker.com/u/straightchlorine", "https://www.linkedin.com/in/straightchlorine"]
+        },
+        {
+          "@type": "Person",
+          "@id": {{ jakub | tojson }},
+          "name": "Jakub Kucharski",
+          "url": "https://github.com/kubson2002k",
+          "sameAs": ["https://github.com/kubson2002k", "https://www.linkedin.com/in/jakub-kucharski-360811305/"]
+        },
+        {
+          "@type": "SoftwareSourceCode",
+          "@id": {{ (config.repo_url ~ "#code") | tojson }},
+          "name": "Honeywatch",
+          "codeRepository": {{ config.repo_url | tojson }},
+          "url": "https://honey.piotrkrzysztof.dev",
+          "license": "https://opensource.org/licenses/MIT",
+          "author": {{ authors | tojson }}
+        },
+        {
+          "@type": {{ ("WebPage" if is_home else "TechArticle") | tojson }},
+          "@id": {{ page.canonical_url | tojson }},
+          "url": {{ page.canonical_url | tojson }},
+          "name": {{ og_title | tojson }},
+          "description": {{ og_desc | tojson }},
+          "inLanguage": "en",
+          "image": {{ og_image | tojson }},
+          {%- if page.meta.git_revision_date_localized_raw_iso_date %}
+          "dateModified": {{ page.meta.git_revision_date_localized_raw_iso_date | tojson }},
+          {%- endif %}
+          "isPartOf": { "@id": {{ (site ~ "#website") | tojson }} },
+          "about": { "@id": {{ (config.repo_url ~ "#code") | tojson }} },
+          "author": {{ authors | tojson }}
+        }
+      ]
     }
     </script>
   {% endif %}
