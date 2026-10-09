@@ -2,7 +2,6 @@
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import HwCard from '@/components/base/HwCard.vue'
-  import EmptyState from '@/components/base/EmptyState.vue'
 </script>
 
 <template>
@@ -18,9 +17,9 @@
       </div>
 
       <HwCard class="card">
-        <EmptyState title="Page not found" hint="The page you requested doesn't exist.">
+        <div class="recover">
           <RouterLink to="/" class="back-link">Back to overview</RouterLink>
-        </EmptyState>
+        </div>
       </HwCard>
     </div>
   </PageShell>
@@ -58,23 +57,33 @@
     flex: none;
   }
 
+  .recover {
+    display: flex;
+    justify-content: center;
+    padding: var(--space-6) var(--space-4);
+  }
+
   .back-link {
-    color: var(--accent);
-    text-decoration: none;
-    font-weight: 600;
+    display: inline-flex;
+    align-items: center;
+    min-height: 40px;
+    padding: 0 22px;
+    border-radius: 999px;
+    background: var(--accent);
+    color: var(--bg-0);
+    font-weight: 650;
     font-size: 14px;
-    margin-top: 12px;
-    display: inline-block;
+    text-decoration: none;
   }
 
   .back-link:hover {
-    text-decoration: underline;
+    background: var(--accent-hot);
+    text-decoration: none;
   }
 
   .back-link:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 2px;
-    border-radius: var(--radius-md);
   }
 
   @media (max-width: 760px) {

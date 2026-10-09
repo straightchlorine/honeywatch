@@ -2,7 +2,7 @@
   /**
    * First-visit overlay: auto-dismisses after ~5s. Opened via link/deep link: stays until dismissed.
    */
-  import { onMounted, onUnmounted, ref } from 'vue'
+  import { nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
   import HexIcon from '../base/HexIcon.vue'
   import IconLink from '../IconLink.vue'
   import { ICONS } from '../icons'
@@ -14,13 +14,60 @@
   const SEEN_KEY = 'hw-seen-about'
   const AUTO_DISMISS_MS = 5200
   let autoTimer: ReturnType<typeof setTimeout> | undefined
-  // Set only during first-visit auto-fade; hides the "closes on its own" hint when opened deliberately.
+  // True while the first-visit auto-dismiss clock is running; holdOpen() clears it.
   const autoDismissing = ref(false)
+  // Set on a first-visit auto-open and never cleared. The hint is hidden, not removed, once the
+  // clock stops: the card is centered, so removing it moves the Enter button between mousedown
+  // and mouseup and the tap misses. Deliberate opens never render it.
+  const autoOpened = ref(false)
 
   // Any interaction inside the card means the visitor is reading: stop the clock.
   function holdOpen(): void {
     clearTimeout(autoTimer)
     autoDismissing.value = false
+  }
+
+  const card = useTemplateRef<HTMLElement>('card')
+  let returnFocusTo: HTMLElement | null = null
+
+  // The first-visit auto-open must not yank focus from whatever the visitor was doing
+  // (WCAG 3.2.1), so only a deliberate open moves focus into the card.
+  watch(open, async (isOpen) => {
+    if (isOpen) {
+      returnFocusTo = document.activeElement instanceof HTMLElement ? document.activeElement : null
+      if (autoDismissing.value) return
+      await nextTick()
+      card.value?.focus({ preventScroll: true })
+    } else {
+      // Only hand focus back if the card had it; an auto-open that never took focus must not steal it.
+      if (card.value?.contains(document.activeElement)) {
+        returnFocusTo?.focus({ preventScroll: true })
+      }
+      returnFocusTo = null
+    }
+  })
+
+  const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])'
+
+  // Same wrap technique as DrawerShell. Tab from outside the card (auto-open leaves focus
+  // on the page) pulls focus in, and counts as reading.
+  function trapTab(e: KeyboardEvent): void {
+    const items = Array.from(card.value?.querySelectorAll<HTMLElement>(FOCUSABLE) ?? [])
+    if (!items.length) return
+    const first = items[0]!
+    const last = items[items.length - 1]!
+    const active = document.activeElement
+    const inCard = card.value?.contains(active) ?? false
+    if (e.shiftKey) {
+      if (!inCard || active === first || active === card.value) {
+        e.preventDefault()
+        last.focus()
+      }
+    } else if (!inCard || active === last) {
+      e.preventDefault()
+      first.focus()
+    }
+    holdOpen()
   }
 
   function stripHash(): void {
@@ -40,7 +87,15 @@
   }
 
   function onKeydown(e: KeyboardEvent): void {
-    if (e.key === 'Escape' && open.value) dismiss()
+    if (!open.value) return
+    if (e.key === 'Escape') dismiss()
+    else if (e.key === 'Tab') trapTab(e)
+  }
+
+  // Never close under a visitor who has moved focus into the card.
+  function autoClose(): void {
+    if (card.value?.contains(document.activeElement)) holdOpen()
+    else dismiss()
   }
 
   function onHashChange(): void {
@@ -59,7 +114,8 @@
       } else if (firstVisit) {
         open.value = true
         autoDismissing.value = true
-        autoTimer = setTimeout(dismiss, AUTO_DISMISS_MS)
+        autoOpened.value = true
+        autoTimer = setTimeout(autoClose, AUTO_DISMISS_MS)
       }
       if (firstVisit) writeStored('localStorage', SEEN_KEY, '1')
     })
@@ -87,7 +143,14 @@
       @click="onBackdropClick"
     >
       <!-- eslint-disable-next-line vuejs-accessibility/click-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
-      <div class="intro-card glass" @click="holdOpen">
+      <div
+        ref="card"
+        class="intro-card glass"
+        tabindex="-1"
+        @click="holdOpen"
+        @keydown="holdOpen"
+        @focusin="holdOpen"
+      >
         <HexIcon :size="44" />
         <h2>Honeywatch</h2>
         <p>
@@ -170,7 +233,7 @@
             <path :d="ICONS['chevron-right']" fill="currentColor" />
           </svg>
         </button>
-        <div v-if="autoDismissing" class="intro-hint">
+        <div v-if="autoOpened" class="intro-hint" :class="{ stopped: !autoDismissing }">
           Closes on its own - find it again under About.
         </div>
       </div>
@@ -294,6 +357,10 @@
     gap: 8px;
   }
 
+  .intro-card:focus {
+    outline: none;
+  }
+
   .intro-enter {
     margin-top: 4px;
     padding: 10px 22px;
@@ -320,6 +387,9 @@
   .intro-hint {
     font: 500 11px var(--font-mono);
     color: var(--text-dim);
+  }
+  .intro-hint.stopped {
+    visibility: hidden;
   }
 
   @media (max-width: 900px) {

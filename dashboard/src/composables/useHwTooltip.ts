@@ -49,7 +49,13 @@ function hideNode(force: boolean): void {
 export type TooltipRow = [string, string, ('pos' | 'neg')?]
 
 export function useHwTooltip() {
-  function show(title: string, rows: TooltipRow[] = [], icon?: string): void {
+  /** `at` places the bubble at pointer coordinates; leave it out for focus events, which have none. */
+  function show(
+    title: string,
+    rows: TooltipRow[] = [],
+    icon?: string,
+    at?: { clientX?: number; clientY?: number },
+  ): void {
     const node = ensure()
     node.replaceChildren()
 
@@ -77,6 +83,15 @@ export function useHwTooltip() {
     node.classList.add('show')
     shownAt = performance.now()
     if (touchPrimary()) addGlobals()
+    if (at?.clientX !== undefined && at.clientY !== undefined) {
+      move({ clientX: at.clientX, clientY: at.clientY })
+    }
+  }
+
+  /** Keyboard focus: anchor the bubble under the element's bottom-left corner. */
+  function showAt(el: Element, title: string, rows: TooltipRow[] = []): void {
+    const r = el.getBoundingClientRect()
+    show(title, rows, undefined, { clientX: r.left, clientY: r.bottom })
   }
 
   function move(e: { clientX: number; clientY: number }): void {
@@ -100,5 +115,5 @@ export function useHwTooltip() {
     hideNode(force)
   }
 
-  return { show, move, hide }
+  return { show, showAt, move, hide }
 }

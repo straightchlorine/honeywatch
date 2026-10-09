@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
+  import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { useQuery } from '@tanstack/vue-query'
   import {
@@ -98,47 +98,65 @@
   )
 
   const tt = useHwTooltip()
-  function showTrendTooltip(e: { clientX?: number; clientY?: number }): void {
-    tt.show('7-day trend', [
-      ['This week', fmtNumber(trend.value?.current ?? 0)],
-      ['Prior week', fmtNumber(trend.value?.previous ?? 0)],
-      [
-        'Change',
-        trend.value
-          ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change })
-          : 'no data',
-        trend.value && trend.value.delta > 0
-          ? 'pos'
-          : trend.value && trend.value.delta < 0
-            ? 'neg'
-            : undefined,
-      ],
-    ])
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tt.move({ clientX: e.clientX, clientY: e.clientY })
-    }
+  type Pt = { clientX?: number; clientY?: number }
+  function showTip(e: Pt, title: string, rows: [string, string, ('pos' | 'neg')?][]): void {
+    tt.show(title, rows, undefined, e)
   }
 
-  function showAuthTooltip(e: { clientX?: number; clientY?: number }): void {
+  const INFO = {
+    sessions: {
+      title: 'Sessions',
+      text: 'One session is one visit to the honeypot, from connecting to leaving.',
+      label: 'Sessions: One session is one visit to the honeypot, from connecting to leaving.',
+    },
+    logins: {
+      title: 'Login attempts',
+      text: 'Every username and password tried, across all sessions. One session can try many.',
+      label: 'Login attempts: Every username and password tried, across all sessions. One session can try many.',
+    },
+    ips: {
+      title: 'Unique IPs',
+      text: 'How many different addresses attacked, not how many times they connected.',
+      label: 'Unique IPs: How many different addresses attacked, not how many times they connected.',
+    },
+  }
+  type InfoKey = keyof typeof INFO
+  const showInfo = (k: InfoKey): void => showTip({}, INFO[k].title, [['', INFO[k].text]])
+
+  function showTrendTooltip(e: Pt): void {
+    const t = trend.value
+    showTip(e, '7-day trend', [
+      ['This week', fmtNumber(t?.current ?? 0)],
+      ['Prior week', fmtNumber(t?.previous ?? 0)],
+      [
+        'Change',
+        t ? fmtDelta({ delta: t.delta, pct_change: t.pct_change }) : 'no data',
+        t && t.delta > 0 ? 'pos' : t && t.delta < 0 ? 'neg' : undefined,
+      ],
+    ])
+  }
+
+  function showAuthTooltip(e: Pt): void {
     const authData = authQ.data.value
     const acceptedCount = fmtNumber(authData?.successful ?? 0)
     const totalCount = fmtNumber(authData?.total ?? 0)
-    tt.show('Login success rate', [['Accepted', `${acceptedCount} of ${totalCount}`]])
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tt.move({ clientX: e.clientX, clientY: e.clientY })
-    }
+    showTip(e, 'Login success rate', [['Accepted', `${acceptedCount} of ${totalCount}`]])
   }
 
-  function showCountriesToolip(e: { clientX?: number; clientY?: number }): void {
-    tt.show('Share of all countries', [
+  function showCountriesTooltip(e: Pt): void {
+    showTip(e, 'Share of all countries', [
       [
         '',
         `${((countries.value.length / WORLD_COUNTRY_COUNT) * 100).toFixed(1)}% of ${WORLD_COUNTRY_COUNT} countries`,
       ],
     ])
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tt.move({ clientX: e.clientX, clientY: e.clientY })
-    }
+  }
+
+  // The stat group only scrolls (and so needs a tab stop) in the mobile row layout.
+  const kpisScroll = ref(false)
+  let kpisMql: MediaQueryList | null = null
+  const syncKpis = (): void => {
+    kpisScroll.value = !!kpisMql?.matches
   }
 
   // LiveFeed detects new rows; WorldMap owns the SVG to animate arcs
@@ -151,12 +169,22 @@
     if (isError) console.error('map data failed to load', mapQ.error.value)
   })
 
-  // If detail fetch errors, drawer collapses but ?country= persists; this catches Escape in that half-open state
+  // ?country= persists after a failed detail fetch (the drawer then shows only an error); Escape must still close it
   function onKeydown(e: KeyboardEvent): void {
     if (e.key === 'Escape' && selectedCountry.value) closeDrawer()
   }
-  onMounted(() => window.addEventListener('keydown', onKeydown))
-  onUnmounted(() => window.removeEventListener('keydown', onKeydown))
+  onMounted(() => {
+    window.addEventListener('keydown', onKeydown)
+    if (typeof window.matchMedia === 'function') {
+      kpisMql = window.matchMedia('(max-width: 900px)')
+      syncKpis()
+      kpisMql.addEventListener('change', syncKpis)
+    }
+  })
+  onUnmounted(() => {
+    window.removeEventListener('keydown', onKeydown)
+    kpisMql?.removeEventListener('change', syncKpis)
+  })
 </script>
 
 <template>
@@ -176,32 +204,22 @@
         @deselect="closeDrawer"
       />
 
-      <div class="kpis" tabindex="0" role="group" aria-label="Overview stats">
+      <div
+        class="kpis"
+        :tabindex="kpisScroll ? 0 : undefined"
+        role="group"
+        aria-label="Overview stats"
+      >
         <StatTile label="Sessions" glass :value="fmtNumber(totals?.total_sessions)" :spark="spark">
           <template #label-extra>
             <button
               type="button"
-              tabindex="0"
               class="info-btn"
-              :aria-label="'Sessions: One session is one visit to the honeypot, from connecting to leaving.'"
-              @pointerenter="
-                tt.show('Sessions', [
-                  [
-                    '',
-                    'One session is one visit to the honeypot, from connecting to leaving.',
-                  ],
-                ])
-              "
+              :aria-label="INFO.sessions.label"
+              @pointerenter="showInfo('sessions')"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
-              @focus="
-                tt.show('Sessions', [
-                  [
-                    '',
-                    'One session is one visit to the honeypot, from connecting to leaving.',
-                  ],
-                ])
-              "
+              @focus="showInfo('sessions')"
               @blur="tt.hide()"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -211,17 +229,16 @@
           </template>
           <template #meta>
             <span
-              class="trend-delta"
+              class="meta-tip"
               :class="`trend-${trendTone}`"
-              role="button"
+              role="group"
               tabindex="0"
-              aria-label="7-day trend: sessions this week compared with last week"
+              :aria-label="`${trendLabel}, 7-day trend: sessions this week compared with last week`"
               @pointerenter="showTrendTooltip($event)"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
               @focus="showTrendTooltip({})"
               @blur="tt.hide()"
-              @keydown.enter.space.prevent="showTrendTooltip({})"
             >
               {{ trendLabel }}
             </span>
@@ -231,27 +248,12 @@
           <template #label-extra>
             <button
               type="button"
-              tabindex="0"
               class="info-btn"
-              :aria-label="'Login attempts: Every username and password tried, across all sessions. One session can try many.'"
-              @pointerenter="
-                tt.show('Login attempts', [
-                  [
-                    '',
-                    'Every username and password tried, across all sessions. One session can try many.',
-                  ],
-                ])
-              "
+              :aria-label="INFO.logins.label"
+              @pointerenter="showInfo('logins')"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
-              @focus="
-                tt.show('Login attempts', [
-                  [
-                    '',
-                    'Every username and password tried, across all sessions. One session can try many.',
-                  ],
-                ])
-              "
+              @focus="showInfo('logins')"
               @blur="tt.hide()"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -261,16 +263,15 @@
           </template>
           <template #meta>
             <span
-              class="trend-delta"
-              role="button"
+              class="meta-tip"
+              role="group"
               tabindex="0"
-              aria-label="Login success rate: accepted logins out of total attempts"
+              :aria-label="`${acceptedPct}, login success rate: accepted logins out of total attempts`"
               @pointerenter="showAuthTooltip($event)"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
               @focus="showAuthTooltip({})"
               @blur="tt.hide()"
-              @keydown.enter.space.prevent="showAuthTooltip({})"
             >
               {{ acceptedPct }}
             </span>
@@ -280,27 +281,12 @@
           <template #label-extra>
             <button
               type="button"
-              tabindex="0"
               class="info-btn"
-              :aria-label="'Unique IPs: How many different addresses attacked, not how many times they connected.'"
-              @pointerenter="
-                tt.show('Unique IPs', [
-                  [
-                    '',
-                    'How many different addresses attacked, not how many times they connected.',
-                  ],
-                ])
-              "
+              :aria-label="INFO.ips.label"
+              @pointerenter="showInfo('ips')"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
-              @focus="
-                tt.show('Unique IPs', [
-                  [
-                    '',
-                    'How many different addresses attacked, not how many times they connected.',
-                  ],
-                ])
-              "
+              @focus="showInfo('ips')"
               @blur="tt.hide()"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
@@ -310,16 +296,15 @@
           </template>
           <template #meta>
             <span
-              role="button"
+              class="meta-tip"
+              role="group"
               tabindex="0"
-              aria-label="Countries attacked: what share of the world is represented"
-              @pointerenter="showCountriesToolip($event)"
+              :aria-label="`${countries.length} countries, share of the world represented`"
+              @pointerenter="showCountriesTooltip($event)"
               @pointermove="tt.move($event)"
               @pointerleave="tt.hide()"
-              @focus="showCountriesToolip({})"
+              @focus="showCountriesTooltip({})"
               @blur="tt.hide()"
-              @keydown.enter.space.prevent="showCountriesToolip({})"
-              class="countries-meta"
             >
               {{ countries.length }} countries
             </span>
@@ -332,6 +317,7 @@
       <CountryDrawer
         :detail="countryQ.data.value ?? null"
         :loading="countryLoading"
+        :failed="!!selectedCountry && countryQ.isError.value && !countryQ.data.value"
         @close="closeDrawer"
         @fly-to-city="
           (p) =>
@@ -385,27 +371,14 @@
     color: var(--text-muted);
   }
 
-  .trend-delta {
-    cursor: pointer;
+  .meta-tip {
+    cursor: help;
     transition: opacity var(--motion-fast);
   }
-  .trend-delta:hover {
+  .meta-tip:hover {
     opacity: 0.8;
   }
-  .trend-delta:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 1px;
-    border-radius: 2px;
-  }
-
-  .countries-meta {
-    cursor: pointer;
-    transition: opacity var(--motion-fast);
-  }
-  .countries-meta:hover {
-    opacity: 0.8;
-  }
-  .countries-meta:focus-visible {
+  .meta-tip:focus-visible {
     outline: 2px solid var(--accent);
     outline-offset: 1px;
     border-radius: 2px;
@@ -424,9 +397,17 @@
     color: var(--text-muted);
     cursor: pointer;
     transition:
-      color 120ms ease,
-      background 120ms ease;
+      color var(--motion-fast),
+      background var(--motion-fast);
     flex-shrink: 0;
+    position: relative;
+  }
+
+  /* 24px hit area (WCAG 2.5.8) around the 16px control. */
+  .info-btn::after {
+    content: '';
+    position: absolute;
+    inset: -4px;
   }
 
   .info-btn:hover {

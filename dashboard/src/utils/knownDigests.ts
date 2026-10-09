@@ -20,3 +20,7 @@ export const KNOWN_BENIGN: Readonly<Record<string, string>> = Object.freeze({
 export function benignContent(sha256: string): string | null {
   return KNOWN_BENIGN[sha256.toLowerCase()] ?? null
 }
+
+export function vtUrl(sha256: string): string {
+  return `https://www.virustotal.com/gui/file/${sha256}`
+}

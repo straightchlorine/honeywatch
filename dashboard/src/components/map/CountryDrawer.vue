@@ -16,10 +16,13 @@
   const {
     detail,
     loading = false,
+    failed = false,
     showFullIntel = true,
   } = defineProps<{
     detail: StatsCountryDetailResponse | null
     loading?: boolean
+    /** Detail fetch failed: open the drawer with a message instead of staying shut. */
+    failed?: boolean
     /** "Full details" links to Origins - hide it when already on that page. */
     showFullIntel?: boolean
   }>()
@@ -113,8 +116,8 @@
 
 <template>
   <DrawerShell
-    :open="!!detail || loading"
-    :title="detail?.name ?? 'Loading...'"
+    :open="!!detail || loading || failed"
+    :title="detail?.name ?? (failed ? 'Country' : 'Loading...')"
     @close="emit('close')"
   >
     <template #head-extra>
@@ -207,6 +210,7 @@
       </div>
     </template>
     <div v-else-if="loading" class="d-loading" role="status">Loading...</div>
+    <p v-else-if="failed" class="empty" role="alert">Could not load this country. Close and try again.</p>
   </DrawerShell>
 </template>
 

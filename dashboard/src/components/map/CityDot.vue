@@ -36,32 +36,23 @@
     if (props.city.country_code) emit('select', props.city.country_code)
   }
 
-  function onKeydown(e: KeyboardEvent): void {
-    if ((e.key === 'Enter' || e.key === ' ') && props.city.country_code) {
-      e.preventDefault()
-      emit('select', props.city.country_code)
-    }
-  }
-
   const hitR = computed(() => Math.max((props.r + 3) * props.scale, props.minHitR ?? 0))
 </script>
 
 <template>
   <g :transform="`translate(${x},${y})`">
-    <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
+    <!-- Pointer-only: the country path is the keyboard and screen-reader target for this action. -->
+    <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
     <circle
       class="city-hit"
       :r="hitR"
-      :tabindex="0"
-      role="button"
-      :aria-label="`${city.city} (${city.country_code})`"
+      aria-hidden="true"
       @pointerenter="onEnter"
       @pointermove="onMove"
       @pointerleave="onLeave"
       @click="onClick"
-      @keydown="onKeydown"
     />
-    <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
+    <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
     <circle class="city-dot" :r="r * scale" fill="#f3e5c4" />
   </g>
 </template>

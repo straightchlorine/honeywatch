@@ -1,15 +1,41 @@
 <script setup lang="ts">
-  import { computed, ref } from 'vue'
-  import type { SessionDetailResponse } from '@/api/generated/types.gen'
+  import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+  import type { SessionDetailResponse, SessionSummaryResponse } from '@/api/generated/types.gen'
   import { buildTranscript } from './useTerminalTranscript'
+  import ScoreHex from './ScoreHex.vue'
   import TerminalLine from './TerminalLine.vue'
   import { humanizeDuration } from '@/utils/duration'
   import { sanitizeAttackerText } from '@/utils/sanitize'
+  import { buildStory } from '@/utils/sessionStory'
   import { ICONS } from '../icons'
+  import HwBadge from '../base/HwBadge.vue'
 
-  const props = defineProps<{ session: SessionDetailResponse }>()
+  // `row` is this session's list-page summary (the detail response has no interest score or
+  // tcpip count); the view passes it only when the list page is cached.
+  const props = defineProps<{
+    session: SessionDetailResponse
+    row?: SessionSummaryResponse
+    maxInterest?: number
+  }>()
 
   const lines = computed(() => buildTranscript(props.session))
+  const nothingTyped = computed(() =>
+    lines.value.every((l) => l.kind === 'banner' || l.kind === 'closed'),
+  )
+
+  const sid = computed(() => props.session.id.slice(0, 12))
+  // Without the list row the pills count the transcript, so compound commands double-count and
+  // tcpip is 0; the hex needs the dataset max, so it needs the row too.
+  const story = computed(() =>
+    buildStory(
+      props.row ?? {
+        n_commands: props.session.commands.length,
+        n_downloads: props.session.downloads.length,
+        n_tcpip: 0,
+        auth_success: props.session.auth_attempts.some((a) => a.success),
+      },
+    ),
+  )
 
   function field(raw: string): string {
     return sanitizeAttackerText(raw, { mode: 'escape', allowWhitespace: false })
@@ -38,6 +64,19 @@
     if (duration.value !== '-') parts.push(duration.value)
     return parts.join(' - ')
   })
+
+  // Desktop shows the note always (summary hidden), so a closed <details> must be open there.
+  const noteOpen = ref(false)
+  let noteMq: MediaQueryList | null = null
+  const syncNote = () => {
+    if (noteMq?.matches) noteOpen.value = true
+  }
+  onMounted(() => {
+    noteMq = window.matchMedia('(min-width: 769px)')
+    syncNote()
+    noteMq.addEventListener('change', syncNote)
+  })
+  onBeforeUnmount(() => noteMq?.removeEventListener('change', syncNote))
 
   const copied = ref(false)
   const termBody = ref<HTMLElement | null>(null)
@@ -99,6 +138,16 @@
     <header class="term-bar">
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
+      <span class="term-tags">
+        <ScoreHex v-if="row && maxInterest" :interest="row.interest" :ceiling="maxInterest" />
+        <span class="sid">{{ sid }}</span>
+        <HwBadge v-for="(b, i) in story" :key="i" :tone="b.tone" :title="b.title" :aria-label="b.title">
+          {{ b.label }}
+          <svg v-if="b.icon" class="badge-icon" viewBox="0 0 24 24" aria-hidden="true">
+            <path :d="ICONS[b.icon]" />
+          </svg>
+        </HwBadge>
+      </span>
       <span class="term-meta">
         <span class="term-id">{{ idLine }}</span>
         <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
@@ -129,9 +178,10 @@
       :aria-label="`Session transcript, ${lines.length} lines`"
     >
       <TerminalLine v-for="line in lines" :key="line.id" :line="line" />
+      <p v-if="nothingTyped" class="term-empty">Nothing typed in this session.</p>
     </div>
 
-    <details class="term-note">
+    <details class="term-note" :open="noteOpen">
       <summary>About this replay</summary>
       <p class="note-body">
         Rebuilt from what the honeypot recorded. Lines in &lt;...&gt; are our notes, not the attacker's. Highlighted text is what they typed to log in. Addresses are hidden, and the honeypot's replies were not recorded.
@@ -144,7 +194,6 @@
   .terminal {
     display: flex;
     flex-direction: column;
-    height: 100%;
     min-height: 0;
     background: var(--bg-0);
     border: 1px solid var(--border);
@@ -202,6 +251,34 @@
     display: none;
   }
 
+  .term-tags {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+  }
+
+  .sid {
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    color: var(--accent);
+  }
+
+  .badge-icon {
+    width: 11px;
+    height: 11px;
+    fill: currentColor;
+  }
+
+  .term-empty {
+    margin: 0;
+    color: var(--text-dim);
+    font-size: var(--type-xs);
+    line-height: var(--type-xs-lh);
+  }
+
   .copy-btn {
     flex: 0 0 auto;
     display: inline-flex;
@@ -240,7 +317,8 @@
 
   .term-body {
     flex: 1 1 auto;
-    min-height: 0;
+    /* Floor so a short transcript does not collapse to a sliver. */
+    min-height: 9rem;
     overflow-y: auto;
     padding: var(--space-3);
     background: var(--bg-0);
@@ -265,6 +343,12 @@
     cursor: pointer;
     list-style: none;
     color: var(--text-dim);
+  }
+
+  .term-note > summary {
+    display: flex;
+    align-items: center;
+    min-height: var(--control-h);
   }
 
   .term-note > summary::-webkit-details-marker {
@@ -299,8 +383,9 @@
     .copy-btn {
       order: 2;
       margin-left: auto;
-      /* Icon only; 5px padding maintains >=24px tap target (WCAG 2.5.8). */
-      min-height: auto;
+      /* Icon only; full control-size tap target. */
+      min-width: var(--control-h);
+      justify-content: center;
       padding: 5px;
       background: transparent;
       border-color: transparent;
@@ -319,8 +404,12 @@
     .copy-label {
       display: none;
     }
-    .term-meta {
+    .term-tags {
       order: 3;
+      flex-basis: 100%;
+    }
+    .term-meta {
+      order: 4;
       flex-basis: 100%;
       display: flex;
       flex-direction: column;

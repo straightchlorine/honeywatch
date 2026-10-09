@@ -117,6 +117,30 @@ describe('SessionExpansion', () => {
     expect(without.text()).not.toContain('Payload')
   })
 
+  it('lists each distinct file with a VirusTotal link, deduping repeats', async () => {
+    const a = 'a'.repeat(64)
+    const b = 'b'.repeat(64)
+    const w = await mountWith({
+      downloads: [a, b, a].map((sha256, id) => ({ id, url: null, sha256, timestamp: null })) as SessionDetailResponse['downloads'],
+    })
+    expect(w.findAll('.file')).toHaveLength(2)
+    const vt = w.findAll('a.vt')
+    expect(vt[0]?.attributes('aria-label')).toBe('VT: open aaaaaaaa on VirusTotal (new tab)')
+    expect(vt.map((l) => l.attributes('href'))).toEqual([
+      `https://www.virustotal.com/gui/file/${a}`,
+      `https://www.virustotal.com/gui/file/${b}`,
+    ])
+  })
+
+  it('marks a known-benign digest not malware and omits its VirusTotal link', async () => {
+    const sha = '01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b'
+    const w = await mountWith({
+      downloads: [{ id: 1, url: null, sha256: sha, timestamp: null }] as SessionDetailResponse['downloads'],
+    })
+    expect(w.text()).toContain('not malware')
+    expect(w.find('a.vt').exists()).toBe(false)
+  })
+
   it('builds the client line from the protocol, uppercased', async () => {
     const w = await mountWith({ protocol: 'ssh' })
     expect(w.text()).toContain('SSH-2.0-SSH')

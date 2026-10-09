@@ -12,6 +12,8 @@
   import { redactIps } from '@/utils/redactIps'
   import { ICONS } from '@/components/icons'
   import HwBadge from '../base/HwBadge.vue'
+  import { benignContent, vtUrl } from '@/utils/knownDigests'
+  import { useHwTooltip } from '@/composables/useHwTooltip'
 
   const { sessionId } = defineProps<{ sessionId: string }>()
 
@@ -32,7 +34,19 @@
     }))
   })
 
-  const download = computed(() => detailQ.data.value?.downloads[0] ?? null)
+  const tt = useHwTooltip()
+
+  // One row per distinct sha256 (a session can fetch the same file twice); a single blank row only if
+  // every download is unhashed. No per-file cap: the rail scrolls instead.
+  const files = computed(() => {
+    const downloads = detailQ.data.value?.downloads ?? []
+    const shas = [...new Set(downloads.map((d) => d.sha256).filter((s): s is string => !!s))]
+    if (!shas.length) return downloads.length ? [{ sha: '', benign: null }] : []
+    return shas.map((sha) => ({ sha, benign: benignContent(sha) }))
+  })
+  function showTip(e: Event, f: { sha: string; benign: string | null }): void {
+    tt.showAt(e.currentTarget as HTMLElement, f.sha, f.benign ? [['Content', f.benign]] : [])
+  }
   const clientLine = computed(() => {
     const s = detailQ.data.value
     if (!s) return ''
@@ -66,15 +80,38 @@
             </div>
           </div>
         </div>
-        <div v-if="download">
-          <h2>Files</h2>
-          <RouterLink :to="{ name: 'payloads' }" class="mono">
-            <HwBadge tone="amber">{{ download.sha256?.slice(0, 16) ?? 'download' }}</HwBadge>
-          </RouterLink>
-        </div>
-        <div>
-          <h2>Software used</h2>
-          <span class="mono">{{ clientLine }}</span>
+        <div class="side">
+          <div v-if="files.length">
+            <h2>Files</h2>
+            <div v-for="f in files" :key="f.sha" class="file">
+              <RouterLink
+                v-if="f.sha"
+                :to="{ name: 'payloads', hash: '#spec-' + f.sha }"
+                class="mono"
+                @pointerenter="showTip($event, f)"
+                @pointerleave="tt.hide()"
+                @focus="showTip($event, f)"
+                @blur="tt.hide()"
+              >
+                <HwBadge tone="amber">{{ f.sha.slice(0, 16) }}</HwBadge>
+              </RouterLink>
+              <HwBadge v-else tone="dim">download</HwBadge>
+              <span v-if="f.benign" class="benign">not malware</span>
+              <a
+                v-else-if="f.sha"
+                class="vt mono"
+                :href="vtUrl(f.sha)"
+                target="_blank"
+                rel="noopener noreferrer"
+                :aria-label="`VT: open ${f.sha.slice(0, 8)} on VirusTotal (new tab)`"
+                >VT</a
+              >
+            </div>
+          </div>
+          <div>
+            <h2>Software used</h2>
+            <span class="mono">{{ clientLine }}</span>
+          </div>
         </div>
         <div class="detail-actions">
           <RouterLink
@@ -141,16 +178,56 @@
   }
 
   .facts {
-    display: flex;
-    flex-direction: column;
-    gap: 10px;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+    gap: 10px 12px;
     font-size: 12.5px;
     min-width: 0;
     min-height: 0;
     max-height: var(--detail-max);
   }
 
-  /* Credential list scrolls independently; Files, Software used, and action button stay pinned. */
+  /* The credential list and this Files/Software rail scroll independently; the action row stays pinned. */
+  .side {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    min-height: 0;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    /* The scroll box clips the 2px focus ring (plus its 2px offset) on the file links; the
+       padding gives it room and the negative margin keeps the layout where it was. */
+    padding: 4px;
+    margin: -4px;
+  }
+  .file {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    margin-bottom: 4px;
+  }
+  /* The badge is a pill; the link's focus ring takes the link's own radius, so match it. */
+  .file a.mono {
+    display: inline-flex;
+    border-radius: 999px;
+  }
+  .vt {
+    border-radius: 999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 24px;
+    min-height: 24px;
+    color: var(--accent-hot);
+    font-size: 10.5px;
+    font-weight: 650;
+  }
+  .benign {
+    color: var(--text-dim);
+    font-size: 10.5px;
+  }
   .creds-block {
     display: flex;
     flex-direction: column;
@@ -194,7 +271,7 @@
   }
 
   .detail-actions {
-    margin-top: auto;
+    grid-column: 1 / -1;
     display: flex;
     gap: 8px;
   }
@@ -254,6 +331,11 @@
 
     .term {
       max-height: 200px;
+    }
+
+    .facts {
+      display: flex;
+      flex-direction: column;
     }
   }
 </style>

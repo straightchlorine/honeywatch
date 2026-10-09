@@ -1,5 +1,5 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 
 import SessionRow from '@/components/sessions/SessionRow.vue'
 import type { SessionSummaryResponse } from '@/api/generated/types.gen'
@@ -59,5 +59,54 @@ describe('SessionRow interest badge', () => {
       props: { row: { ...baseRow, interest: 0 }, expanded: false, maxInterest: 0 },
     })
     expect(w.find('.score-hex b').text()).toBe('0')
+  })
+})
+
+describe('SessionRow roving tabindex', () => {
+  // jsdom has no clipboard, and the copy button only renders when it exists.
+  beforeAll(() => {
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: vi.fn() },
+      configurable: true,
+    })
+  })
+  afterAll(() => {
+    Reflect.deleteProperty(navigator, 'clipboard')
+  })
+
+  const mountRow = (props: Record<string, unknown> = {}) =>
+    mount(SessionRow, {
+      props: { row: baseRow, expanded: false, maxInterest: 56, ...props },
+      global: { stubs: { SessionExpansion: true } },
+    })
+
+  it('is tabbable only when it is the grid tab stop, copy button included', () => {
+    const on = mountRow()
+    const off = mountRow({ tabbable: false })
+    expect(on.get('tr.srow').attributes('tabindex')).toBe('0')
+    expect(on.get('.sid-copy').attributes('tabindex')).toBe('0')
+    expect(off.get('tr.srow').attributes('tabindex')).toBe('-1')
+    expect(off.get('.sid-copy').attributes('tabindex')).toBe('-1')
+  })
+
+  it.each([
+    ['ArrowRight', false, 1],
+    ['ArrowLeft', false, 0],
+    ['ArrowRight', true, 0],
+    ['ArrowLeft', true, 1],
+  ])('%s with expanded=%s emits toggle %i time(s)', async (key, expanded, count) => {
+    const w = mountRow({ expanded })
+    await w.get('tr.srow').trigger('keydown', { key })
+    expect(w.emitted('toggle') ?? []).toHaveLength(count)
+  })
+
+  it('ignores keys that bubble up from the copy button', async () => {
+    const w = mountRow()
+    await w.get('.sid-copy').trigger('keydown', { key: 'ArrowRight' })
+    expect(w.emitted('toggle')).toBeUndefined()
+  })
+
+  it('hides the empty spacer cell from assistive tech along with its header', () => {
+    expect(mountRow().get('td.spacer').attributes('aria-hidden')).toBe('true')
   })
 })

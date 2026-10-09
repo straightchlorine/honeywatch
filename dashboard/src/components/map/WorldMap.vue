@@ -239,6 +239,7 @@
   }
   // Tooltip on focus for keyboard users: aria-label can't carry IPs/share/auth data.
   function onFocus(c: MapCountry, e: FocusEvent): void {
+    rovingId.value = c.id
     // Country paths are focusable, so a pointer press lands focus on whatever
     // is under the cursor - including a middle-button drag used only to pan.
     // Gate on :focus-visible so the ring and the tooltip are a keyboard
@@ -246,9 +247,21 @@
     const t = e.target as SVGGraphicsElement | null
     if (!t?.matches?.(':focus-visible')) return
     if (c.a2) focusedA2.value = c.a2
+    panToFocus(c)
     const b = t.getBoundingClientRect?.()
     showCountryTip(c)
     if (b) tooltip.move({ clientX: b.left + b.width / 2, clientY: b.top } as PointerEvent)
+  }
+  // Keep a keyboard-focused country on screen: pan (at the current zoom) only when
+  // it is wholly outside the svg, so a partly visible country does not make the map jump.
+  // Pixel rects, not centroid math, because the svg is letterboxed.
+  function panToFocus(c: MapCountry): void {
+    const svg = svgEl.value?.getBoundingClientRect()
+    const el = svgEl.value?.querySelector<SVGElement>(`[data-cid="${c.id}"]`)
+    const r = el?.getBoundingClientRect()
+    if (!svg || !r || !svg.width || !svg.height) return
+    const outside = r.right < svg.left || r.left > svg.right || r.bottom < svg.top || r.top > svg.bottom
+    if (outside) flyTo(c.centroid[0], c.centroid[1], k.value)
   }
   function onBlur(): void {
     focusedA2.value = null
@@ -261,11 +274,36 @@
   function onClick(c: MapCountry): void {
     if (c.a2 && byA2.value.has(c.a2)) emit('select', c.a2)
   }
+  // Roving tabindex: countries with data share one Tab stop (busiest first); arrows walk them in that order.
+  const navList = computed(() =>
+    geometry.countries
+      .filter((c) => c.a2 && byA2.value.has(c.a2))
+      .sort((a, b) => byA2.value.get(b.a2!)!.sessions - byA2.value.get(a.a2!)!.sessions),
+  )
+  const rovingId = ref<string | null>(null)
+  const tabId = computed(() =>
+    navList.value.some((c) => c.id === rovingId.value) ? rovingId.value : navList.value[0]?.id,
+  )
+  const NAV_STEP: Record<string, number> = { ArrowDown: 1, ArrowRight: 1, ArrowUp: -1, ArrowLeft: -1 }
   function onKeydown(c: MapCountry, e: KeyboardEvent): void {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       onClick(c)
+      return
     }
+    const list = navList.value
+    const i = list.findIndex((x) => x.id === c.id)
+    const last = list.length - 1
+    const to =
+      e.key === 'Home' ? 0 : e.key === 'End' ? last : i < 0 || !(e.key in NAV_STEP) ? -1 : i + NAV_STEP[e.key]!
+    if (to < 0 || to > last) {
+      if (e.key in NAV_STEP || e.key === 'Home' || e.key === 'End') e.preventDefault()
+      return
+    }
+    e.preventDefault()
+    rovingId.value = list[to]!.id
+    svgEl.value?.querySelector<SVGElement>(`[data-cid="${list[to]!.id}"]`)?.focus()
+    panToFocus(list[to]!)
   }
   // The selection/focus ring is drawn as a separate overlay pair rather than as
   // a stroke on the country itself: no single colour clears 4.5:1 against the
@@ -504,9 +542,12 @@
       <defs></defs>
       <g :transform="transform">
         <path class="graticule" :d="geometry.graticule" aria-hidden="true" />
+        <g role="group" aria-label="World map, ordered by sessions - arrow keys move between countries">
         <!-- SVG data-viz: pointer handlers without a static role are standard
              here - role/tabindex are set conditionally per country below,
-             which the linter can't see through. -->
+             which the linter can't see through. tabindex -1 on no-data countries:
+             Blink makes an SVG element with a focus listener focusable, so -1
+             keeps them out of the Tab order. -->
         <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
         <path
           v-for="c in geometry.countries"
@@ -515,7 +556,8 @@
           :class="{ selected: !!c.a2 && c.a2 === selected }"
           :d="detail.countries.get(c.id) ?? c.d"
           :fill="fillFor(c.a2)"
-          :tabindex="c.a2 && byA2.has(c.a2) ? 0 : undefined"
+          :data-cid="c.id"
+          :tabindex="c.a2 && byA2.has(c.a2) ? (c.id === tabId ? 0 : -1) : -1"
           :role="c.a2 && byA2.has(c.a2) ? 'button' : undefined"
           :aria-label="c.a2 && byA2.has(c.a2) ? ariaLabelFor(c) : undefined"
           :aria-hidden="c.a2 && byA2.has(c.a2) ? undefined : 'true'"
@@ -528,6 +570,7 @@
           @keydown="onKeydown(c, $event)"
         />
         <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions, vuejs-accessibility/click-events-have-key-events -->
+        </g>
         <!-- Boundaries Natural Earth does not class as settled: the Kashmir
              Line of Control, the Korean MDL, the Green Line, Abyei and the
              like. The casing is the load-bearing part - it is opaque and wider
@@ -636,7 +679,7 @@
     min-height: 0;
     overflow: hidden;
     background:
-      radial-gradient(1200px 700px at 50% 42%, rgba(245, 158, 11, 0.06), transparent 65%),
+      radial-gradient(1200px 700px at 50% 42%, color-mix(in srgb, var(--accent) 6%, transparent), transparent 65%),
       var(--map-ocean);
   }
 
@@ -700,7 +743,7 @@
 
   .graticule {
     fill: none;
-    stroke: rgba(245, 158, 11, 0.05);
+    stroke: var(--map-graticule);
     vector-effect: non-scaling-stroke;
   }
 

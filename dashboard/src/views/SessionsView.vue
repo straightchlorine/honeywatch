@@ -4,7 +4,7 @@
    * filters and server-side pagination. Rows expand in place (no navigation).
    * All state (filters, page, expanded row) is URL-based for sharing and back-nav.
    */
-  import { computed, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
   import { useRoute, useRouter, type LocationQuery } from 'vue-router'
   import { useQuery, keepPreviousData } from '@tanstack/vue-query'
   import type { ListSessionsData } from '@/api/generated/types.gen'
@@ -24,8 +24,9 @@
   import { ICONS } from '@/components/icons'
   import { fmtNumber } from '@/utils/format'
   import { useCountryOptions } from '@/composables/useCountryOptions'
+  import { SCORE_TIP } from '@/utils/sessionStory'
+  import { SESSIONS_PER_PAGE, sessionsListQuery } from '@/utils/pagination'
 
-  const PER_PAGE = 40
   // Debounce the *fetch*, not the keystroke: the box updates instantly, the
   // URL/query only commits once typing pauses.
   const SEARCH_DEBOUNCE_MS = 250
@@ -106,7 +107,7 @@
     },
   })
   const order = computed<'asc' | 'desc' | undefined>({
-    get: () => (route.query.order as 'asc' | 'desc' | undefined),
+    get: () => route.query.order as 'asc' | 'desc' | undefined,
     set: (v) => {
       updateQuery({
         order: v,
@@ -197,21 +198,11 @@
   // Never sent below the API's 2-char floor - the box can hold a shorter
   // in-progress term without ever producing a request for it.
   const searchActive = computed(() => search.value.length >= MIN_QUERY_LEN)
-  const qParam = computed(() => (searchActive.value ? search.value : undefined))
 
   const sessionsQ = useQuery(
     computed(() => ({
       ...listSessionsOptions({
-        query: {
-          page: currentPage.value,
-          per_page: PER_PAGE,
-          sort: sort.value,
-          order: order.value,
-          has: hasValue.value || undefined,
-          country: country.value || undefined,
-          q: qParam.value,
-          sha256: shaFilter.value,
-        },
+        query: sessionsListQuery((k) => route.query[k]),
       }),
       // Hold the previous page on screen while the next one loads. Without it
       // rows collapses to [] on every page change and the flex-sized table
@@ -301,12 +292,78 @@
     updateQuery({ sha256: undefined, page: undefined, open: undefined })
   }
 
+  // Treegrid roving tabindex: the last focused row is the Tab stop. It falls back to the first
+  // row when that id is not on the current page, so a page change never leaves zero stops.
+  const focusedId = ref<string | null>(null)
+  const stopId = computed(() =>
+    rows.value.some((r) => r.id === focusedId.value) ? focusedId.value : rows.value[0]?.id,
+  )
+
+  // PageUp/PageDown move focus to the new page's first row. focusPage is the page we are waiting
+  // on: armed only when the page really changes, dropped on error or if the route lands elsewhere,
+  // so a later refetch (sort change) cannot steal focus. Compared with the page the response says
+  // it is, because the route changes a tick before the query switches keys.
+  let focusPage: number | null = null
+  const loadedPage = computed(() => sessionsQ.data.value?.meta.page)
+  const settled = computed(() => !sessionsQ.isPlaceholderData.value && !sessionsQ.isFetching.value)
+  const pageStatus = ref('')
+  let announcedPage = loadedPage.value
+  watch([loadedPage, settled, sessionsQ.isError], async ([page, ok, err]) => {
+    if (err) focusPage = null
+    if (!ok || err || page === undefined) return
+    if (page !== announcedPage) {
+      announcedPage = page
+      const n = rows.value.length
+      pageStatus.value = `Page ${page} of ${pageCount.value}, ${n} session${n === 1 ? '' : 's'}`
+    }
+    if (focusPage === null) return
+    if (focusPage !== page) {
+      if (currentPage.value !== focusPage) focusPage = null
+      return
+    }
+    focusPage = null
+    await nextTick()
+    scrollEl.value?.querySelector<HTMLElement>('tr.srow')?.focus()
+  })
+  function onGridFocus(e: FocusEvent): void {
+    const id = (e.target as HTMLElement).closest<HTMLElement>('tr.srow')?.dataset.id
+    if (id) focusedId.value = id
+  }
+  function onGridKey(e: KeyboardEvent): void {
+    const tr = e.target as HTMLElement
+    if (!tr.matches('tr.srow')) return
+    const list = [...(tr.parentElement?.querySelectorAll<HTMLElement>('tr.srow') ?? [])]
+    const i = list.indexOf(tr)
+    const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: list.length - 1 }[e.key]
+    if (to !== undefined) {
+      e.preventDefault()
+      list[Math.max(0, Math.min(to, list.length - 1))]?.focus()
+    } else if (e.key === 'PageDown' || e.key === 'PageUp') {
+      const down = e.key === 'PageDown'
+      if (sessionsQ.isFetching.value || !(down ? canNext.value : canPrevious.value)) return
+      e.preventDefault()
+      const from = currentPage.value
+      const to = goToPage(from + (down ? 1 : -1))
+      if (to === from) return
+      focusPage = to
+      focusedId.value = null
+    }
+  }
+
   function toggleRow(id: string): void {
     expandedId.value = expandedId.value === id ? null : id
   }
-  function goToPage(p: number): void {
+  // Returns the clamped page it navigated to.
+  function goToPage(p: number): number {
     const clamped = Math.max(1, Math.min(p, pageCount.value))
     currentPage.value = clamped
+    return clamped
+  }
+  // Empty/NaN input is ignored. Always resync the box so a value that clamps to the current page leaves no stale text.
+  function onPageChange(e: Event): void {
+    const el = e.target as HTMLInputElement
+    const n = parseInt(el.value, 10)
+    el.value = String(Number.isNaN(n) ? currentPage.value : goToPage(n))
   }
   function prevPage(): void {
     if (canPrevious.value) goToPage(currentPage.value - 1)
@@ -314,6 +371,22 @@
   function nextPage(): void {
     if (canNext.value) goToPage(currentPage.value + 1)
   }
+
+  // Header order; 'spacer' is the unlabeled 4th column (see the width rules in the styles).
+  const COLUMNS: (
+    { key: SortId; label: string; hint: string; right?: boolean } | { key: 'spacer' }
+  )[] = [
+    {
+      key: 'interest',
+      label: 'Session',
+      hint: `Sort by interest: how much the attacker did. ${SCORE_TIP}`,
+    },
+    { key: 'active', label: 'Story', hint: 'Sort by activity: SSH commands issued' },
+    { key: 'country', label: 'Origin', hint: 'Sort by origin: alphabetically' },
+    { key: 'spacer' },
+    { key: 'duration', label: 'Duration', hint: 'Sort by duration: longest first', right: true },
+    { key: 'recent', label: 'Started', hint: 'Sort by recency: newest first', right: true },
+  ]
 
   const sortOptions = computed(() => SORTS.map((s) => ({ value: s.id, label: s.label })))
 </script>
@@ -364,17 +437,21 @@
           aria-label="Clear search"
           @click="clearSearch"
         >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" aria-hidden="true" focusable="false">
+          <svg
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            stroke-width="2.2"
+            aria-hidden="true"
+            focusable="false"
+          >
             <path d="M18 6l-12 12M6 6l12 12" />
           </svg>
         </button>
       </div>
 
       <div class="controls-row">
-        <OutcomeFilter
-          v-model="hasValue"
-          :counts="outcomesQ.data.value ?? null"
-        />
+        <OutcomeFilter v-model="hasValue" :counts="outcomesQ.data.value ?? null" />
         <div class="right">
           <span class="country-control">
             <Dropdown
@@ -422,31 +499,65 @@
     </div>
 
     <HwCard class="tbl-card" :class="{ 'has-rows': rows.length > 0 }">
-      <EmptyState v-if="rows.length === 0" :title="emptyTitle" :hint="emptyHint">
+      <p
+        v-if="sessionsQ.isError.value && !sessionsQ.isFetching.value"
+        class="load-error"
+        role="alert"
+      >
+        Could not refresh sessions.
+        <ChipButton @toggle="sessionsQ.refetch()">Retry</ChipButton>
+      </p>
+      <EmptyState
+        v-if="rows.length === 0 && !(sessionsQ.isError.value && !sessionsQ.isFetching.value)"
+        :title="emptyTitle"
+        :hint="emptyHint"
+      >
         <ChipButton v-if="searchActive" @toggle="clearSearch">Clear search</ChipButton>
       </EmptyState>
-      <div v-else ref="scrollEl" class="tbl-scroll" tabindex="0" role="region" aria-label="Sessions table">
+      <div
+        v-else-if="rows.length > 0"
+        ref="scrollEl"
+        class="tbl-scroll"
+        :class="{ stale: sessionsQ.isPlaceholderData.value }"
+        :aria-busy="sessionsQ.isPlaceholderData.value"
+        tabindex="0"
+        role="region"
+        aria-label="Sessions table"
+      >
         <!-- treegrid, not table: rows carry aria-expanded because each one
              discloses a detail panel, and aria-expanded is only valid on a row
              inside a treegrid (axe rule aria-conditional-attr). -->
         <table class="data" role="treegrid" aria-label="Sessions">
           <thead>
             <tr>
-              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="interest" :dir="SORT_DIR.interest" hint="Sort by interest: how much the attacker did">Session</SortableTh>
-              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="active" :dir="SORT_DIR.active" hint="Sort by activity: SSH commands issued">Story</SortableTh>
-              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="country" :dir="SORT_DIR.country" hint="Sort by origin: alphabetically">Origin</SortableTh>
-              <th></th>
-              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="duration" :dir="SORT_DIR.duration" hint="Sort by duration: longest first" class="r">Duration</SortableTh>
-              <SortableTh v-model:sort="sort" v-model:order="order" sort-key="recent" :dir="SORT_DIR.recent" hint="Sort by recency: newest first" class="r">Started</SortableTh>
+              <template v-for="c in COLUMNS" :key="c.key">
+                <th v-if="c.key === 'spacer'" aria-hidden="true"></th>
+                <SortableTh
+                  v-else
+                  v-model:sort="sort"
+                  v-model:order="order"
+                  :sort-key="c.key"
+                  :dir="SORT_DIR[c.key]"
+                  :hint="c.hint"
+                  :class="{ r: c.right }"
+                >
+                  {{ c.label
+                  }}<span v-if="c.key === 'active'" class="story-key" aria-hidden="true"
+                    >commands &middot; files &middot; relays</span
+                  >
+                </SortableTh>
+              </template>
             </tr>
           </thead>
-          <tbody>
+          <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -- delegated treegrid keys; the focusable rows are the targets -->
+          <tbody @focusin="onGridFocus" @keydown="onGridKey">
             <SessionRow
               v-for="row in rows"
               :key="row.id"
               :row="row"
               :expanded="expandedId === row.id"
               :max-interest="maxInterest"
+              :tabbable="row.id === stopId"
               @toggle="toggleRow(row.id)"
             />
           </tbody>
@@ -454,9 +565,12 @@
       </div>
     </HwCard>
 
+    <span class="visually-hidden" role="status" aria-live="polite">{{ pageStatus }}</span>
+
     <div class="foot-line">
       <span>
-        <b>{{ PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }} {{ scopeClause ?? 'sessions'
+        <b>{{ SESSIONS_PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }}
+        {{ scopeClause ?? 'sessions'
         }}<span v-if="!scopeClause" class="hint-tail">
           &middot; rows expand in place - the list never navigates away</span
         >
@@ -482,8 +596,7 @@
             :value="currentPage"
             :min="1"
             :max="pageCount"
-            @change="goToPage(parseInt(($event.target as HTMLInputElement).value, 10))"
-            @blur="goToPage(parseInt(($event.target as HTMLInputElement).value, 10))"
+            @change="onPageChange"
             aria-label="Current page number"
           />
           <span class="page-label">of {{ fmtNumber(pageCount) }}</span>
@@ -505,6 +618,20 @@
 </template>
 
 <style scoped>
+  /* Visible key for the Story pills; hidden on phones, where the pills keep their title attrs. */
+  .story-key {
+    margin-left: 8px;
+    font-weight: 400;
+    letter-spacing: 0;
+    text-transform: none;
+    color: var(--text-dim);
+  }
+  @media (max-width: 760px) {
+    .story-key {
+      display: none;
+    }
+  }
+
   .page-head {
     display: flex;
     align-items: baseline;
@@ -716,9 +843,9 @@
   table.data th.r {
     text-align: right;
   }
-  /* Session / Story / Origin / spacer / Duration / Started columns (290px 340px 320px minmax(0,1fr) 130px 150px).
-     4th column carries no width so fixed layout hands it all leftover space. */
-  /* border-box: widths below are the column's actual width, padding included. */
+  /* Session / Story / Origin / spacer / Duration / Started column widths.
+     Column 4 (spacer) has no width so fixed layout gives it all leftover space.
+     border-box: widths are the column's actual width, padding included. */
   table.data th {
     box-sizing: border-box;
   }
@@ -779,10 +906,11 @@
     width: 48px;
     padding: 4px 6px;
     border: 1px solid var(--border-strong);
-    border-radius: 4px;
+    border-radius: var(--radius-md);
     background: transparent;
     color: var(--text-muted);
-    font: 550 12.5px var(--font-sans);
+    font: 550 12.5px var(--font-mono);
+    font-variant-numeric: tabular-nums;
     text-align: center;
   }
   .foot-line .page-input:focus-visible {
@@ -798,6 +926,35 @@
     appearance: textfield;
   }
 
+  .tbl-scroll {
+    transition: opacity var(--motion-fast);
+  }
+  .tbl-scroll.stale {
+    opacity: 0.7;
+  }
+  .load-error {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0;
+    padding: 8px 16px;
+    color: var(--text-dim);
+    font-size: 12.5px;
+  }
+
+  /* Touch: match the 44px pager buttons and keep inputs at 16px so iOS does
+     not zoom on focus. */
+  @media (pointer: coarse) {
+    .foot-line .page-input {
+      min-height: var(--control-h);
+    }
+    .search-clear {
+      width: 32px;
+      height: 32px;
+      margin: -7px -6px -7px 0;
+    }
+  }
+
   @media (max-width: 900px) {
     /* Baseline-aligned on one line, the count and subtitle wrap around the
        heading and read as a broken sentence; give each its own line. */
@@ -809,6 +966,10 @@
   }
 
   @media (max-width: 760px) {
+    .search-box input,
+    .foot-line .page-input {
+      font-size: 16px;
+    }
     .filters {
       flex-direction: column;
       align-items: stretch;
@@ -866,8 +1027,7 @@
     table.data th:nth-child(2) {
       width: 54%;
     }
-    table.data th:nth-child(n + 3),
-    table.data :deep(td:nth-child(n + 3)) {
+    table.data th:nth-child(n + 3) {
       display: none;
     }
 

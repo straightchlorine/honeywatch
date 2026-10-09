@@ -27,21 +27,20 @@ const routes: RouteRecordRaw[] = [
     path: '/',
     name: 'overview',
     component: () => retryImport(() => import('../views/OverviewView.vue')),
-    // Owns its own PageShell/TopBar - see App.vue for the migration shim.
-    meta: { ...seoMeta('/'), newShell: true },
+    meta: { ...seoMeta('/') },
   },
   { path: '/activity', redirect: '/pulse' },
   {
     path: '/pulse',
     name: 'pulse',
     component: () => retryImport(() => import('../views/PulseView.vue')),
-    meta: { ...seoMeta('/pulse'), newShell: true },
+    meta: { ...seoMeta('/pulse') },
   },
   {
     path: '/sessions',
     name: 'sessions',
     component: () => retryImport(() => import('../views/SessionsView.vue')),
-    meta: { ...seoMeta('/sessions'), newShell: true },
+    meta: { ...seoMeta('/sessions') },
   },
   {
     // Title stays generic (no session id) so an opaque identifier never leaks
@@ -54,27 +53,26 @@ const routes: RouteRecordRaw[] = [
       title: 'Session',
       seoTitle: 'Session - Honeywatch',
       description: 'One recorded attacker session on the honeypot, replayed command by command.',
-      newShell: true,
     },
   },
   {
     path: '/credentials',
     name: 'credentials',
     component: () => retryImport(() => import('../views/CredentialsView.vue')),
-    meta: { ...seoMeta('/credentials'), newShell: true },
+    meta: { ...seoMeta('/credentials') },
   },
   { path: '/countries', redirect: '/origins' },
   {
     path: '/origins',
     name: 'origins',
     component: () => retryImport(() => import('../views/OriginsView.vue')),
-    meta: { ...seoMeta('/origins'), newShell: true },
+    meta: { ...seoMeta('/origins') },
   },
   {
     path: '/payloads',
     name: 'payloads',
     component: () => retryImport(() => import('../views/PayloadsView.vue')),
-    meta: { ...seoMeta('/payloads'), newShell: true },
+    meta: { ...seoMeta('/payloads') },
   },
   // Dev-only kit component demo; not shipped to production.
   ...(import.meta.env.DEV
@@ -96,7 +94,6 @@ const routes: RouteRecordRaw[] = [
       seoTitle: 'Page not found - Honeywatch',
       description: '',
       noindex: true,
-      newShell: true,
     },
   },
 ]
