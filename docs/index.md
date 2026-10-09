@@ -1,4 +1,5 @@
 ---
+title: SSH honeypot with live attack dashboard
 description: "Run your own SSH honeypot: Cowrie, PostgreSQL, a read-only API and a Vue dashboard in five Docker containers."
 ---
 

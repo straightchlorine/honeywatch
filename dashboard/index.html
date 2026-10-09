@@ -127,14 +127,14 @@
       from{clip-path:polygon(evenodd,-50px -50px,calc(100% + 50px) -50px,calc(100% + 50px) calc(100% + 50px),-50px calc(100% + 50px),-50px -50px,calc(50% + var(--i0)*.866) calc(50% - var(--i0)*.5),calc(50% + var(--i0)*.866) calc(50% + var(--i0)*.5),50% calc(50% + var(--i0)),calc(50% - var(--i0)*.866) calc(50% + var(--i0)*.5),calc(50% - var(--i0)*.866) calc(50% - var(--i0)*.5),50% calc(50% - var(--i0)),calc(50% + var(--i0)*.866) calc(50% - var(--i0)*.5))}
       to{clip-path:polygon(evenodd,-50px -50px,calc(100% + 50px) -50px,calc(100% + 50px) calc(100% + 50px),-50px calc(100% + 50px),-50px -50px,calc(50% + var(--i1)*.866) calc(50% - var(--i1)*.5),calc(50% + var(--i1)*.866) calc(50% + var(--i1)*.5),50% calc(50% + var(--i1)),calc(50% - var(--i1)*.866) calc(50% + var(--i1)*.5),calc(50% - var(--i1)*.866) calc(50% - var(--i1)*.5),50% calc(50% - var(--i1)),calc(50% + var(--i1)*.866) calc(50% - var(--i1)*.5))}}
     </style>
-    <!-- Without JavaScript nothing would ever remove the splash, so hide it. -->
-    <!-- prettier-ignore -->
-    <noscript><style>#hw-splash{display:none}</style></noscript>
+    <noscript
+      ><style>
+        #hw-splash {
+          display: none;
+        }
+      </style></noscript
+    >
 
-    <!-- Default/home SEO. Per-route titles, descriptions and canonicals are
-         baked into each route's index.html at build time by
-         scripts/prerender-seo.mjs, and kept in sync client-side on SPA
-         navigation by src/seo/head.ts. Single source: src/seo/routes.json. -->
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="https://honey.piotrkrzysztof.dev/" />
     <meta
@@ -174,8 +174,18 @@
         "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
         "description": "Live dashboard for an SSH honeypot, a decoy server that records real attacks: attack map, replayed sessions, passwords tried, and where attacks come from.",
         "author": [
-          { "@type": "Person", "name": "Piotr Krzysztof Lis" },
-          { "@type": "Person", "name": "Jakub Kucharski" }
+          {
+            "@type": "Person",
+            "@id": "https://piotrkrzysztof.dev/#piotr",
+            "name": "Piotr Krzysztof Lis",
+            "url": "https://piotrkrzysztof.dev"
+          },
+          {
+            "@type": "Person",
+            "@id": "https://piotrkrzysztof.dev/#jakub",
+            "name": "Jakub Kucharski",
+            "url": "https://github.com/kubson2002k"
+          }
         ],
         "sameAs": ["https://github.com/straightchlorine/honeywatch"]
       }
