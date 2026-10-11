@@ -488,6 +488,32 @@ def test_get_session_detail_with_seed_id(client: Any, seed_data: Any) -> None:
     body = response.get_json()
     assert body["id"] == "sess-001"
     assert "src_ip" not in body
+    assert 0 <= body["interest"] <= body["max_interest"]
+
+
+def test_get_session_detail_reports_own_interest_and_global_ceiling(
+    client: Any, db_session: Any
+) -> None:
+    now = datetime.now(timezone.utc)
+    make_counter_session(db_session, "sess-low", started_at=now)
+    make_counter_session(
+        db_session, "sess-mid", n_commands=1, auth_success=True, started_at=now
+    )
+    make_counter_session(db_session, "sess-high", n_downloads=2, started_at=now)
+    db_session.commit()
+
+    body = client.get("/api/v1/sessions/sess-mid").get_json()
+    assert (body["interest"], body["max_interest"]) == (5, 10)
+
+
+def test_get_session_detail_ceiling_is_zero_when_nothing_scores(
+    client: Any, db_session: Any
+) -> None:
+    make_counter_session(db_session, "sess-low", started_at=datetime.now(timezone.utc))
+    db_session.commit()
+
+    body = client.get("/api/v1/sessions/sess-low").get_json()
+    assert (body["interest"], body["max_interest"]) == (0, 0)
 
 
 def test_get_session_malformed_id(client: Any) -> None:

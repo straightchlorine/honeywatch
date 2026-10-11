@@ -151,8 +151,7 @@ def get_sessions_paginated(
         count_stmt = count_stmt.where(cond)
     total = db.execute(count_stmt).scalar_one()
 
-    # Unfiltered max enables consistent interest score normalization across filters.
-    max_interest = db.execute(select(func.max(Session.interest))).scalar() or 0
+    max_interest = _max_interest(db)
 
     # Two-phase (ids then rows) avoids aggregating the entire table before limiting.
     duration_expr = func.extract(
@@ -260,6 +259,11 @@ def get_sessions_paginated(
     }
 
 
+def _max_interest(db: DbSession) -> int:
+    # Unfiltered, so scores normalize the same across filters, pages and deep links.
+    return db.execute(select(func.max(Session.interest))).scalar() or 0
+
+
 def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | None:
     """Full detail for one session, or None when no session matches."""
     stmt = (
@@ -276,4 +280,4 @@ def get_session_detail(db: DbSession, session_id: str) -> SessionDetailDict | No
     if row is None:
         return None
     session, geo = row
-    return session_detail(session, geo)
+    return session_detail(session, geo, _max_interest(db))

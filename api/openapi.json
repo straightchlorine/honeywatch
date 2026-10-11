@@ -1114,6 +1114,11 @@
             "example": "abc123",
             "type": "string"
           },
+          "interest": {
+            "description": "DB-computed interest score: 2*commands + 5*downloads + 2*tcpip + 3*auth_success.",
+            "example": 9,
+            "type": "integer"
+          },
           "lat": {
             "description": "Latitude of the source IP, when resolved.",
             "example": 52.4,
@@ -1129,6 +1134,11 @@
               "number",
               "null"
             ]
+          },
+          "max_interest": {
+            "description": "Highest interest value across all sessions - the ceiling `interest` is normalized against.",
+            "example": 42,
+            "type": "integer"
           },
           "protocol": {
             "description": "Application protocol observed.",
@@ -1168,8 +1178,10 @@
           "dst_port",
           "ended_at",
           "id",
+          "interest",
           "lat",
           "lon",
+          "max_interest",
           "protocol",
           "sensor",
           "src_port",

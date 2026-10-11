@@ -56,6 +56,8 @@ class SessionSummaryDict(SessionBaseDict):
 
 class SessionDetailDict(SessionBaseDict):
     sensor: str | None
+    interest: int
+    max_interest: int
     auth_attempts: list[AuthAttemptDict]
     commands: list[CommandDict]
     downloads: list[DownloadDict]

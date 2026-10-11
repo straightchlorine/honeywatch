@@ -288,6 +288,26 @@ class SessionDetailResponse(_SessionResponseBase):
             "example": "sensor-01",
         },
     )
+    interest = fields.Int(
+        required=True,
+        metadata={
+            "description": (
+                "DB-computed interest score: "
+                "2*commands + 5*downloads + 2*tcpip + 3*auth_success."
+            ),
+            "example": 9,
+        },
+    )
+    max_interest = fields.Int(
+        required=True,
+        metadata={
+            "description": (
+                "Highest interest value across all sessions - the ceiling "
+                "`interest` is normalized against."
+            ),
+            "example": 42,
+        },
+    )
     auth_attempts = fields.List(
         fields.Nested(AuthAttemptResponse),
         required=True,

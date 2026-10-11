@@ -70,10 +70,14 @@ def session_summary(
     }
 
 
-def session_detail(s: Session, geo: GeoLocation | None) -> SessionDetailDict:
+def session_detail(
+    s: Session, geo: GeoLocation | None, max_interest: int
+) -> SessionDetailDict:
     return {
         **_base(s, geo),
         "sensor": s.sensor or None,
+        "interest": s.interest,
+        "max_interest": max_interest,
         "auth_attempts": [_dump_auth_attempt(a) for a in s.auth_attempts],
         "commands": [_dump_command(c) for c in s.commands],
         # sha256 IS NULL means the fetch failed and captured nothing; the row
