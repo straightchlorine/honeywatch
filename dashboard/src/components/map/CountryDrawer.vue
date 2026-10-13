@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, ref, watch } from 'vue'
+  import { computed, onMounted, ref, useTemplateRef, watch } from 'vue'
   import type { StatsCountryDetailResponse, MapCityResponse } from '@/api/generated/types.gen'
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { useHwTooltip } from '@/composables/useHwTooltip'
@@ -112,10 +112,19 @@
     }
   }
 
+  // Deep link (?country=XX): DrawerShell only focuses on open transitions, not an open-at-mount.
+  const shell = useTemplateRef<{ $el: HTMLElement }>('shell')
+  onMounted(() => {
+    shell.value?.$el
+      .querySelector<HTMLElement>('button[aria-label="Close"]')
+      ?.focus({ preventScroll: true })
+  })
 </script>
 
 <template>
   <DrawerShell
+    ref="shell"
+    class="country-drawer"
     :open="!!detail || loading || failed"
     :title="detail?.name ?? (failed ? 'Country' : 'Loading...')"
     @close="emit('close')"
@@ -371,6 +380,53 @@
   .d-loading {
     color: var(--text-dim);
     font-size: 13px;
+  }
+
+  /* Phone: a true modal sheet over the top bar and bottom nav (z 40 / 15); lists run
+     full length and the sheet scrolls, header and actions stay pinned. */
+  @media (max-width: 759.98px) {
+    .country-drawer.country-drawer {
+      position: fixed;
+      inset: 0;
+      z-index: 50;
+      padding: 0 20px;
+      gap: 14px;
+      overscroll-behavior: contain;
+      /* Denser than the desktop glass: backdrop blur thins out near the viewport edges, so
+         page text there (the swipeable tiles) would otherwise read through. */
+      background: rgba(18, 13, 9, 0.76);
+      backdrop-filter: blur(24px) saturate(1.1);
+    }
+    .country-drawer.country-drawer > * {
+      flex-shrink: 0;
+    }
+    .country-drawer :deep(.d-head) {
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      margin: 0 -20px;
+      padding: calc(14px + env(safe-area-inset-top, 0px)) 20px 10px;
+      background: rgb(18, 13, 9);
+      border-bottom: 1px solid var(--border-strong);
+    }
+    .country-drawer :deep(.d-head button) {
+      width: 44px;
+      height: 44px;
+      font-size: 26px;
+    }
+    /* No coarse-pointer override on the Close button: a keyboard user on a
+       touch device still needs the global button:focus-visible ring. */
+    .country-drawer :deep(.rank-wrap) {
+      flex: none;
+    }
+    .foot {
+      position: sticky;
+      bottom: 0;
+      z-index: 2;
+      margin: auto -20px 0;
+      padding: 12px 20px calc(14px + env(safe-area-inset-bottom, 0px));
+      background: linear-gradient(transparent, rgb(18, 13, 9) 14px);
+    }
   }
 
   @keyframes drawer-fall-in {

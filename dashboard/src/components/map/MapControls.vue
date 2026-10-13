@@ -18,7 +18,7 @@
     </div>
     <MapQuality v-model="quality" />
     <div class="legend-card glass">
-      <SeqLegend min="1" :max="legendMax" none-label="none" />
+      <SeqLegend title="Sessions" min="1" :max="legendMax" none-label="none" />
     </div>
   </div>
 </template>
@@ -40,7 +40,6 @@
     gap: 6px;
   }
 
-
   .zoombtns button {
     width: 32px;
     height: 32px;
@@ -55,6 +54,18 @@
     color: var(--text);
     font: 600 15px var(--font-mono);
     cursor: pointer;
+  }
+
+  /* neighbours overlap by 4px of hit area; later button wins. */
+  @media (pointer: coarse) {
+    .zoombtns button {
+      position: relative;
+    }
+    .zoombtns button::after {
+      content: '';
+      position: absolute;
+      inset: -6px;
+    }
   }
 
   .zoombtns button:hover {
@@ -83,11 +94,17 @@
       left: 0;
       right: 0;
       top: auto;
-      bottom: 12px;
+      bottom: var(--hud-gap);
+      height: var(--hud-ctl-h);
+      padding: 0 var(--hud-gap);
+      box-sizing: border-box;
       flex-direction: row;
       align-items: center;
       justify-content: center;
-      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .zoombtns {
+      flex: none;
     }
     .legend-card {
       display: none;

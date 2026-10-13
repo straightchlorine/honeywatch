@@ -84,17 +84,24 @@
       return undefined
     }
   }
-  // A phone shows the whole world as an unreadable thumbnail, so a first visit
-  // opens over Europe instead. Only the opening view: the home button still
-  // returns to the full world, and a stored view always wins.
+  // A phone shows the whole world as an unreadable thumbnail, so it opens over
+  // Europe, and the home button returns there. A stored view wins on load, except a
+  // fully zoomed-out one: that is what the old home button saved, not a choice.
   const MOBILE_OPEN = { lon: 15, lat: 48, k: 6 }
-  function initialView(): PanZoomState | undefined {
-    const saved = loadView()
-    if (saved) return saved
-    if (typeof window === 'undefined' || window.innerWidth > 900) return undefined
+  const PHONE_MQ = '(max-width: 900px)'
+  const isPhone = (): boolean =>
+    typeof window !== 'undefined' &&
+    typeof window.matchMedia === 'function' &&
+    window.matchMedia(PHONE_MQ).matches
+  function europeView(): PanZoomState {
     const [px, py] = geometry.project(MOBILE_OPEN.lon, MOBILE_OPEN.lat)
     const k = MOBILE_OPEN.k
     return { k, tx: geometry.width / 2 - k * px, ty: geometry.height / 2 - k * py }
+  }
+  function initialView(): PanZoomState | undefined {
+    const saved = loadView()
+    if (isPhone() && !(saved && saved.k > 1)) return europeView()
+    return saved
   }
 
   let saveTimer: ReturnType<typeof setTimeout> | undefined
@@ -109,6 +116,26 @@
     viewSize: () => ({ w: geometry.width, h: geometry.height }),
   })
   const cityScale = computed(() => 1 / Math.sqrt(k.value))
+
+  let touched = false
+  function goEurope(): void {
+    const [px, py] = geometry.project(MOBILE_OPEN.lon, MOBILE_OPEN.lat)
+    flyTo(px, py, MOBILE_OPEN.k)
+  }
+  // Resizing or rotating into the phone class re-frames an untouched world view;
+  // leaving it drops an untouched Europe view back to the world.
+  let phoneMq: MediaQueryList | undefined
+  function onPhoneChange(e: MediaQueryListEvent): void {
+    if (touched) return
+    if (e.matches) goEurope()
+    else reset()
+  }
+  onMounted(() => {
+    if (typeof window.matchMedia !== 'function') return
+    phoneMq = window.matchMedia(PHONE_MQ)
+    phoneMq.addEventListener('change', onPhoneChange)
+  })
+  onBeforeUnmount(() => phoneMq?.removeEventListener('change', onPhoneChange))
 
   // WCAG 2.5.8: 24x24 CSS px minimum tap target. City hits are sized in viewBox
   // units, so on-screen size depends on SVG render width and zoom; convert back
@@ -160,13 +187,17 @@
   })
 
   function onZoomIn(): void {
+    touched = true
     zoomIn(geometry.width / 2, geometry.height / 2)
   }
   function onZoomOut(): void {
+    touched = true
     zoomOut(geometry.width / 2, geometry.height / 2)
   }
   function onReset(): void {
-    reset()
+    touched = false
+    if (isPhone()) goEurope()
+    else reset()
     emit('deselect')
   }
 
@@ -532,6 +563,8 @@
       role="graphics-document"
       :aria-label="ariaSummary"
       :viewBox="`0 0 ${geometry.width} ${geometry.height}`"
+      @wheel.capture="touched = true"
+      @pointerdown.capture="touched = true"
       @wheel="handlers.onWheel"
       @pointerdown="handlers.onPointerDown"
       @pointermove="handlers.onPointerMove"

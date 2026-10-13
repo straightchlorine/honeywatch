@@ -1,6 +1,7 @@
 <script setup lang="ts">
   /**
    * Fallback marker shown when no Helsinki city dot exists in the data.
+   * Decorative and pointer-transparent: not a focus target, so it has no focus ring.
    */
   defineProps<{ x: number; y: number }>()
 </script>

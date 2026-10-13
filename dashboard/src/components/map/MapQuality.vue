@@ -75,16 +75,17 @@
   }
 
   .cap {
-    font: 650 9.5px var(--font-sans);
+    font: 650 11px var(--font-sans);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     color: var(--text-dim);
+    white-space: nowrap;
   }
 
   .val {
     /* Widest label "Regular" measures 40.42px here, so 44px is the real floor. */
     min-width: 44px;
-    font: 650 10.5px var(--font-mono);
+    font: 650 12px var(--font-mono);
     color: var(--accent-hot);
   }
 
@@ -96,6 +97,37 @@
     cursor: pointer;
     -webkit-appearance: none;
     appearance: none;
+  }
+
+  /* One row with the zoom buttons at any phone width: the slider gives way first. */
+  @media (max-width: 900px) {
+    .quality {
+      flex: 0 1 auto;
+      min-width: 0;
+      height: var(--hud-ctl-h);
+      box-sizing: border-box;
+    }
+    .cap {
+      letter-spacing: 0.04em;
+    }
+    .val {
+      flex: none;
+      min-width: 7ch;
+      white-space: nowrap;
+    }
+    .slider {
+      flex: 1 1 auto;
+      width: auto;
+      min-width: 24px;
+    }
+  }
+
+  /* taller slider box with negative margin, so layout is unchanged. */
+  @media (pointer: coarse) {
+    .slider {
+      height: 44px;
+      margin: -14px 0;
+    }
   }
 
   .slider::-webkit-slider-runnable-track {
@@ -133,5 +165,4 @@
     outline: 2px solid var(--accent-hot);
     outline-offset: 3px;
   }
-
 </style>

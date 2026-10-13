@@ -33,6 +33,8 @@
     a2: string | null
     flag: string
     country: string
+    city: string
+    cn: string
     label: string
     ok: boolean
     lat: number | null
@@ -57,6 +59,8 @@
           a2: s.country_code,
           flag: useCountryFlag(s.country_code),
           country: location,
+          city: s.city ?? '',
+          cn: s.city ? `, ${countryName}` : '',
           label: s.category === 'active' ? `${s.protocol} CLI` : `${s.protocol} ${s.category}`,
           ok: s.has_successful_login,
           lat: s.lat ?? null,
@@ -112,6 +116,7 @@
     <h2>
       <span class="live-dot" :class="{ paused }" aria-hidden="true" />
       Live sessions
+      <span class="tz">UTC</span>
       <!-- WCAG 2.2.2 (Pause, Stop, Hide). -->
       <button
         type="button"
@@ -136,7 +141,9 @@
       >
         <span class="t">{{ r.time }}</span>
         <span aria-hidden="true">{{ r.flag }}</span>
-        <span class="country">{{ r.country }}</span>
+        <span class="country" :title="r.country"
+          >{{ r.city || r.country }}<span v-if="r.cn" class="cn">{{ r.cn }}</span></span
+        >
         <span class="label">{{ r.label }}</span>
         <span
           class="res"
@@ -165,13 +172,19 @@
 
   .feed h2 {
     margin: 0 0 6px;
-    font: 650 10.5px var(--font-sans);
+    font: 650 11px var(--font-sans);
     letter-spacing: 0.12em;
     text-transform: uppercase;
     color: var(--text-dim);
     display: flex;
     gap: 8px;
     align-items: center;
+  }
+
+  /* Same face as the clock column it labels; lighter weight keeps it secondary. */
+  .tz {
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.08em;
   }
 
   .live-dot.paused {
@@ -188,6 +201,13 @@
     animation: live-pulse 2.4s ease-out infinite;
   }
 
+  /* The global reduced-motion rule only shortens the loop to 0.01ms; stop it outright. */
+  @media (prefers-reduced-motion: reduce) {
+    .live-dot {
+      animation: none;
+    }
+  }
+
   .pause-btn {
     margin-left: auto;
     flex: none;
@@ -197,13 +217,25 @@
     border-radius: 999px;
     background: transparent;
     color: var(--text-muted);
-    font: 650 10px var(--font-sans);
+    font: 650 11px var(--font-sans);
     letter-spacing: 0.08em;
     text-transform: uppercase;
     cursor: pointer;
     transition:
       color var(--motion-fast),
       border-color var(--motion-fast);
+  }
+
+  /* hit area only; pointer:fine unchanged. */
+  @media (pointer: coarse) {
+    .pause-btn {
+      position: relative;
+    }
+    .pause-btn::after {
+      content: '';
+      position: absolute;
+      inset: -12px -6px;
+    }
   }
 
   .pause-btn:hover,
@@ -239,7 +271,7 @@
   .feed-empty {
     margin: 0;
     padding: 4px 2px;
-    font: 500 11.5px var(--font-mono);
+    font: 500 12px var(--font-mono);
     color: var(--text-dim);
   }
 
@@ -255,10 +287,10 @@
     width: 100%;
     text-align: left;
     display: grid;
-    grid-template-columns: 58px 20px minmax(90px, 1fr) minmax(120px, 1.2fr) 20px;
+    grid-template-columns: 58px 20px minmax(0, 1fr) 90px 20px;
     gap: 8px;
     align-items: center;
-    font: 500 11.5px var(--font-mono);
+    font: 500 12px var(--font-mono);
     color: var(--text-muted);
     padding: 4px 2px;
     border-radius: 4px;
@@ -296,15 +328,18 @@
   @media (max-width: 900px) {
     /* Raised to clear the map controls, which sit centred below it on mobile. */
     .feed {
-      left: 12px;
-      right: 12px;
-      bottom: 62px;
+      left: var(--hud-gap);
+      right: var(--hud-gap);
+      bottom: calc(var(--hud-gap) * 2 + var(--hud-ctl-h));
       width: auto;
       background: color-mix(in srgb, var(--surface, #14110c) 88%, transparent);
     }
     .feed-row {
-      grid-template-columns: 50px 18px minmax(110px, 1.4fr) minmax(70px, 0.9fr) 16px;
-      gap: 6px;
+      grid-template-columns: 58px 18px minmax(0, 1fr) 76px 16px;
+      gap: 8px;
+    }
+    .feed-row .cn {
+      display: none;
     }
   }
 </style>

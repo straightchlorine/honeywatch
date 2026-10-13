@@ -4,9 +4,10 @@
    * Table view toggle swaps to a plain leaderboard with fixed-height selection line
    * to prevent reflow.
    */
-  import { computed, onScopeDispose, ref } from 'vue'
+  import { computed, onScopeDispose, ref, useTemplateRef } from 'vue'
+  import { useRoute, useRouter } from 'vue-router'
   import type { CountryRowResponse } from '@/api/generated/types.gen'
-  import { useSeqScale, needsDarkInk } from '@/composables/useSeqScale'
+  import { useSeqScale, inkFor } from '@/composables/useSeqScale'
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { useReducedMotion } from '@/composables/useReducedMotion'
   import { useHwTooltip } from '@/composables/useHwTooltip'
@@ -18,6 +19,7 @@
   import SortableTh from '../base/SortableTh.vue'
   import SeqLegend from '../base/SeqLegend.vue'
   import HwCard from '../base/HwCard.vue'
+  import HexFocusRing from '../base/HexFocusRing.vue'
 
   const { countries } = defineProps<{ countries: CountryRowResponse[] }>()
 
@@ -35,7 +37,18 @@
 
   const reduced = useReducedMotion()
 
-  const view = ref<'hive' | 'table'>('hive')
+  // URL is state: ?view=table survives refresh; hive is the default and adds no param.
+  const route = useRoute()
+  const router = useRouter()
+  const view = computed<'hive' | 'table'>({
+    get: () => (route.query.view === 'table' ? 'table' : 'hive'),
+    set: (v) => {
+      const query = { ...route.query }
+      if (v === 'table') query.view = 'table'
+      else delete query.view
+      void router.replace({ query })
+    },
+  })
 
   // Hex packing: hexagon of hexagons (rows of 4/5/6/5/4) with geometry derived
   // from ROW_SIZES, so it degrades cleanly with fewer countries.
@@ -102,7 +115,7 @@
     cx: number
     cy: number
     fill: string
-    dark: boolean
+    ink: string
     flag: string
     sessions: number
     ips: number
@@ -181,7 +194,7 @@
         cx,
         cy,
         fill: metricValue === null ? 'var(--surface-2)' : scale.seq(t),
-        dark: needsDarkInk(t),
+        ink: inkFor(t),
         flag: useCountryFlag(code),
         sessions: c.sessions,
         ips: c.distinct_ips,
@@ -227,17 +240,72 @@
   function onLeave(): void {
     tooltip.hide()
   }
-  function onKeydown(cell: HexCell, e: KeyboardEvent): void {
+  // Focus ring overlay (top layer). Only for keyboard focus, as before.
+  const ring = ref<{ cx: number; cy: number; r: number } | null>(null)
+  // Roving tabindex (as HexMatrix): the hive and the table are each ONE Tab stop -
+  // the last-focused entry, else the first - and arrows walk the rest.
+  const hiveEl = useTemplateRef('hiveEl')
+  const tableEl = useTemplateRef('tableEl')
+  const rovingCell = ref(0)
+  const rovingRow = ref(0)
+  const tabCell = computed(() => Math.min(rovingCell.value, cells.value.length - 1))
+  const tabRow = computed(() => Math.min(rovingRow.value, countries.length - 1))
+  function onFocus(cell: HexCell, idx: number, e: FocusEvent): void {
+    rovingCell.value = idx
+    ring.value = (e.target as Element).matches(':focus-visible')
+      ? { cx: cell.cx, cy: cell.cy, r: R_CELL }
+      : null
+  }
+  function onKeydown(cell: HexCell, idx: number, e: KeyboardEvent): void {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       selectCountry(cell.code)
+      return
     }
+    const last = cells.value.length - 1
+    // Left/Right walk the visual (reading) order; Up/Down jump to the nearest
+    // cell by x in the adjacent row (rows are R*1.5 apart). Equidistant cells
+    // (within float noise) resolve to the leftmost.
+    const vertical = (dir: 1 | -1): number => {
+      const ty = cell.cy + dir * 1.5 * R
+      let best = idx
+      let bestDx = Infinity
+      cells.value.forEach((c, j) => {
+        const dx = Math.abs(c.cx - cell.cx)
+        if (Math.abs(c.cy - ty) < 1 && dx < bestDx - 1e-6) [best, bestDx] = [j, dx]
+      })
+      return best
+    }
+    const to = new Map([
+      ['ArrowLeft', Math.max(idx - 1, 0)],
+      ['ArrowRight', Math.min(idx + 1, last)],
+      ['ArrowUp', vertical(-1)],
+      ['ArrowDown', vertical(1)],
+      ['Home', 0],
+      ['End', last],
+    ]).get(e.key)
+    if (to === undefined || e.ctrlKey || e.altKey || e.metaKey) return
+    e.preventDefault()
+    rovingCell.value = to
+    hiveEl.value?.querySelectorAll<SVGElement>('.hex-cell')[to]?.focus()
   }
-  function onRowKeydown(code: string | null, e: KeyboardEvent): void {
+  function onRowKeydown(code: string | null, i: number, e: KeyboardEvent): void {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault()
       selectCountry(code ?? '')
+      return
     }
+    const last = countries.length - 1
+    const to = new Map([
+      ['ArrowUp', Math.max(i - 1, 0)],
+      ['ArrowDown', Math.min(i + 1, last)],
+      ['Home', 0],
+      ['End', last],
+    ]).get(e.key)
+    if (to === undefined || e.ctrlKey || e.altKey || e.metaKey) return
+    e.preventDefault()
+    rovingRow.value = to
+    tableEl.value?.querySelectorAll<HTMLElement>('tbody tr')[to]?.focus()
   }
 
   const sortLabel = computed(() => {
@@ -272,6 +340,7 @@
     <!-- eslint-disable vuejs-accessibility/no-static-element-interactions -->
     <svg
       v-if="view === 'hive'"
+      ref="hiveEl"
       class="hive-svg"
       role="graphics-document"
       :aria-label="`Top ${cells.length} attacking countries, shaded by ${sortLabel.toLowerCase()}. Switch to the table for exact figures.`"
@@ -284,14 +353,16 @@
           :points="points(cell.cx, cell.cy)"
           :fill="cell.fill"
           :style="{ animationDelay: cellDelay(idx) }"
-          tabindex="0"
+          :tabindex="idx === tabCell ? 0 : -1"
           role="button"
           :aria-label="cell.ariaLabel"
           @pointerenter="onEnter(cell, $event)"
           @pointermove="onMove"
           @pointerleave="onLeave"
+          @focus="onFocus(cell, idx, $event)"
+          @blur="ring = null"
           @click="selectCountry(cell.code)"
-          @keydown="onKeydown(cell, $event)"
+          @keydown="onKeydown(cell, idx, $event)"
         />
         <text :x="cell.cx" :y="cell.cy - 12" text-anchor="middle" font-size="17">
           {{ cell.flag }}
@@ -303,7 +374,7 @@
           font-size="12"
           font-weight="650"
           class="hex-code"
-          :class="{ dark: cell.dark }"
+          :style="{ fill: cell.ink }"
         >
           {{ cell.code }}
         </text>
@@ -314,7 +385,7 @@
           text-anchor="middle"
           font-size="10.5"
           class="hex-count"
-          :class="{ dark: cell.dark }"
+          :style="{ fill: cell.ink }"
         >
           {{ cell.metricLabel }}
         </text>
@@ -325,15 +396,16 @@
           text-anchor="middle"
           font-size="10.5"
           class="hex-count"
-          :class="{ dark: cell.dark }"
+          :style="{ fill: cell.ink }"
         >
           -
         </text>
       </g>
+      <HexFocusRing v-if="ring" v-bind="ring" />
     </svg>
 
     <div v-else class="table-wrap">
-      <table class="rank-table">
+      <table ref="tableEl" class="rank-table">
         <thead>
           <tr>
             <th scope="col">#</th>
@@ -349,9 +421,10 @@
             v-for="(c, i) in countries"
             :key="c.country_code ?? i"
             :class="{ selected: c.country_code === selected }"
-            tabindex="0"
+            :tabindex="i === tabRow ? 0 : -1"
+            @focus="rovingRow = i"
             @click="selectCountry(c.country_code ?? '')"
-            @keydown="onRowKeydown(c.country_code, $event)"
+            @keydown="onRowKeydown(c.country_code, i, $event)"
           >
             <td class="num">{{ i + 1 }}</td>
             <td>{{ useCountryFlag(c.country_code) }} {{ c.country ?? c.country_code }}</td>
@@ -408,6 +481,7 @@
     /* No preserveAspectRatio override: the default xMidYMid meet scales the
        hexagons up uniformly. Stretching to fill would turn them into ovals. */
     height: 100%;
+    overflow: visible;
   }
 
   .hive-svg text {
@@ -415,17 +489,12 @@
     font-family: var(--font-mono);
   }
 
-  /* Contrast flip via needsDarkInk(): light ink until fill is bright, then dark.
-     Use --text/--bg-1 for hierarchy via size/weight, not dimmer text that fails
+  /* Ink is chosen per fill by inkFor() (best WCAG ratio).
+     Use --text for hierarchy via size/weight, not dimmer text that fails
      contrast earlier. */
   .hex-code,
   .hex-count {
     fill: var(--text);
-  }
-
-  .hex-code.dark,
-  .hex-count.dark {
-    fill: var(--bg-1);
   }
 
   .hex-cell {
@@ -444,7 +513,6 @@
     outline: none;
   }
 
-  .hex-cell:focus-visible,
   .hex-cell.selected {
     stroke: var(--seq-7);
     stroke-width: 2;
@@ -577,7 +645,6 @@
     font-weight: 640;
   }
 
-
   .sel-line a {
     margin-left: auto;
     font-size: 12px;
@@ -613,17 +680,70 @@
 
   @media (max-width: 900px) {
     .hive-svg {
-      min-height: 260px;
+      flex: none;
+      height: auto;
     }
 
     .sel-line {
       font-size: 11.5px;
-      gap: 10px;
+      gap: 8px;
+      padding: 0 10px;
+    }
+
+    .hive-legend {
+      margin-inline: auto;
+      min-width: 0;
+      max-width: 100%;
     }
 
     /* Legend stays; hint is redundant on tap devices. */
     .sel-hint {
       display: none;
+    }
+  }
+
+  /* Phone: fit #, Country, Sessions, Unique IPs without an inner scroll box. */
+  @media (max-width: 520px) {
+    .table-wrap {
+      overflow-x: hidden;
+    }
+
+    .rank-table {
+      min-width: 0;
+      table-layout: fixed;
+    }
+
+    .rank-table th:nth-child(1) {
+      width: 24px;
+    }
+
+    .rank-table th:nth-child(3) {
+      width: 94px;
+    }
+
+    .rank-table th:nth-child(4) {
+      width: 106px;
+    }
+
+    .rank-table th:nth-child(n + 5),
+    .rank-table td:nth-child(n + 5) {
+      display: none;
+    }
+
+    .rank-table th {
+      white-space: nowrap;
+      letter-spacing: 0.03em;
+      padding: 8px 4px;
+    }
+
+    .rank-table td {
+      padding: 6px;
+    }
+
+    .rank-table td:nth-child(2) {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
   }
 </style>

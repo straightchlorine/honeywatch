@@ -67,3 +67,39 @@ describe('LiveFeed status line', () => {
     expect(w.findAll('.feed-row')).toHaveLength(1)
   })
 })
+
+describe('LiveFeed country label', () => {
+  beforeEach(() => setState({}))
+
+  function session(overrides: Record<string, unknown>) {
+    return {
+      id: 's2',
+      started_at: '2026-01-01T10:00:00Z',
+      country_code: 'FR',
+      country: 'France',
+      city: null,
+      protocol: 'ssh',
+      category: 'active',
+      has_successful_login: true,
+      lat: null,
+      lon: null,
+      ...overrides,
+    }
+  }
+
+  it('shows the city as the visible place, with the country as title and suffix', () => {
+    setState({ data: { items: [session({ city: 'Paris' })] } })
+    const label = mount(LiveFeed).get('.feed-row .country')
+    expect(label.attributes('title')).toBe('Paris, France')
+    expect(label.element.firstChild?.textContent).toBe('Paris')
+    expect(label.get('.cn').text()).toBe(', France')
+  })
+
+  it('falls back to the country when the city is null', () => {
+    setState({ data: { items: [session({ city: null })] } })
+    const label = mount(LiveFeed).get('.feed-row .country')
+    expect(label.text()).toBe('France')
+    expect(label.attributes('title')).toBe('France')
+    expect(label.find('.cn').exists()).toBe(false)
+  })
+})
