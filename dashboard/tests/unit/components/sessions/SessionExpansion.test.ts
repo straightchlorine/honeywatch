@@ -66,10 +66,7 @@ describe('SessionExpansion', () => {
       ] as SessionDetailResponse['auth_attempts'],
     })
     const rows = w.findAll('.facts .cred')
-    expect(rows.map((r) => r.text())).toEqual([
-      'root:toor (rejected)',
-      'admin:admin (accepted)',
-    ])
+    expect(rows.map((r) => r.text())).toEqual(['root:toor (rejected)', 'admin:admin (accepted)'])
     expect(rows[0]?.classes()).toContain('cred-no')
     expect(rows[1]?.classes()).toContain('cred-ok')
   })
@@ -108,7 +105,9 @@ describe('SessionExpansion', () => {
   it('shows the payload badge with the first 16 sha256 chars only when a download exists', async () => {
     const sha = 'a'.repeat(40) + 'b'.repeat(24)
     const withDl = await mountWith({
-      downloads: [{ id: 1, url: null, sha256: sha, timestamp: null }] as SessionDetailResponse['downloads'],
+      downloads: [
+        { id: 1, url: null, sha256: sha, timestamp: null },
+      ] as SessionDetailResponse['downloads'],
     })
     expect(withDl.text()).toContain(sha.slice(0, 16))
     expect(withDl.text()).not.toContain(sha)
@@ -121,7 +120,12 @@ describe('SessionExpansion', () => {
     const a = 'a'.repeat(64)
     const b = 'b'.repeat(64)
     const w = await mountWith({
-      downloads: [a, b, a].map((sha256, id) => ({ id, url: null, sha256, timestamp: null })) as SessionDetailResponse['downloads'],
+      downloads: [a, b, a].map((sha256, id) => ({
+        id,
+        url: null,
+        sha256,
+        timestamp: null,
+      })) as SessionDetailResponse['downloads'],
     })
     expect(w.findAll('.file')).toHaveLength(2)
     const vt = w.findAll('a.vt')
@@ -135,7 +139,9 @@ describe('SessionExpansion', () => {
   it('marks a known-benign digest not malware and omits its VirusTotal link', async () => {
     const sha = '01ba4719c80b6fe911b091a7c05124b64eeece964e09c058ef8f9805daca546b'
     const w = await mountWith({
-      downloads: [{ id: 1, url: null, sha256: sha, timestamp: null }] as SessionDetailResponse['downloads'],
+      downloads: [
+        { id: 1, url: null, sha256: sha, timestamp: null },
+      ] as SessionDetailResponse['downloads'],
     })
     expect(w.text()).toContain('not malware')
     expect(w.find('a.vt').exists()).toBe(false)

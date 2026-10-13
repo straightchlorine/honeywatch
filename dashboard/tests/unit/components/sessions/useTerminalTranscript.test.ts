@@ -10,6 +10,8 @@ function makeSession(over: Partial<SessionDetailResponse> = {}): SessionDetailRe
     dst_port: 2222,
     protocol: 'ssh',
     sensor: 'edge-01',
+    interest: 0,
+    max_interest: 0,
     country: 'United States',
     country_code: 'US',
     city: null,
@@ -249,9 +251,7 @@ describe('buildTranscript', () => {
   it('renders a placeholder for downloads with no URL', () => {
     const lines = buildTranscript(
       makeSession({
-        downloads: [
-          { id: 1, url: null, sha256: null, timestamp: '2026-05-31T13:41:51+00:00' },
-        ],
+        downloads: [{ id: 1, url: null, sha256: null, timestamp: '2026-05-31T13:41:51+00:00' }],
       }),
     )
     const dl = lines.find((l) => l.kind === 'download')!

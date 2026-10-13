@@ -1,6 +1,6 @@
 <script setup lang="ts">
   import { computed } from 'vue'
-  import { seq } from '@/composables/useSeqScale'
+  import { seq, inkFor } from '@/composables/useSeqScale'
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { hexPoints } from '@/utils/hex'
   import { SCORE_TIP, scoreFrac } from '@/utils/sessionStory'
@@ -20,12 +20,11 @@
   const TIP = SCORE_TIP
 
   const frac = computed(() => scoreFrac(interest, ceiling))
-  // Glow starts at 60% of the top score; below interest=5 there is too little
-  // activity to color, so the hex stays neutral grey.
-  const hot = computed(() => frac.value > 0.6)
-  const hexFill = computed(() =>
-    interest > 5 ? seq(Math.pow(frac.value, 0.9)) : 'var(--surface-2)',
-  )
+  // Below interest=5 there is too little activity to color, so the hex stays neutral grey.
+  const heatT = computed(() => Math.pow(frac.value, 0.9))
+  const hexFill = computed(() => (interest > 5 ? seq(heatT.value) : 'var(--surface-2)'))
+  // Numeral ink: best WCAG contrast on the actual fill; --text on the neutral grey hex.
+  const ink = computed(() => (interest > 5 ? inkFor(heatT.value) : undefined))
   // Normalized 0-100: the hottest session reads as 100, others scale beneath it.
   const displayScore = computed(() => Math.round(100 * frac.value))
   const points = hexPoints(15, 16.5, 14)
@@ -37,7 +36,7 @@
   <component
     :is="interactive ? 'button' : 'span'"
     class="score-hex"
-    :class="{ hot, interactive }"
+    :class="{ interactive }"
     :type="interactive ? 'button' : undefined"
     :tabindex="interactive ? -1 : undefined"
     :role="interactive ? undefined : 'img'"
@@ -56,7 +55,7 @@
         :stroke-width="interest > 5 ? 0 : 1"
       />
     </svg>
-    <b aria-hidden="true">{{ displayScore }}</b>
+    <b :class="{ wide: displayScore > 99 }" :style="{ color: ink }" aria-hidden="true">{{ displayScore }}</b>
   </component>
 </template>
 
@@ -82,6 +81,14 @@
     height: 29px;
   }
 
+  @media (pointer: coarse) {
+    .score-hex.interactive::after {
+      content: '';
+      position: absolute;
+      inset: -8px -9px;
+    }
+  }
+
   .score-hex.interactive:focus-visible {
     outline: 2px solid var(--accent-hot);
     outline-offset: 1px;
@@ -97,15 +104,17 @@
 
   .score-hex b {
     position: relative;
-    font: 700 10px var(--font-mono);
+    font: 700 12px var(--font-mono);
     color: var(--text);
+  }
+
+  /* Three digits (only the top score) do not fit the hex at 12px. */
+  .score-hex b.wide {
+    font-size: 10px;
   }
 
   .score-hex.interactive b {
     font-weight: 650;
   }
 
-  .score-hex.hot b {
-    color: var(--bg-0);
-  }
 </style>

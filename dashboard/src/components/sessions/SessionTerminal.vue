@@ -1,21 +1,23 @@
 <script setup lang="ts">
-  import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+  import { computed, onBeforeUnmount, ref, watch } from 'vue'
   import type { SessionDetailResponse, SessionSummaryResponse } from '@/api/generated/types.gen'
   import { buildTranscript } from './useTerminalTranscript'
+  import DownloadsChip from './DownloadsChip.vue'
   import ScoreHex from './ScoreHex.vue'
   import TerminalLine from './TerminalLine.vue'
+  import { useCountryFlag } from '@/composables/useCountryFlag'
   import { humanizeDuration } from '@/utils/duration'
+  import { fmtUtcStamp } from '@/utils/format'
   import { sanitizeAttackerText } from '@/utils/sanitize'
   import { buildStory } from '@/utils/sessionStory'
   import { ICONS } from '../icons'
-  import HwBadge from '../base/HwBadge.vue'
+  import StoryChip from './StoryChip.vue'
 
-  // `row` is this session's list-page summary (the detail response has no interest score or
-  // tcpip count); the view passes it only when the list page is cached.
+  // `row` is this session's list-page summary (the detail response has no tcpip count); the
+  // view passes it only when the list page is cached.
   const props = defineProps<{
     session: SessionDetailResponse
     row?: SessionSummaryResponse
-    maxInterest?: number
   }>()
 
   const lines = computed(() => buildTranscript(props.session))
@@ -25,7 +27,7 @@
 
   const sid = computed(() => props.session.id.slice(0, 12))
   // Without the list row the pills count the transcript, so compound commands double-count and
-  // tcpip is 0; the hex needs the dataset max, so it needs the row too.
+  // tcpip is 0.
   const story = computed(() =>
     buildStory(
       props.row ?? {
@@ -48,35 +50,31 @@
   const duration = computed(() =>
     humanizeDuration(props.session.started_at, props.session.ended_at),
   )
-  const startedUtc = computed(() => fmtUtc(props.session.started_at))
+  const startedUtc = computed(() => fmtUtcStamp(props.session.started_at))
 
   const title = computed(() => {
     const parts = ['honeypot', proto.value, country.value]
     if (startedUtc.value) parts.push(startedUtc.value)
     if (duration.value !== '-') parts.push(duration.value)
-    return parts.join(' - ')
+    return parts.join(' \u00b7 ')
   })
 
-  const idLine = computed(() => ['honeypot', proto.value, country.value].join(' - '))
-  const timeLine = computed(() => {
-    const parts: string[] = []
-    if (startedUtc.value) parts.push(startedUtc.value)
-    if (duration.value !== '-') parts.push(duration.value)
-    return parts.join(' - ')
-  })
+  const flag = computed(() => useCountryFlag(props.session.country_code))
 
-  // Desktop shows the note always (summary hidden), so a closed <details> must be open there.
   const noteOpen = ref(false)
-  let noteMq: MediaQueryList | null = null
-  const syncNote = () => {
-    if (noteMq?.matches) noteOpen.value = true
+  const noteBtn = ref<HTMLButtonElement | null>(null)
+  function closeNote(): void {
+    noteOpen.value = false
+    noteBtn.value?.focus()
   }
-  onMounted(() => {
-    noteMq = window.matchMedia('(min-width: 769px)')
-    syncNote()
-    noteMq.addEventListener('change', syncNote)
+  function onDocKey(e: KeyboardEvent): void {
+    if (e.key === 'Escape') closeNote()
+  }
+  watch(noteOpen, (open) => {
+    if (open) document.addEventListener('keydown', onDocKey)
+    else document.removeEventListener('keydown', onDocKey)
   })
-  onBeforeUnmount(() => noteMq?.removeEventListener('change', syncNote))
+  onBeforeUnmount(() => document.removeEventListener('keydown', onDocKey))
 
   const copied = ref(false)
   const termBody = ref<HTMLElement | null>(null)
@@ -98,6 +96,10 @@
       })
       .join('\n')
   }
+
+  const copyLabel = computed(() =>
+    copied.value ? 'Copied' : canCopy ? 'Copy transcript' : 'Select transcript',
+  )
 
   async function copyTranscript(): Promise<void> {
     // Without the async clipboard API (insecure context / older browser), degrade
@@ -124,13 +126,6 @@
     sel.removeAllRanges()
     sel.addRange(range)
   }
-
-  function fmtUtc(iso: string | null): string {
-    if (!iso) return ''
-    const d = new Date(iso)
-    if (Number.isNaN(d.getTime())) return ''
-    return `${d.toLocaleString('en', { dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' })} UTC`
-  }
 </script>
 
 <template>
@@ -139,36 +134,56 @@
       <span class="dots" aria-hidden="true"><i /><i /><i /></span>
       <span class="term-title">{{ title }}</span>
       <span class="term-tags">
-        <ScoreHex v-if="row && maxInterest" :interest="row.interest" :ceiling="maxInterest" />
+        <ScoreHex v-if="session.max_interest" :interest="session.interest" :ceiling="session.max_interest" />
         <span class="sid">{{ sid }}</span>
-        <HwBadge v-for="(b, i) in story" :key="i" :tone="b.tone" :title="b.title" :aria-label="b.title">
-          {{ b.label }}
-          <svg v-if="b.icon" class="badge-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path :d="ICONS[b.icon]" />
-          </svg>
-        </HwBadge>
+        <template v-for="(b, i) in story" :key="i">
+          <DownloadsChip
+            v-if="b.icon === 'file'"
+            :downloads="session.downloads"
+            :label="b.label"
+            :title="b.title"
+          />
+          <StoryChip v-else :tone="b.tone" :icon="b.icon" :glyph="b.glyph" :title="b.title" :aria-label="b.title">
+            {{ b.label }}
+          </StoryChip>
+        </template>
       </span>
       <span class="term-meta">
-        <span class="term-id">{{ idLine }}</span>
-        <span v-if="timeLine" class="term-time">{{ timeLine }}</span>
+        <span class="term-flag" role="img" :aria-label="country" :title="country">{{ flag }}</span>
+        <span>{{ proto }}</span>
+        <span v-if="startedUtc">{{ startedUtc }}</span>
+        <span v-if="duration !== '-'">{{ duration }}</span>
       </span>
       <button
         type="button"
         class="copy-btn"
-        :aria-label="canCopy ? 'Copy transcript' : 'Select transcript'"
+        :aria-label="copyLabel"
+        :title="copyLabel"
         @click="copyTranscript"
       >
         <svg class="copy-icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false">
           <path :d="copied ? ICONS.check : ICONS.copy" />
         </svg>
-        <span class="copy-label">{{
-          copied ? 'Copied' : canCopy ? 'Copy transcript' : 'Select transcript'
-        }}</span>
+      </button>
+      <button
+        ref="noteBtn"
+        type="button"
+        class="note-btn"
+        aria-label="About this replay"
+        aria-controls="replay-note"
+        :aria-expanded="noteOpen"
+        @click="noteOpen = !noteOpen"
+      >
+        ?
       </button>
       <span class="visually-hidden" role="status" aria-live="polite">{{
         copied ? 'Transcript copied to clipboard' : ''
       }}</span>
     </header>
+
+    <p v-if="noteOpen" id="replay-note" class="term-note">
+      Rebuilt from what the honeypot recorded. Lines in &lt;...&gt; are our notes, not the attacker's. Highlighted text is what they typed to log in. Addresses are hidden, and the honeypot's replies were not recorded.
+    </p>
 
     <div
       ref="termBody"
@@ -180,13 +195,6 @@
       <TerminalLine v-for="line in lines" :key="line.id" :line="line" />
       <p v-if="nothingTyped" class="term-empty">Nothing typed in this session.</p>
     </div>
-
-    <details class="term-note" :open="noteOpen">
-      <summary>About this replay</summary>
-      <p class="note-body">
-        Rebuilt from what the honeypot recorded. Lines in &lt;...&gt; are our notes, not the attacker's. Highlighted text is what they typed to log in. Addresses are hidden, and the honeypot's replies were not recorded.
-      </p>
-    </details>
   </section>
 </template>
 
@@ -252,6 +260,7 @@
   }
 
   .term-tags {
+    position: relative;
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
@@ -266,12 +275,6 @@
     color: var(--accent);
   }
 
-  .badge-icon {
-    width: 11px;
-    height: 11px;
-    fill: currentColor;
-  }
-
   .term-empty {
     margin: 0;
     color: var(--text-dim);
@@ -283,31 +286,27 @@
     flex: 0 0 auto;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
+    justify-content: center;
+    min-width: var(--control-h);
     min-height: var(--control-h);
-    background: var(--surface);
-    color: var(--text);
-    border: 1px solid var(--border);
+    padding: 5px;
+    background: transparent;
+    color: var(--text-muted);
+    border: 1px solid transparent;
     border-radius: var(--radius-sm);
-    padding: var(--space-1) var(--space-3);
-    font-size: var(--type-xs);
-    line-height: var(--type-xs-lh);
     cursor: pointer;
-    transition:
-      background var(--motion-fast) ease,
-      border-color var(--motion-fast) ease;
+    transition: color var(--motion-fast) ease;
   }
 
   .copy-icon {
-    display: none;
-    width: 1rem;
-    height: 1rem;
+    display: block;
+    width: 0.9rem;
+    height: 0.9rem;
     fill: currentColor;
   }
 
   .copy-btn:hover {
-    background: var(--surface-hover);
-    border-color: var(--border-strong);
+    color: var(--text);
   }
 
   .copy-btn:focus-visible {
@@ -331,48 +330,44 @@
 
   .term-note {
     flex: 0 0 auto;
+    margin: 0;
+    padding: var(--space-2) var(--space-3);
     font-size: var(--type-xs);
     line-height: var(--type-xs-lh);
     color: var(--text-muted);
     background: var(--bg-1);
-    border-top: 1px solid var(--border);
+    border-bottom: 1px solid var(--border);
   }
 
-  .term-note > summary {
-    padding: var(--space-2) var(--space-3);
-    cursor: pointer;
-    list-style: none;
-    color: var(--text-dim);
-  }
-
-  .term-note > summary {
-    display: flex;
-    align-items: center;
+  .note-btn {
+    flex: 0 0 auto;
+    min-width: var(--control-h);
     min-height: var(--control-h);
+    padding: 0;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
+    font-size: var(--type-sm, 14px);
+    font-weight: 700;
+    cursor: pointer;
   }
 
-  .term-note > summary::-webkit-details-marker {
-    display: none;
+  .note-btn:hover,
+  .note-btn[aria-expanded='true'] {
+    color: var(--text);
+    background: var(--surface-hover);
   }
 
-  .term-note .note-body {
-    margin: 0;
-    padding: 0 var(--space-3) var(--space-2);
-  }
-
-  /* Desktop always shows the note; mobile keeps it collapsible to preserve space. */
-  @media (min-width: 769px) {
-    .term-note > summary {
-      display: none;
-    }
-    .term-note .note-body {
-      display: block;
-      padding-top: var(--space-2);
-    }
+  .note-btn:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
   }
 
   @media (max-width: 768px) {
     .term-bar {
+      order: -2;
       flex-wrap: wrap;
       align-items: center;
       row-gap: var(--space-1);
@@ -380,29 +375,16 @@
     .term-title {
       display: none;
     }
+    /* Narrower clock gutter (width is in ch of the shrunken font) so lines wrap less. */
+    .term-body :deep(.ts) {
+      font-size: 0.8em;
+    }
     .copy-btn {
       order: 2;
       margin-left: auto;
-      /* Icon only; full control-size tap target. */
-      min-width: var(--control-h);
-      justify-content: center;
-      padding: 5px;
-      background: transparent;
-      border-color: transparent;
-      color: var(--text-muted);
     }
-    .copy-btn:hover {
-      background: transparent;
-      border-color: transparent;
-      color: var(--text);
-    }
-    .copy-icon {
-      display: block;
-      width: 0.9rem;
-      height: 0.9rem;
-    }
-    .copy-label {
-      display: none;
+    .note-btn {
+      order: 2;
     }
     .term-tags {
       order: 3;
@@ -412,18 +394,26 @@
       order: 4;
       flex-basis: 100%;
       display: flex;
-      flex-direction: column;
-      gap: 2px;
+      align-items: baseline;
+      gap: var(--space-2);
       min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
       font-family: var(--font-mono);
       font-size: var(--type-xs);
       line-height: var(--type-xs-lh);
       color: var(--text-muted);
     }
-    .term-id,
-    .term-time {
-      white-space: normal;
-      overflow-wrap: anywhere;
+    .term-meta > span + span::before {
+      content: '\00b7';
+      margin-right: var(--space-2);
+    }
+    .term-flag {
+      flex: 0 0 24px;
+      text-align: center;
+    }
+    .term-meta > .term-flag + span::before {
+      content: none;
     }
   }
 </style>

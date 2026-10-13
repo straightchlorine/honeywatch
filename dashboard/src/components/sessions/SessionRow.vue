@@ -1,12 +1,15 @@
 <script setup lang="ts">
+  // TODO(next PR): row display logic (origin text, score, quiet flag), the roving keydown and the
+  // chevron are triplicated across SessionRow, SessionListRow and SessionGroupRow, and SessionGroupRow
+  // has a third duration formatter; extract a shared composable/util.
   import { computed, ref } from 'vue'
   import type { SessionSummaryResponse } from '@/api/generated/types.gen'
   import { useCountryFlag } from '@/composables/useCountryFlag'
-  import { fmtRelativeTime } from '@/utils/format'
+  import { fmtRelativeTime, fmtUtcStamp } from '@/utils/format'
   import { humanizeDuration } from '@/utils/duration'
   import { buildStory, scoreFrac } from '@/utils/sessionStory'
   import { ICONS } from '@/components/icons'
-  import HwBadge from '../base/HwBadge.vue'
+  import StoryChip from './StoryChip.vue'
   import ScoreHex from './ScoreHex.vue'
   import SessionExpansion from './SessionExpansion.vue'
 
@@ -16,11 +19,14 @@
     expanded,
     maxInterest,
     tabbable = true,
+    nested = false,
   } = defineProps<{
     row: SessionSummaryResponse
     expanded: boolean
     maxInterest: number
     tabbable?: boolean
+    // Child of an open run: the group row shows the hex once, so children drop it.
+    nested?: boolean
   }>()
   const emit = defineEmits<{ toggle: [] }>()
 
@@ -42,6 +48,8 @@
   // Normalized 0-100 against the dataset max; ScoreHex shows the same number.
   const displayScore = computed(() => Math.round(scoreFrac(row.interest, maxInterest) * 100))
   const started = computed(() => (row.started_at ? fmtRelativeTime(row.started_at) : '-'))
+  // The relative time alone cannot tell look-alike rows apart.
+  const startedUtc = computed(() => fmtUtcStamp(row.started_at))
 
   // Prose accessibility: visible 12-char id is visual only, not read by screen readers.
   const ariaLabel = computed(
@@ -80,7 +88,8 @@
   <!-- eslint-disable vuejs-accessibility/click-events-have-key-events -->
   <tr
     class="srow"
-    :class="{ quiet: row.interest < 4 }"
+    :class="{ quiet: row.interest < 4, nested }"
+    :aria-level="nested ? 2 : undefined"
     :data-id="row.id"
     :tabindex="tabbable ? 0 : -1"
     :aria-expanded="expanded"
@@ -95,7 +104,7 @@
             <path :d="ICONS['chevron-right']" fill="currentColor" />
           </svg>
         </span>
-        <ScoreHex :interest="row.interest" :ceiling="maxInterest" interactive />
+        <ScoreHex v-if="!nested" :interest="row.interest" :ceiling="maxInterest" interactive />
         <span class="sid-wrap">
           <span class="sid">{{ row.id.slice(0, 12) }}</span>
           <button
@@ -117,24 +126,22 @@
       </div>
     </td>
     <td class="story">
-      <span class="badges">
-        <HwBadge
+      <span class="chips">
+        <StoryChip
           v-for="(b, i) in story"
           :key="i"
           :tone="b.tone"
+          :icon="b.icon"
+          :glyph="b.glyph"
           :title="b.title"
           :aria-label="b.title"
         >
           {{ b.label }}
-          <svg v-if="b.icon" class="badge-icon" viewBox="0 0 24 24" aria-hidden="true">
-            <path :d="ICONS[b.icon]" />
-          </svg>
-        </HwBadge>
-        <span class="dur" :title="`Lasted ${duration}`">{{ duration }}</span>
+        </StoryChip>
       </span>
     </td>
     <td class="origin">
-      <div class="cell">
+      <div class="cell" :title="originFull">
         <span class="flag" aria-hidden="true">{{ flag }}</span>
         <span class="country">{{ countryText }}</span>
         <template v-if="cityText">
@@ -145,10 +152,10 @@
     </td>
     <td class="spacer" aria-hidden="true"></td>
     <td class="r num duration">{{ duration }}</td>
-    <td class="r dim small started">{{ started }}</td>
+    <td class="r dim small started" :title="startedUtc">{{ started }}</td>
   </tr>
   <!-- eslint-enable vuejs-accessibility/click-events-have-key-events -->
-  <tr class="expand" :hidden="!expanded">
+  <tr class="expand" :class="{ nested }" :hidden="!expanded">
     <td colspan="6">
       <SessionExpansion v-if="expanded" :session-id="row.id" />
     </td>
@@ -156,14 +163,10 @@
 </template>
 
 <style scoped>
-  .srow {
-    cursor: pointer;
-  }
-
   /* !important overrides parent table's :deep(td) default (plain-tag selector
      outranks scoped class). */
   .session {
-    padding: 3px 10px 3px 16px !important;
+    padding: 3px 10px 3px 8px !important;
   }
   .cell {
     display: flex;
@@ -205,7 +208,7 @@
   }
 
   .srow.quiet .sid {
-    color: var(--accent-dim);
+    color: var(--text-dim);
   }
 
   .sid-wrap {
@@ -266,50 +269,45 @@
   }
   @media (pointer: coarse) {
     .sid-copy {
+      position: relative;
       width: 32px;
       height: 32px;
       margin: -6px 0;
     }
+    .sid-copy::after {
+      content: '';
+      position: absolute;
+      inset: -6px 0 -6px -10px; /* no right reach: row midpoint must expand */
+    }
+  }
+
+  /* Indented a full step past the group row's chevron, with a rail down the group chevron's axis. */
+  .srow.nested .session {
+    padding-left: 50px !important;
+  }
+  .srow.nested td:first-child,
+  .expand.nested > td:first-child {
+    background: linear-gradient(var(--border-strong), var(--border-strong)) 35px 0 / 1px 100%
+      no-repeat;
+  }
+  /* The open panel starts where the child's own content does, with the rail running beside it. */
+  .expand.nested > td:first-child {
+    padding-left: 70px;
+    background-color: var(--bg-1);
   }
 
   .srow[aria-expanded='true'] {
     background: var(--surface-hover);
   }
 
-  .srow:focus {
-    outline: none;
-  }
-
-  .srow:focus-visible {
-    outline: 2px solid var(--accent-hot);
-    outline-offset: -2px;
-  }
-
   .story {
     padding: 3px 10px !important;
   }
 
-  .story .badges {
+  .chips {
     display: inline-flex;
     align-items: center;
     gap: 6px;
-    flex-wrap: wrap;
-  }
-
-  /* Mobile only: the Duration column is hidden here, and duration is what tells look-alike rows apart. */
-  .dur {
-    display: none;
-    font: 10.5px var(--font-mono);
-    color: var(--text-dim);
-  }
-
-  /* The count carries the number; the glyph says what was counted, so the badge
-     stays short enough to leave the id column its copy button. */
-  .badge-icon {
-    width: 11px;
-    height: 11px;
-    fill: currentColor;
-    flex: none;
   }
 
   .origin {
@@ -338,6 +336,15 @@
     font-size: 12px;
   }
 
+  /* Narrowest band: Origin is under ~230px, too narrow for a city after the country; the cell's
+     title keeps it. From 880px Origin has the room, so the city returns. */
+  @media (min-width: 760px) and (max-width: 879.98px) {
+    .origin .dot,
+    .origin .city {
+      display: none;
+    }
+  }
+
   .origin .dot {
     flex: 0 0 auto;
     color: color-mix(in srgb, var(--text-dim) 55%, transparent);
@@ -354,7 +361,7 @@
   }
 
   .small {
-    font-size: 11.5px;
+    font-size: 12px;
   }
 
   .duration {
@@ -365,10 +372,10 @@
     font-size: 13px;
   }
 
-  /* Right padding ~22px so the table-scroll region's scrollbar doesn't sit
+  /* Right padding ~14px so the table-scroll region's scrollbar doesn't sit
      directly on top of the text. */
   .started {
-    padding: 3px 22px 3px 10px !important;
+    padding: 3px 14px 3px 10px !important;
     text-align: right;
   }
 
@@ -377,19 +384,8 @@
   }
 
   .expand > td {
-    padding: 0 16px 16px;
+    padding: 0 8px 16px;
     background: var(--bg-1);
     border-bottom: 1px solid var(--border-strong);
-  }
-
-  @media (max-width: 760px) {
-    /* Hide origin/spacer/duration/started; scoped to .srow so the colspan expansion cell stays visible. */
-    .srow > td:nth-child(n + 3) {
-      display: none;
-    }
-
-    .dur {
-      display: inline;
-    }
   }
 </style>

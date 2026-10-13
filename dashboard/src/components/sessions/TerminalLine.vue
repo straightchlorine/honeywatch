@@ -69,6 +69,12 @@
     padding-block: 2px;
   }
 
+  @media (max-width: 768px) {
+    .line {
+      line-height: 1.5;
+    }
+  }
+
   /* Fixed width so wrapped command bodies hang under body, not clock. */
   .ts {
     flex: 0 0 auto;

@@ -62,6 +62,23 @@ describe('SessionRow interest badge', () => {
   })
 })
 
+describe('SessionRow started stamp', () => {
+  const startedCell = (started_at: string | null) =>
+    mount(SessionRow, {
+      props: { row: { ...baseRow, started_at }, expanded: false, maxInterest: 56 },
+      global: { stubs: { SessionExpansion: true } },
+    }).get('td.started')
+
+  it('puts the UTC stamp to the second in the tooltip', () => {
+    expect(startedCell('2026-05-28T12:34:00Z').attributes('title')).toBe('2026-05-28 12:34:00 UTC')
+  })
+
+  it('renders without a tooltip, not a RangeError, for an unparseable timestamp', () => {
+    expect(startedCell('garbage').attributes('title')).toBeUndefined()
+    expect(startedCell(null).attributes('title')).toBeUndefined()
+  })
+})
+
 describe('SessionRow roving tabindex', () => {
   // jsdom has no clipboard, and the copy button only renders when it exists.
   beforeAll(() => {
@@ -108,5 +125,45 @@ describe('SessionRow roving tabindex', () => {
 
   it('hides the empty spacer cell from assistive tech along with its header', () => {
     expect(mountRow().get('td.spacer').attributes('aria-hidden')).toBe('true')
+  })
+})
+
+describe('SessionRow nested in an open run', () => {
+  it('drops the hex and marks the row as a level-2 child', () => {
+    const w = mount(SessionRow, {
+      props: { row: baseRow, expanded: false, maxInterest: 56, nested: true },
+    })
+    expect(w.find('.score-hex').exists()).toBe(false)
+    expect(w.find('tr.srow').classes()).toContain('nested')
+    expect(w.find('tr.srow').attributes('aria-level')).toBe('2')
+  })
+
+  it('keeps its own story chips so the child reads on its own', () => {
+    const w = mount(SessionRow, {
+      props: { row: baseRow, expanded: false, maxInterest: 56, nested: true },
+    })
+    expect(w.findAll('.chips .chip')).toHaveLength(1)
+  })
+
+  it('keeps the hex on top-level rows', () => {
+    const w = mount(SessionRow, { props: { row: baseRow, expanded: false, maxInterest: 56 } })
+    expect(w.find('.score-hex').exists()).toBe(true)
+    expect(w.find('tr.srow').attributes('aria-level')).toBeUndefined()
+  })
+})
+
+describe('SessionRow chips', () => {
+  it('gives wordless outcome chips an icon and a spoken name', () => {
+    const w = mount(SessionRow, {
+      props: {
+        row: { ...baseRow, n_commands: 0, auth_success: false },
+        expanded: false,
+        maxInterest: 56,
+      },
+    })
+    const chip = w.get('.chips .chip')
+    expect(chip.attributes('role')).toBe('img')
+    expect(chip.attributes('aria-label')).toBe('Logged in but never got a command prompt')
+    expect(chip.find('svg.glyph').exists()).toBe(true)
   })
 })

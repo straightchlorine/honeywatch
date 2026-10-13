@@ -11,7 +11,7 @@
   import { sanitizeAttackerText } from '@/utils/sanitize'
   import { redactIps } from '@/utils/redactIps'
   import { ICONS } from '@/components/icons'
-  import HwBadge from '../base/HwBadge.vue'
+  import StoryChip from './StoryChip.vue'
   import { benignContent, vtUrl } from '@/utils/knownDigests'
   import { useHwTooltip } from '@/composables/useHwTooltip'
 
@@ -93,9 +93,9 @@
                 @focus="showTip($event, f)"
                 @blur="tt.hide()"
               >
-                <HwBadge tone="amber">{{ f.sha.slice(0, 16) }}</HwBadge>
+                <StoryChip icon="file">{{ f.sha.slice(0, 16) }}</StoryChip>
               </RouterLink>
-              <HwBadge v-else tone="dim">download</HwBadge>
+              <StoryChip v-else tone="dim" icon="file">download</StoryChip>
               <span v-if="f.benign" class="benign">not malware</span>
               <a
                 v-else-if="f.sha"
@@ -103,6 +103,7 @@
                 :href="vtUrl(f.sha)"
                 target="_blank"
                 rel="noopener noreferrer"
+                title="Open VirusTotal in a new tab"
                 :aria-label="`VT: open ${f.sha.slice(0, 8)} on VirusTotal (new tab)`"
                 >VT</a
               >
@@ -141,7 +142,33 @@
     padding-top: 14px;
   }
 
+  /* Narrow-desktop band: the 2.6fr transcript leaves the facts rail ~190-290px, which clips the
+     file badges and crowds the credential list; the transcript wraps anyway, so the rail gets the
+     width (a 16-char hash badge plus its VT link, or "root:123456 (accepted)", is ~180px; each
+     rail column needs that). From 840px the rail is two columns; below it the rail stacks
+     Credentials over Files so each gets the whole rail. */
+  @media (min-width: 760px) and (max-width: 1199.98px) {
+    .detail {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    }
+    .file {
+      flex-wrap: nowrap;
+    }
+  }
+  @media (min-width: 760px) and (max-width: 839.98px) {
+    .detail {
+      grid-template-columns: minmax(0, 1.8fr) minmax(0, 1fr);
+    }
+    /* .detail prefix: the base .facts rule comes later in the file and would win a tie. */
+    .detail .facts {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  /* Holds the open panel's height while it loads: a collapsing panel above would otherwise
+     clamp the scroller, and the row the user tapped slides away when the real panel lands. */
   .loading {
+    min-height: var(--detail-max);
     grid-column: 1 / -1;
     color: var(--text-dim);
     font-size: 12.5px;
@@ -205,7 +232,7 @@
     display: flex;
     flex-wrap: wrap;
     align-items: center;
-    gap: 6px;
+    gap: 2px 6px;
     margin-bottom: 4px;
   }
   /* The badge is a pill; the link's focus ring takes the link's own radius, so match it. */
@@ -322,20 +349,4 @@
     fill: currentColor;
   }
 
-  @media (max-width: 760px) {
-    .detail {
-      display: flex;
-      flex-direction: column;
-      height: auto;
-    }
-
-    .term {
-      max-height: 200px;
-    }
-
-    .facts {
-      display: flex;
-      flex-direction: column;
-    }
-  }
 </style>

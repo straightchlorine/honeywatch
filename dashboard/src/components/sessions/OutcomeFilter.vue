@@ -8,34 +8,15 @@
    */
   import { computed, nextTick, onMounted, onUnmounted, ref } from 'vue'
   import type { OutcomeCountsResponse } from '@/api/generated/types.gen'
+  import { ICONS, OUTCOME_ICONS } from '@/components/icons'
   import { fmtNumber } from '@/utils/format'
+  import { ALL_ROWS, MAIN_ROWS, NONE_ROW, toggleHas, type OutcomeRow } from '@/utils/outcomeFilter'
 
   const props = defineProps<{
     modelValue: string
     counts: OutcomeCountsResponse | null
   }>()
   const emit = defineEmits<{ 'update:modelValue': [value: string] }>()
-
-  interface Row {
-    /** has= token this row toggles. */
-    token: string
-    label: string
-    /** Field on OutcomeCountsResponse this row's count comes from - differs
-     * from `token` for "Got control": the query token is `success`
-     * (auth_success), the count field is `shell` (accepted login). */
-    countKey: keyof OutcomeCountsResponse
-  }
-
-  const MAIN_ROWS: Row[] = [
-    { token: 'success', label: 'Got control', countKey: 'shell' },
-    { token: 'commands', label: 'Ran commands', countKey: 'commands' },
-    { token: 'tcpip', label: 'Tried to relay', countKey: 'tcpip' },
-    { token: 'downloads', label: 'Dropped a file', countKey: 'downloads' },
-  ]
-  // Complement of the four above (interest == 0), not a fifth member of the
-  // same set - kept out of MAIN_ROWS and given its own divider in the panel.
-  const NONE_ROW: Row = { token: 'none', label: 'Nothing at all', countKey: 'none' }
-  const ALL_ROWS = [...MAIN_ROWS, NONE_ROW]
 
   const open = ref(false)
   const root = ref<HTMLElement | null>(null)
@@ -59,35 +40,12 @@
     return selected.value.has(token)
   }
 
-  function countText(row: Row): string {
+  function countText(row: OutcomeRow): string {
     return fmtNumber(props.counts?.[row.countKey])
   }
 
   function toggleToken(token: string): void {
-    const next = new Set(selected.value)
-    if (token === 'none') {
-      // Ticking "none" clears every other bucket - has=none plus anything
-      // else is always the empty set server-side.
-      if (next.has('none')) next.delete('none')
-      else {
-        next.clear()
-        next.add('none')
-      }
-    } else {
-      if (next.has(token)) next.delete(token)
-      else {
-        next.delete('none')
-        next.add(token)
-      }
-    }
-    // Canonical row order, not insertion order, so the emitted string is
-    // deterministic regardless of click order.
-    emit(
-      'update:modelValue',
-      ALL_ROWS.filter((r) => next.has(r.token))
-        .map((r) => r.token)
-        .join(','),
-    )
+    emit('update:modelValue', toggleHas(props.modelValue, token))
   }
 
   function clearAll(): void {
@@ -193,6 +151,15 @@
           :checked="isChecked(row.token)"
           @change="toggleToken(row.token)"
         />
+        <svg
+          class="of-row-icon"
+          :style="{ color: OUTCOME_ICONS[row.token]?.color }"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path :d="ICONS[OUTCOME_ICONS[row.token]!.icon]" />
+        </svg>
         <span class="of-row-label">{{ row.label }}</span>
         <span class="of-row-count">{{ countText(row) }}</span>
       </label>
@@ -204,6 +171,15 @@
           :checked="isChecked(NONE_ROW.token)"
           @change="toggleToken(NONE_ROW.token)"
         />
+        <svg
+          class="of-row-icon"
+          :style="{ color: OUTCOME_ICONS[NONE_ROW.token]?.color }"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+          focusable="false"
+        >
+          <path :d="ICONS[OUTCOME_ICONS[NONE_ROW.token]!.icon]" />
+        </svg>
         <span class="of-row-label">{{ NONE_ROW.label }}</span>
         <span class="of-row-count of-count-bad">{{ countText(NONE_ROW) }}</span>
       </label>
@@ -394,6 +370,13 @@
 
   .of-row input[type='checkbox']:checked::after {
     opacity: 1;
+  }
+
+  .of-row-icon {
+    flex: 0 0 auto;
+    width: 16px;
+    height: 16px;
+    fill: currentColor;
   }
 
   .of-row-label {
