@@ -508,7 +508,10 @@ class SessionsListQuery(BaseSchema):
                 f"Fold each run of {RUN_MIN} or more consecutive sessions with "
                 "the same story (counters, outcome, client) into its first "
                 "session, which carries a `run` summary. Pages then count "
-                "display rows, so each holds per_page of them."
+                "display rows, so each holds per_page of them. While the "
+                "layout cannot be built (another build is running), the plain "
+                "unfolded list is returned instead, with `run` null on every "
+                "item and `meta` counting sessions, not display rows."
             ),
             "example": True,
         },
@@ -567,6 +570,11 @@ class SessionsListQuery(BaseSchema):
     )
 
 
+# Matches the list's reach (page cap x per_page cap) and stays far below the
+# bigint limit an OFFSET would overflow into a 500.
+_RUN_BOUND = 5_000_000
+
+
 class SessionRunQuery(SessionsListQuery):
     """The folded list's own query, plus where its run sits in that list."""
 
@@ -583,12 +591,12 @@ class SessionRunQuery(SessionsListQuery):
     )
     offset = fields.Int(
         required=True,
-        validate=validate.Range(min=0),
+        validate=validate.Range(min=0, max=_RUN_BOUND),
         metadata={"description": "The run's `offset`.", "example": 41},
     )
     count = fields.Int(
         required=True,
-        validate=validate.Range(min=1),
+        validate=validate.Range(min=1, max=_RUN_BOUND),
         metadata={"description": "The run's `count`.", "example": 12},
     )
 

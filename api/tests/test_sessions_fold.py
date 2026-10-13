@@ -4,6 +4,7 @@ pages count display rows, so every page but the last is full."""
 from __future__ import annotations
 
 import threading
+import time
 from datetime import datetime, timedelta, timezone
 from typing import Any
 from unittest.mock import MagicMock
@@ -264,6 +265,9 @@ def test_plain_list_is_unchanged(client: Any, pattern_seed: list[str]) -> None:
         "as_of=2026-01-01T00:00:00Z&offset=0",
         "as_of=2026-01-01T00:00:00Z&offset=-1&count=1",
         "as_of=2026-01-01T00:00:00Z&offset=0&count=0",
+        "as_of=2026-01-01T00:00:00Z&offset=5000001&count=1",
+        "as_of=2026-01-01T00:00:00Z&offset=0&count=5000001",
+        "as_of=2026-01-01T00:00:00Z&offset=9223372036854775808&count=1",
     ],
 )
 def test_run_query_is_validated(client: Any, query: str) -> None:
@@ -291,8 +295,8 @@ def _layout() -> Any:
     return sessions_service._Layout(
         as_of=T0,
         total=0,
-        rows_before=sessions_service.array("q"),
-        hidden=sessions_service.array("q"),
+        rows_before=[],
+        hidden=[],
         built_at=0.0,
     )
 
@@ -359,3 +363,65 @@ def test_without_a_layout_the_plain_list_is_served(
     assert [s["id"] for s in data["items"]] == pattern_seed[:10]
     assert all(s["run"] is None for s in data["items"])
     assert data["meta"] == {"page": 1, "per_page": 10, "pages": 3, "total": 23}
+
+
+def test_out_of_range_and_empty_fold_pages_are_empty(
+    client: Any, pattern_seed: list[str]
+) -> None:
+    far = client.get("/api/v1/sessions/?fold=true&sort=recent&per_page=10&page=99")
+    assert far.status_code == 200
+    assert far.get_json()["items"] == []
+    none = client.get("/api/v1/sessions/?fold=true&country=ZZ&per_page=10")
+    assert none.status_code == 200
+    data = none.get_json()
+    assert data["items"] == []
+    assert data["meta"]["total"] == 0 and data["meta"]["pages"] == 0
+    del pattern_seed
+
+
+def test_a_stale_layout_is_served_while_one_rebuild_runs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    old, new = _layout(), _layout()
+    key = ("stale",)
+    sessions_service._store_layout(key, old)
+    monkeypatch.setattr(sessions_service, "_LAYOUT_TTL_S", -1.0)
+    rebuilt = threading.Event()
+    started: list[int] = []
+    monkeypatch.setattr(sessions_service, "get_session_factory", lambda: MagicMock())
+
+    def build(_db: Any) -> Any:
+        started.append(1)
+        rebuilt.set()
+        return new
+
+    assert sessions_service._cached_layout(MagicMock(), key, build) is old
+    assert rebuilt.wait(5)
+    # the background pass replaces the stale entry; wait for it to land
+    for _ in range(100):
+        with sessions_service._layouts_lock:
+            if sessions_service._layouts[key] is new:
+                break
+        time.sleep(0.05)
+    assert sessions_service._layouts[key] is new
+    assert started == [1]
+
+
+def test_the_layout_cache_evicts_its_oldest_key(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(sessions_service, "_LAYOUT_CACHE_SIZE", 2)
+    for k in ("a", "b", "c"):
+        sessions_service._store_layout((k,), _layout())
+    assert list(sessions_service._layouts) == [("b",), ("c",)]
+
+
+def test_a_busy_build_slot_yields_no_layout() -> None:
+    assert sessions_service._build_slot.acquire(timeout=1)
+    try:
+        assert (
+            sessions_service._build_in_slot(MagicMock(), lambda _d: _layout(), 0)
+            is None
+        )
+    finally:
+        sessions_service._build_slot.release()

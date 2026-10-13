@@ -5,7 +5,6 @@ from __future__ import annotations
 import logging
 import threading
 import time
-from array import array
 from bisect import bisect_right
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
@@ -314,8 +313,8 @@ class _Layout:
     total: int
     # Per run, in order: display rows above its row, and the sessions folded
     # away by it and every run before it.
-    rows_before: array[int]
-    hidden: array[int]
+    rows_before: list[int]
+    hidden: list[int]
     built_at: float
 
     @property
@@ -507,10 +506,8 @@ def _build_layout(
         )
     ).one()
     runs = sorted(zip(starts or [], sizes or [], strict=True))
-    hidden = array("q", accumulate(n - 1 for _, n in runs))
-    rows_before = array(
-        "q", (pos - h + n - 1 for (pos, n), h in zip(runs, hidden, strict=True))
-    )
+    hidden = list(accumulate(n - 1 for _, n in runs))
+    rows_before = [pos - h + n - 1 for (pos, n), h in zip(runs, hidden, strict=True)]
     return _Layout(
         as_of=as_of,
         total=total or 0,
