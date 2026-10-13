@@ -154,12 +154,12 @@
         <HexIcon :size="44" />
         <h2>Honeywatch</h2>
         <p>
-          Honeywatch is a honeypot monitoring system. Server in Helsinki let's attackers in on
+          Honeywatch is a honeypot monitoring system. Server in Helsinki lets attackers in on
           purpose and records everything they do.
         </p>
         <p>
-          Watch them on map, analyze commands they ran, what they downloaded and see what they were
-          after.
+          Watch them on the map, analyze commands they ran, what they downloaded and see what they
+          were after.
         </p>
         <p>
           Map detail starts at <i>Regular</i>. If it feels slow on a phone or a bigger screen - pick
@@ -255,7 +255,8 @@
     /* Fixed position anchors to viewport; 100dvh enables internal scrolling on mobile. */
     position: fixed;
     inset: 0;
-    height: 100dvh;
+    /* Inside the zoomed .shell, where 100dvh is scaled too; divide it back. */
+    height: calc(100dvh / var(--ui-zoom, 1));
     z-index: 30;
     display: flex;
     /* margin: auto centers without clipping overflow; align-items: center would hide the top on mobile. */

@@ -52,7 +52,9 @@
 <style scoped>
   .shell {
     position: relative;
-    height: 100dvh;
+    /* --ui-zoom scales 4K up; 100dvh is not zoomed, so divide it back out. */
+    zoom: var(--ui-zoom, 1);
+    height: calc(100dvh / var(--ui-zoom, 1));
     display: flex;
     flex-direction: column;
     overflow: hidden;
@@ -114,11 +116,12 @@
     }
 
     .page {
-      padding: 12px 14px 24px;
+      padding: 12px 14px calc(24px + var(--bottomnav-h));
     }
 
+    /* Overview's map ends where the bottom tab bar starts. */
     .page.full-bleed {
-      padding: 0;
+      padding: 0 0 var(--bottomnav-h);
     }
   }
 </style>
