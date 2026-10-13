@@ -4,7 +4,7 @@
       title: string
       hint?: string
       icon?: string
-      headingLevel?: 2 | 3 | 4
+      headingLevel?: 1 | 2 | 3 | 4
     }>(),
     { headingLevel: 2 },
   )
@@ -13,6 +13,7 @@
 <template>
   <div class="empty">
     <div v-if="icon" class="empty-icon" aria-hidden="true">{{ icon }}</div>
+    <slot name="icon" />
     <component :is="`h${headingLevel}`" class="empty-title">{{ title }}</component>
     <p v-if="hint" class="empty-hint">{{ hint }}</p>
     <slot />

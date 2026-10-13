@@ -18,11 +18,11 @@
     tabindex="0"
     class="info-btn"
     :aria-label="`${title}: ${text}`"
-    @pointerenter="tt.show(title, [['', text]])"
-    @pointermove="tt.move($event)"
+    @pointerenter="tt.showAt($event.currentTarget as Element, title, [['', text]])"
     @pointerleave="tt.hide()"
-    @focus="tt.show(title, [['', text]])"
+    @focus="tt.showAt($event.currentTarget as Element, title, [['', text]])"
     @blur="tt.hide()"
+    @keydown.esc="tt.hide()"
   >
     <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
       <path :d="ICONS.info" />
@@ -47,6 +47,19 @@
       color 120ms ease,
       background 120ms ease;
     flex-shrink: 0;
+  }
+
+  /* Touch: 36px hit area, visual size unchanged. */
+  @media (pointer: coarse) {
+    .info-btn {
+      position: relative;
+    }
+
+    .info-btn::after {
+      content: '';
+      position: absolute;
+      inset: -10px;
+    }
   }
 
   .info-btn:hover {

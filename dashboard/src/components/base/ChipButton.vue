@@ -60,7 +60,9 @@
     color: var(--bg-0);
   }
 
-  .chip-wrap:has(.chip-trailing):has(.chip[aria-pressed='true']) .chip-trailing :deep(.info-btn:hover) {
+  .chip-wrap:has(.chip-trailing):has(.chip[aria-pressed='true'])
+    .chip-trailing
+    :deep(.info-btn:hover) {
     background: transparent;
   }
 
@@ -95,6 +97,23 @@
   .chip-trailing {
     display: inline-flex;
     align-items: center;
+  }
+
+  /* Touch: 44px hit area, visuals unchanged. */
+  @media (pointer: coarse) {
+    .chip {
+      position: relative;
+    }
+    .chip::after {
+      content: '';
+      position: absolute;
+      inset: -10px -2px;
+    }
+    /* The trailing info-btn's ::after reaches 10px left across the 2px wrap gap, so
+       the chip's hit area stops short of it. */
+    .chip-wrap:has(.chip-trailing) .chip::after {
+      inset: -10px 8px -10px -2px;
+    }
   }
 
   /* Chips share a row with a card title on mobile, so they shed padding rather

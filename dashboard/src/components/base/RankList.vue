@@ -2,7 +2,7 @@
   /**
    * Ranked list component for networks, SSH clients, hosts, etc.
    */
-  import { computed, useTemplateRef, onMounted, onUnmounted } from 'vue'
+  import { computed, nextTick, ref, useTemplateRef, onMounted, onUnmounted, watch } from 'vue'
   import { useHwTooltip } from '@/composables/useHwTooltip'
 
   export interface RankRow {
@@ -16,6 +16,7 @@
     sub?: string
     badge?: string
     badgeClass?: 'amber' | 'dim' | 'ok' | 'bad'
+    badgeTitle?: string
   }
 
   const {
@@ -24,60 +25,65 @@
     badgeWidth = '60px',
     mono = false,
     fill = 'var(--series-1)',
-    holdToShowTooltip = false,
+    label = 'Ranked list',
   } = defineProps<{
     rows: RankRow[]
     labelWidth?: string
     badgeWidth?: string
     mono?: boolean
     fill?: string
-    /** Opt-in ~3s delay before tooltip appears (prevents spam on dense sidebars). */
-    holdToShowTooltip?: boolean
+    /** Accessible name for the scroller; exposed only while it overflows. */
+    label?: string
   }>()
 
   const tt = useHwTooltip()
-  const HOLD_DELAY_MS = 3000
-  let holdTimer: ReturnType<typeof setTimeout> | null = null
-  function clearHoldTimer(): void {
-    if (holdTimer !== null) {
-      clearTimeout(holdTimer)
-      holdTimer = null
-    }
-  }
-  function showTooltip(text: string): void {
-    clearHoldTimer()
-    if (!holdToShowTooltip) {
-      tt.show(text)
-      return
-    }
-    holdTimer = setTimeout(() => {
-      holdTimer = null
-      tt.show(text)
-    }, HOLD_DELAY_MS)
-  }
-  function hideTooltip(): void {
-    clearHoldTimer()
-    tt.hide()
-  }
 
   const hasIcon = computed(() => rows.some((r) => r.icon))
   const hasBadge = computed(() => rows.some((r) => r.badge))
 
+  // Optional icon, label, optional badge, the middle tracks, then the value.
   // Every column is a FIXED width except the bar track (1fr), so bars start at
   // the same x in every row. Never use `auto` or `minmax` here: each row is its
   // own grid, and content-sized columns resolve per-row -> misaligned bars.
-  const cols = computed(() =>
-    [hasIcon.value ? '18px' : null, labelWidth, hasBadge.value ? badgeWidth : null, '1fr', '62px']
+  function gridCols(labelCol: string, middle: string[]): string {
+    return [
+      hasIcon.value ? '18px' : null,
+      labelCol,
+      hasBadge.value ? badgeWidth : null,
+      ...middle,
+      '62px',
+    ]
       .filter(Boolean)
-      .join(' '),
-  )
+      .join(' ')
+  }
+  const cols = computed(() => gridCols(labelWidth, ['1fr']))
+
+  // Phone: bar drops to its own full-width line under the label row.
+  const colsSm = computed(() => gridCols('minmax(0, 1fr)', []))
 
   // Bottom fade only while there is more to scroll - never covers the last row.
   const el = useTemplateRef('root')
+  const hiddenCount = ref(0)
   function checkMore(): void {
     const n = el.value
-    if (n) n.classList.toggle('rk-more', n.scrollTop + n.clientHeight < n.scrollHeight - 4)
+    if (!n) return
+    const bottom = n.scrollTop + n.clientHeight
+    const more = bottom < n.scrollHeight - 4
+    n.classList.toggle('rk-more', more)
+    // Rows not fully visible; display:none rows (offsetHeight 0) never count.
+    hiddenCount.value = more
+      ? Array.from(n.children).filter(
+          (c) =>
+            (c as HTMLElement).offsetHeight > 0 &&
+            (c as HTMLElement).offsetTop + (c as HTMLElement).offsetHeight > bottom + 1,
+        ).length
+      : 0
   }
+
+  watch(
+    () => rows,
+    () => void nextTick(checkMore),
+  )
 
   const ro = new ResizeObserver(checkMore)
   onMounted(() => {
@@ -86,47 +92,71 @@
   })
   onUnmounted(() => {
     ro.disconnect()
-    clearHoldTimer()
   })
 </script>
 
 <template>
-  <div
-    ref="root"
-    class="rank-list"
-    :style="{ '--rk-cols': cols }"
-    @scroll.passive="checkMore"
-  >
+  <div class="rank-wrap">
+    <!-- one tab stop per list (the scroller, only while it overflows, as a named region); rows are pointer-tooltip only. -->
     <div
-      v-for="r in rows"
-      :key="r.label"
-      class="rank-row"
-      tabindex="0"
-      @pointerenter="showTooltip(r.title ?? r.label)"
-      @pointermove="tt.move($event)"
-      @pointerleave="hideTooltip()"
-      @focus="showTooltip(r.title ?? r.label)"
-      @blur="hideTooltip()"
+      ref="root"
+      class="rank-list"
+      :tabindex="hiddenCount > 0 ? 0 : undefined"
+      :role="hiddenCount > 0 ? 'region' : undefined"
+      :aria-label="hiddenCount > 0 ? label : undefined"
+      :style="{ '--rk-cols': cols, '--rk-cols-sm': colsSm }"
+      @scroll.passive="checkMore"
     >
-      <span v-if="hasIcon" class="rk-icon">{{ r.icon }}</span>
-      <span class="rk-label" :class="{ mono }">{{ r.label }}</span>
-      <span v-if="hasBadge" class="rk-badge">
-        <span v-if="r.badge" class="badge" :class="r.badgeClass ?? 'dim'">{{ r.badge }}</span>
-      </span>
-      <span class="rk-track">
-        <span
-          class="rk-fill"
-          :style="{ width: Math.max(2, Math.round(r.frac * 100)) + '%', background: fill }"
-        />
-      </span>
-      <span class="rk-value num">{{ r.value }}</span>
-      <span v-if="r.sub" class="rk-sub">{{ r.sub }}</span>
+      <div
+        v-for="r in rows"
+        :key="r.label"
+        class="rank-row"
+        @pointerenter="tt.show(r.title ?? r.label)"
+        @pointermove="tt.move($event)"
+        @pointerleave="tt.hide()"
+      >
+        <span v-if="hasIcon" class="rk-icon">{{ r.icon }}</span>
+        <span class="rk-label" :class="{ mono }"
+          >{{ r.label
+          }}<span v-if="r.title && r.title !== r.label" class="visually-hidden">
+            ({{ r.title }})</span
+          ></span
+        >
+        <span v-if="hasBadge" class="rk-badge">
+          <span v-if="r.badge" class="badge" :class="r.badgeClass ?? 'dim'" :title="r.badgeTitle">{{
+            r.badge
+          }}</span>
+        </span>
+        <span class="rk-track">
+          <span
+            class="rk-fill"
+            :style="{ width: Math.max(2, Math.round(r.frac * 100)) + '%', background: fill }"
+          />
+        </span>
+        <span class="rk-value num">{{ r.value }}</span>
+        <span v-if="r.sub" class="rk-sub">{{ r.sub }}</span>
+      </div>
     </div>
+    <p v-if="hiddenCount > 0" class="rk-caption">{{ hiddenCount }} more - scroll</p>
   </div>
 </template>
 
 <style scoped>
+  .rank-wrap {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+
+  .rk-caption {
+    flex: none;
+    margin: 4px 0 0;
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
   .rank-list {
+    position: relative;
     overflow-y: auto;
     min-height: 0;
     scrollbar-width: thin;
@@ -153,8 +183,9 @@
     outline-offset: -1px;
   }
 
-  .rank-row:focus-visible {
+  .rank-list:focus-visible {
     outline: 2px solid var(--accent);
+    outline-offset: -1px;
   }
 
   .rk-label {
@@ -194,11 +225,27 @@
   .rk-sub {
     grid-column: 1 / -1;
     margin-top: -3px;
-    font-size: 11px;
+    font-size: 12px;
     color: var(--text-dim);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+  }
+
+  @media (max-width: 520px) {
+    .rank-row {
+      grid-template-columns: var(--rk-cols-sm);
+      row-gap: 3px;
+    }
+
+    .rk-track {
+      grid-row: 2;
+      grid-column: 1 / -1;
+    }
+
+    .rk-sub {
+      margin-top: 0;
+    }
   }
 
   .badge {

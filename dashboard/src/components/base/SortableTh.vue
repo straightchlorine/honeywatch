@@ -59,11 +59,7 @@
       <slot />
     </template>
     <template v-else>
-      <button
-        type="button"
-        :title="hint"
-        @click="onClick"
-      >
+      <button type="button" :title="hint" @click="onClick">
         <slot />
         <svg
           viewBox="0 0 24 24"
@@ -81,7 +77,11 @@
           />
         </svg>
         <span class="visually-hidden">
-          {{ active ? `sorted ${resolvedDir === 'asc' ? 'ascending' : 'descending'}, ${nextActionText}` : nextActionText }}
+          {{
+            active
+              ? `sorted ${resolvedDir === 'asc' ? 'ascending' : 'descending'}, ${nextActionText}`
+              : nextActionText
+          }}
         </span>
       </button>
     </template>

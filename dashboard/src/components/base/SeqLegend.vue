@@ -1,9 +1,10 @@
 <script setup lang="ts">
-  defineProps<{ min: string; max: string; noneLabel?: string }>()
+  defineProps<{ min: string; max: string; noneLabel?: string; title?: string }>()
 </script>
 
 <template>
   <div class="seq-legend">
+    <span v-if="title" class="title">{{ title }}</span>
     <span>{{ min }}</span>
     <div class="ramp" aria-hidden="true" />
     <span>{{ max }}</span>
@@ -27,6 +28,11 @@
     height: 8px;
     border-radius: 4px;
     background: linear-gradient(90deg, var(--seq-1), var(--seq-3), var(--seq-5), var(--seq-7));
+  }
+
+  .title {
+    color: var(--text-muted);
+    font-weight: 600;
   }
 
   .none {

@@ -16,10 +16,9 @@
     align-items: flex-start;
     padding: 10px 14px;
     margin: 0;
-    border: 1px solid var(--glass-border);
-    border-left: 3px solid var(--accent);
+    border: 1px solid var(--accent-edge);
     border-radius: var(--radius-md);
-    background: rgba(245, 158, 11, 0.05);
+    background: var(--accent-wash);
     font-size: 13px;
     color: var(--text-muted);
   }

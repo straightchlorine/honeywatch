@@ -16,19 +16,10 @@
 </script>
 
 <template>
-  <RouterLink
-    v-if="to"
-    :to="to"
-    class="transparent-button"
-  >
+  <RouterLink v-if="to" :to="to" class="transparent-button">
     <slot />
   </RouterLink>
-  <button
-    v-else
-    type="button"
-    class="transparent-button"
-    @click="handleClick"
-  >
+  <button v-else type="button" class="transparent-button" @click="handleClick">
     <slot />
   </button>
 </template>
