@@ -440,6 +440,12 @@ def _story(authed: Any) -> Any:
     interest), outcome, client banner. `authed` says whether it tried a login.
 
     Needs SshClient joined.
+
+    Known limit:
+    Live counters are counted, so a session still open when a layout was built
+    can change story before the page query re-hashes it.
+    It shifts the page by a row or splits/merges a run at its edge. For the new
+    performance patch - only ended sessions should be hashed.
     """
     return func.hashtextextended(
         func.concat_ws(
@@ -570,6 +576,12 @@ def get_sessions_folded(
 ) -> FoldedPageDict:
     """One page of display rows: runs of look-alike sessions fold into their
     first session, so every page but the last holds exactly per_page rows.
+
+    Known limit:
+    Page query loads every member of each run on the page, not per_page rows
+    (largest is around 1,2k sessions).
+    It is bounded, but should be optimized in the incoming performance patch.
+    Runs should be summarized in SQL instead of _fold.
     """
     resolved = order or _SORT_DEFAULT_DIRECTION[sort]
     conditions = _filter_conditions(

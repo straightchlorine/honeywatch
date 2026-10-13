@@ -1811,7 +1811,7 @@
             }
           },
           {
-            "description": "Fold each run of 3 or more consecutive sessions with the same story (counters, outcome, client) into its first session, which carries a `run` summary. Pages then count display rows, so each holds per_page of them.",
+            "description": "Fold each run of 3 or more consecutive sessions with the same story (counters, outcome, client) into its first session, which carries a `run` summary. Pages then count display rows, so each holds per_page of them. While the layout cannot be built (another build is running), the plain unfolded list is returned instead, with `run` null on every item and `meta` counting sessions, not display rows.",
             "in": "query",
             "name": "fold",
             "required": false,
@@ -2118,6 +2118,7 @@
             "required": true,
             "schema": {
               "example": 41,
+              "maximum": 5000000,
               "minimum": 0,
               "type": "integer"
             }
@@ -2129,6 +2130,7 @@
             "required": true,
             "schema": {
               "example": 12,
+              "maximum": 5000000,
               "minimum": 1,
               "type": "integer"
             }
