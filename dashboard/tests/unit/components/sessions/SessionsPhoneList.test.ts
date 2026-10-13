@@ -125,8 +125,14 @@ describe('SessionsPhoneList', () => {
     expect(loading.get('.more [role="status"]').text()).toBe('Loading\u2026')
     expect(loading.find('.more button').exists()).toBe(false)
 
-    const all = Array.from({ length: run.count }, (_, i) => session(`m${i}`))
-    const done = mountList({ openRuns: open, members: new Map([['lead0000bbbb', all]]) })
+    // A small run: rendering all 1,234 members under jsdom exceeded the 5s timeout in CI.
+    const small = { ...lead, run: { ...run, count: 8 } }
+    const all = Array.from({ length: small.run.count }, (_, i) => session(`m${i}`))
+    const done = mountList({
+      rows: [plain, small],
+      openRuns: open,
+      members: new Map([['lead0000bbbb', all]]),
+    })
     expect(done.find('.more').exists()).toBe(false)
   })
 

@@ -442,7 +442,7 @@
         class="mcell"
         :points="hexPoints(c.x, c.y, HR)"
         :fill="fill(c)"
-        :stroke="c.accepted ? ink(c) : 'none'"
+        :stroke="c.accepted ? 'var(--ok)' : 'none'"
         :stroke-width="c.accepted ? 1.8 : 0"
         :style="{ animationDelay: cellDelay(idx) }"
         :tabindex="c.key === tabKey ? 0 : -1"
@@ -456,21 +456,20 @@
         @click="selectCell(c)"
         @keydown="onKeydown(c, $event)"
       />
-      <!-- Non-colour "accepted" cue: a solid dot near the top vertex (survives at mobile hex size).
-           Inked like the label so it holds contrast on every ramp stop. -->
+      <!-- Non-colour "accepted" cue: a solid dot near the top vertex (survives at mobile hex size). -->
       <circle
         v-if="c.accepted"
         class="mx-accept-dot"
         :cx="c.x"
         :cy="c.y - HR * 0.62"
         r="2.6"
-        :fill="ink(c)"
+        :style="{ animationDelay: cellDelay(idx) }"
         aria-hidden="true"
       />
       <text
         v-if="showLabels && label(c)"
         class="mx-cell-label"
-        :style="{ fill: ink(c) }"
+        :style="{ fill: ink(c), animationDelay: cellDelay(idx) }"
         text-anchor="middle"
         :font-size="cellFs"
         :x="c.x"
@@ -509,10 +508,14 @@
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     pointer-events: none;
+    /* Same entrance and delay as its cell, so the number does not hang in place while the hex flies in. */
+    animation: mcell-in 280ms ease-out both;
   }
 
   .mx-accept-dot {
+    fill: var(--ok);
     pointer-events: none;
+    animation: mcell-in 280ms ease-out both;
   }
 
   .mx-select-ring {
@@ -547,7 +550,9 @@
   }
 
   @media (prefers-reduced-motion: reduce) {
-    .mcell {
+    .mcell,
+    .mx-accept-dot,
+    .mx-cell-label {
       animation: none;
     }
   }

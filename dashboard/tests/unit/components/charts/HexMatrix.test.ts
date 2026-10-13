@@ -27,7 +27,7 @@ describe('HexMatrix', () => {
     expect(w.findAll('polygon.mcell')).toHaveLength(2)
   })
 
-  it('rings an accepted pair in the ink that contrasts its fill (lime fails on mid ramp)', () => {
+  it('rings an accepted pair in the green --ok token', () => {
     const w = mount(HexMatrix, {
       props: {
         users: [{ label: 'admin', count: 10 }],
@@ -35,11 +35,28 @@ describe('HexMatrix', () => {
         pairs: [{ username: 'admin', password: '123456', count: 10, accepted: true }],
       },
     })
-    // Max-count cell: heat 1, so the dark ink wins on the bright end of the ramp.
-    expect(w.find('polygon.mcell').attributes('stroke')).toBe('#120d09')
+    expect(w.find('polygon.mcell').attributes('stroke')).toBe('var(--ok)')
   })
 
-  it('draws the accepted dot in the same ink as its label, for a dark and a bright cell', () => {
+  it('marks every accepted cell with a dot and no rejected one; its green comes from CSS', () => {
+    const w = mount(HexMatrix, {
+      props: {
+        users: [
+          { label: 'a', count: 100 },
+          { label: 'b', count: 2 },
+        ],
+        passwords: [{ label: 'p', count: 1 }],
+        pairs: [
+          { username: 'a', password: 'p', count: 100, accepted: true },
+          { username: 'b', password: 'p', count: 2, accepted: false },
+        ],
+      },
+    })
+    expect(w.findAll('.mx-accept-dot')).toHaveLength(1)
+    expect(w.find('.mx-accept-dot').attributes('fill')).toBeUndefined()
+  })
+
+  it('flies the dot and the label in with their cell: same entrance delay', () => {
     const w = mount(HexMatrix, {
       props: {
         users: [
@@ -53,14 +70,17 @@ describe('HexMatrix', () => {
         ],
       },
     })
+    const delay = (el: { attributes: (k: string) => string | undefined }) =>
+      /animation-delay:\s*([^;]+)/.exec(el.attributes('style') ?? '')?.[1]?.trim()
+    const cells = w.findAll('polygon.mcell')
     const dots = w.findAll('.mx-accept-dot')
-    expect(dots).toHaveLength(2)
-    // Rows render top-down as [b, a]: b is the dark cell, a the bright one.
     const labels = w.findAll('.mx-cell-label')
-    expect(dots[0]!.attributes('fill')).toBe('#f5e6c8') // b: light ink on the dark end
-    expect(labels[0]!.attributes('style')).toContain('rgb(245, 230, 200)')
-    expect(dots[1]!.attributes('fill')).toBe('#120d09') // a: dark ink on the bright end
-    expect(labels[1]!.attributes('style')).toContain('rgb(18, 13, 9)')
+    expect(dots).toHaveLength(2)
+    for (let i = 0; i < 2; i++) {
+      expect(delay(dots[i]!)).toBeDefined()
+      expect(delay(dots[i]!)).toBe(delay(cells[i]!))
+      expect(delay(labels[i]!)).toBe(delay(cells[i]!))
+    }
   })
 
   it('keeps cells whose space-joined labels collide as separate cells with their own counts', () => {

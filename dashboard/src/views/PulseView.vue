@@ -121,7 +121,7 @@
   // Each button renders only when its count is above zero, so the totals are above zero too.
   function trendAriaLabel(): string {
     const { abs, pct } = trendParts.value
-    const shown = pct ? `${abs} · ${pct}` : abs
+    const shown = pct ? `${abs} \u00b7 ${pct}` : abs
     return `7-day trend: ${shown} vs prior week`
   }
 
