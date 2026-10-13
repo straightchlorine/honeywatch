@@ -1,14 +1,23 @@
-import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { mount, type VueWrapper } from '@vue/test-utils'
+import { afterEach, describe, expect, it } from 'vitest'
 
 import HexMatrix from '@/components/charts/HexMatrix.vue'
+
+// Attached mounts go into document.body; tracked so a failing test cannot leak DOM.
+const attached: VueWrapper[] = []
+afterEach(() => {
+  for (const w of attached.splice(0)) w.unmount()
+})
 
 describe('HexMatrix', () => {
   it('renders one hex cell per user x password combination', () => {
     const w = mount(HexMatrix, {
       props: {
         users: [{ label: 'admin', count: 10 }],
-        passwords: [{ label: '123456', count: 10 }, { label: 'root', count: 5 }],
+        passwords: [
+          { label: '123456', count: 10 },
+          { label: 'root', count: 5 },
+        ],
         pairs: [
           { username: 'admin', password: '123456', count: 10, accepted: false },
           { username: 'admin', password: 'root', count: 5, accepted: false },
@@ -18,7 +27,7 @@ describe('HexMatrix', () => {
     expect(w.findAll('polygon.mcell')).toHaveLength(2)
   })
 
-  it('rings an accepted pair', () => {
+  it('rings an accepted pair in the ink that contrasts its fill (lime fails on mid ramp)', () => {
     const w = mount(HexMatrix, {
       props: {
         users: [{ label: 'admin', count: 10 }],
@@ -26,10 +35,83 @@ describe('HexMatrix', () => {
         pairs: [{ username: 'admin', password: '123456', count: 10, accepted: true }],
       },
     })
-    expect(w.find('polygon.mcell').attributes('stroke')).toBe('var(--ok)')
+    // Max-count cell: heat 1, so the dark ink wins on the bright end of the ramp.
+    expect(w.find('polygon.mcell').attributes('stroke')).toBe('#120d09')
   })
 
-  it("flips a cell's label to dark ink only once heat reaches needsDarkInk's INK_FLIP_T, not below it", () => {
+  it('draws the accepted dot in the same ink as its label, for a dark and a bright cell', () => {
+    const w = mount(HexMatrix, {
+      props: {
+        users: [
+          { label: 'a', count: 100 },
+          { label: 'b', count: 2 },
+        ],
+        passwords: [{ label: 'p', count: 1 }],
+        pairs: [
+          { username: 'a', password: 'p', count: 100, accepted: true },
+          { username: 'b', password: 'p', count: 2, accepted: true },
+        ],
+      },
+    })
+    const dots = w.findAll('.mx-accept-dot')
+    expect(dots).toHaveLength(2)
+    // Rows render top-down as [b, a]: b is the dark cell, a the bright one.
+    const labels = w.findAll('.mx-cell-label')
+    expect(dots[0]!.attributes('fill')).toBe('#f5e6c8') // b: light ink on the dark end
+    expect(labels[0]!.attributes('style')).toContain('rgb(245, 230, 200)')
+    expect(dots[1]!.attributes('fill')).toBe('#120d09') // a: dark ink on the bright end
+    expect(labels[1]!.attributes('style')).toContain('rgb(18, 13, 9)')
+  })
+
+  it('keeps cells whose space-joined labels collide as separate cells with their own counts', () => {
+    const w = mount(HexMatrix, {
+      props: {
+        users: [
+          { label: 'admin x', count: 3 },
+          { label: 'admin', count: 5 },
+        ],
+        passwords: [
+          { label: 'y', count: 3 },
+          { label: 'x y', count: 5 },
+        ],
+        pairs: [
+          { username: 'admin x', password: 'y', count: 3, accepted: false },
+          { username: 'admin', password: 'x y', count: 5, accepted: false },
+        ],
+      },
+    })
+    expect(w.findAll('polygon.mcell')).toHaveLength(4)
+    const counts = w.findAll('.mx-cell-label').map((t) => t.text())
+    expect(counts.sort()).toEqual(['3', '5'])
+    expect(w.find('polygon[aria-label="admin x with password y: 3 attempts"]').exists()).toBe(true)
+    expect(w.find('polygon[aria-label="admin with password x y: 5 attempts"]').exists()).toBe(true)
+  })
+
+  it('renders every cell when pipe-joined labels would collide in the v-for key', () => {
+    const w = mount(HexMatrix, {
+      props: {
+        users: [
+          { label: 'a|b', count: 4 },
+          { label: 'a', count: 6 },
+        ],
+        passwords: [
+          { label: 'c', count: 4 },
+          { label: 'b|c', count: 6 },
+        ],
+        pairs: [
+          { username: 'a|b', password: 'c', count: 1, accepted: false },
+          { username: 'a', password: 'b|c', count: 2, accepted: false },
+          { username: 'a|b', password: 'b|c', count: 3, accepted: false },
+          { username: 'a', password: 'c', count: 4, accepted: false },
+        ],
+      },
+    })
+    expect(w.findAll('polygon.mcell')).toHaveLength(4)
+    const labels = w.findAll('.mx-cell-label').map((t) => t.text())
+    expect(labels.sort()).toEqual(['1', '2', '3', '4'])
+  })
+
+  it("flips a cell's label to dark ink only once the dark ink out-contrasts the light one, not below it", () => {
     const w = mount(HexMatrix, {
       props: {
         users: [
@@ -45,10 +127,10 @@ describe('HexMatrix', () => {
     })
     const labels = w.findAll('.mx-cell-label')
     expect(labels).toHaveLength(2)
-    // b: heat = (2/100)^0.45 ~= 0.17, below INK_FLIP_T (0.37) -> stays light ink.
-    expect(labels[0]!.classes()).not.toContain('dark')
-    // a: heat = (100/100)^0.45 = 1, at/above INK_FLIP_T -> flips to dark ink.
-    expect(labels[1]!.classes()).toContain('dark')
+    // b: heat = (2/100)^0.45 ~= 0.17, light ink wins on the dark end of the ramp.
+    expect(labels[0]!.attributes('style')).toContain('rgb(245, 230, 200)')
+    // a: heat = (100/100)^0.45 = 1, dark ink wins on the bright end.
+    expect(labels[1]!.attributes('style')).toContain('rgb(18, 13, 9)')
   })
 
   it('renders an unobserved cell with no number and no outcome claim', () => {
@@ -200,6 +282,56 @@ describe('HexMatrix', () => {
     // Prevent NaN/Infinity from division by zero in empty grid.
     const viewBox = w.find('svg').attributes('viewBox')!
     expect(viewBox).not.toMatch(/NaN|Infinity/)
+  })
+
+  it('is one Tab stop (the busiest cell) that arrows and Home/End move around the grid', async () => {
+    const w = mount(HexMatrix, {
+      attachTo: document.body,
+      props: {
+        users: [
+          { label: 'root', count: 9 },
+          { label: 'admin', count: 5 },
+        ],
+        passwords: [
+          { label: 'a', count: 9 },
+          { label: 'b', count: 5 },
+          { label: 'c', count: 2 },
+        ],
+        pairs: [
+          { username: 'root', password: 'a', count: 9, accepted: false },
+          { username: 'admin', password: 'b', count: 5, accepted: false },
+          { username: 'admin', password: 'c', count: 2, accepted: false },
+        ],
+      },
+    })
+    attached.push(w)
+    // Rows render top-down as [admin, root]; cell index = row * 3 + column.
+    const cells = (): ReturnType<typeof w.findAll> => w.findAll('polygon.mcell')
+    const stop = (): number[] =>
+      cells().flatMap((p, i) => (p.attributes('tabindex') === '0' ? [i] : []))
+    // After each press: the one Tab stop moved AND focus really landed on that polygon.
+    const expectAt = (idx: number): void => {
+      expect(stop()).toEqual([idx])
+      expect(document.activeElement).toBe(cells()[idx]!.element)
+    }
+    // root/a is the busiest; every other cell is tabindex -1. Focus it as a Tab would.
+    ;(cells()[3]!.element as SVGElement).focus()
+    expectAt(3)
+    const press = async (key: string, ctrlKey = false): Promise<void> => {
+      await cells()[stop()[0]!]!.trigger('keydown', { key, ctrlKey })
+    }
+    await press('ArrowRight')
+    expectAt(4)
+    await press('ArrowUp')
+    expectAt(1)
+    await press('ArrowUp') // clamps at the top row
+    expectAt(1)
+    await press('End')
+    expectAt(2)
+    await press('Home', true)
+    expectAt(0)
+    await press('End', true)
+    expectAt(5)
   })
 
   it('grows the viewBox height for a longer password label, but stops growing past the 8-char cap', () => {

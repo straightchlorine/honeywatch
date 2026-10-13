@@ -6,9 +6,11 @@
   import { fmtNumber, fmtCompact } from '@/utils/format'
   import { hexPoints } from '@/utils/hex'
   import { seq } from '@/composables/useSeqScale'
-  import { useHwTooltip } from '@/composables/useHwTooltip'
+  import { useHwTooltip, type TooltipRow } from '@/composables/useHwTooltip'
+  import { useRovingGrid } from '@/composables/useRovingGrid'
   import { useReducedMotion } from '@/composables/useReducedMotion'
   import EmptyState from '@/components/base/EmptyState.vue'
+  import HexFocusRing from '@/components/base/HexFocusRing.vue'
   import SeqLegend from '@/components/base/SeqLegend.vue'
 
   const { points } = defineProps<{ points: HeatmapPointResponse[] }>()
@@ -37,10 +39,36 @@
   const TOP = 6
   const hoursPerCell = computed(() => (compact.value ? 3 : 1))
   const cols = computed(() => 24 / hoursPerCell.value)
-  // Gutter scales with column count to preserve label readability on narrow viewports.
-  const GUT = computed(() => (compact.value ? 32 : 46))
+  // Gutter holds the 3-letter weekday labels (12px on screen); compact has fewer, bigger units per px.
+  const GUT = computed(() => (compact.value ? 26 : 22))
   const VW = computed(() => GUT.value + HXW * (cols.value + 0.5) + 8)
-  const VH = TOP + 1.5 * R * 6 + 2 * R + 6
+
+  // The svg scales with its viewBox, so labels are sized in units as px / scale
+  // to stay 12px on every viewport. Scale needs the width only (height is auto),
+  // so VH may depend on it without a loop. 1 until measured (first paint, jsdom).
+  const LABEL_PX = 12
+  const svgW = ref(0)
+  const fs = computed(() => LABEL_PX / (svgW.value > 0 ? svgW.value / VW.value : 1))
+  let ro: ResizeObserver | null = null
+  let observed: unknown = null
+  // The svg only exists once there is data, so the function ref (re)attaches whenever it appears.
+  function observe(el: unknown): void {
+    if (el === observed) return
+    observed = el
+    ro?.disconnect()
+    ro = null
+    if (!el) return
+    ro = new ResizeObserver(([e]) => {
+      svgW.value = e?.contentRect.width ?? 0
+    })
+    ro.observe(el as Element)
+  }
+
+  // The hour axis sits in a band under the last hex row, sized in label units
+  // so it is one line of text plus a ~5px gap at any scale.
+  const HEX_BOTTOM = TOP + 1.5 * R * 6 + 2 * R
+  const axisY = computed(() => HEX_BOTTOM + fs.value * 1.15)
+  const VH = computed(() => axisY.value + fs.value * 0.1)
 
   const built = computed(() => buildHeatmapGrid(points))
   const isEmpty = computed(() => built.value.max === 0)
@@ -94,7 +122,8 @@
     if (n <= 0) return 'var(--surface-2)'
     const hi = max.value
     const loV = lo.value
-    const norm = hi === loV ? 1 : (Math.log1p(n) - Math.log1p(loV)) / (Math.log1p(hi) - Math.log1p(loV))
+    const norm =
+      hi === loV ? 1 : (Math.log1p(n) - Math.log1p(loV)) / (Math.log1p(hi) - Math.log1p(loV))
     return seq(0.08 + 0.92 * norm)
   }
 
@@ -114,6 +143,19 @@
     }
     return out
   })
+
+  // Hour axis under the comb: 00/06/12/18 at the matching column (bin start).
+  // Last row (Sat) is even, so it has no half-hex shift.
+  const axisTicks = computed(() =>
+    [0, 6, 12, 18].map((hr) => {
+      const h = hr / hoursPerCell.value
+      return {
+        hr,
+        label: String(hr).padStart(2, '0'),
+        x: GUT.value + HXW * h + HXW / 2,
+      }
+    }),
+  )
 
   const hottestCell = computed<Cell | null>(() => {
     let best: Cell | null = null
@@ -153,7 +195,7 @@
     if (bh.count <= 0) return 'Sessions by hour and weekday. No sessions recorded yet.'
     return (
       `Sessions by hour and weekday, UTC. Busiest: ${bd.value} at ${bh.value} ` +
-      `with ${fmtNumber(bh.count)} sessions. Busiest times are listed beside the chart.`
+      `with ${fmtNumber(bh.count)} sessions. Busiest times are listed below the chart.`
     )
   })
 
@@ -167,16 +209,25 @@
     return `${WEEKDAY_LABELS[c.weekday]} ${String(c.hour).padStart(2, '0')}:00-${String(end).padStart(2, '0')}:59`
   }
 
-  function showTooltip(c: Cell, e: { clientX?: number; clientY?: number }): void {
+  function tip(c: Cell): [string, TooltipRow[]] {
     const pct = weeklyMean.value > 0 ? Math.round((c.n / weeklyMean.value) * 100 - 100) : 0
-    tt.show(cellTitle(c), [
-      ['Sessions', fmtNumber(c.n)],
-      ['vs weekly average', `${pct > 0 ? '+' : ''}${pct}%`],
-    ])
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tt.move({ clientX: e.clientX, clientY: e.clientY })
-    }
+    return [
+      cellTitle(c),
+      [
+        ['Sessions', fmtNumber(c.n)],
+        ['vs weekly average', `${pct > 0 ? '+' : ''}${pct}%`],
+      ],
+    ]
   }
+
+  // Rows are staggered by half a hex, so Up/Down keep the column index (one of the two nearest).
+  const { tabKey, ring, onFocus, onBlur, onKeydown } = useRovingGrid({
+    cells,
+    cols,
+    home: () => hottestCell.value?.key,
+    geom: (c) => ({ cx: c.cx, cy: c.cy, r: R - 0.9 }),
+    tip,
+  })
 
   function cellDelay(c: Cell): string {
     return reduced.value ? '0ms' : `${c.hour * 14 + c.weekday * 6}ms`
@@ -194,6 +245,7 @@
       <div class="hex-chart">
         <!-- graphics-document role allows interactive cells; img/aria-hidden would violate nested-interactive/aria-hidden-focus. -->
         <svg
+          :ref="observe"
           class="hex-svg"
           role="graphics-document"
           :aria-label="ariaLabel"
@@ -202,14 +254,27 @@
           <text
             v-for="w in 7"
             :key="`d-${w - 1}`"
-            :x="GUT - 10"
-            :y="TOP + R + 1.5 * R * (w - 1) + 3"
+            :x="GUT - fs * 0.5"
+            :y="TOP + R + 1.5 * R * (w - 1) + fs * 0.36"
             text-anchor="end"
             fill="var(--text-dim)"
-            font-size="8.5"
+            :font-size="fs"
             font-family="var(--font-mono)"
           >
             {{ WEEKDAY_LABELS[w - 1] }}
+          </text>
+          <text
+            v-for="t in axisTicks"
+            :key="`h-${t.hr}`"
+            :x="t.x"
+            :y="axisY"
+            text-anchor="middle"
+            fill="var(--text-dim)"
+            :font-size="fs"
+            font-family="var(--font-mono)"
+            aria-hidden="true"
+          >
+            {{ t.label }}
           </text>
           <polygon
             v-for="c in cells"
@@ -218,15 +283,15 @@
             :points="hexPoints(c.cx, c.cy, R - 0.9)"
             :fill="c.fill"
             :style="{ animationDelay: cellDelay(c) }"
-            tabindex="0"
+            :tabindex="c.key === tabKey ? 0 : -1"
             role="button"
             :aria-label="`${cellTitle(c)}: ${fmtNumber(c.n)} sessions`"
-            @pointerenter="showTooltip(c, $event)"
+            @pointerenter="tt.show(...tip(c), undefined, $event)"
             @pointermove="tt.move($event)"
             @pointerleave="tt.hide()"
-            @focus="showTooltip(c, {})"
-            @blur="tt.hide()"
-            @keydown.enter.space.prevent="showTooltip(c, {})"
+            @focus="onFocus(c, $event)"
+            @blur="onBlur"
+            @keydown="onKeydown(c, $event)"
           />
           <polygon
             v-if="hottestCell"
@@ -236,12 +301,17 @@
             stroke="var(--seq-7)"
             stroke-width="1.3"
           />
+          <HexFocusRing v-if="ring" v-bind="ring" />
         </svg>
       </div>
 
       <footer class="hex-footer">
         <div class="hex-footer-left">
-          <h3 id="hot-cells-title" class="hex-footer-title">Busiest times</h3>
+          <h3 id="hot-cells-title" class="hex-footer-title">
+            Busiest times<span class="hex-footer-grain">{{
+              compact ? '3-hour bands' : 'by hour'
+            }}</span>
+          </h3>
           <!-- Named from heading to avoid SR reading the same info twice (name + each item). -->
           <ul class="hot-list" aria-labelledby="hot-cells-title">
             <li v-for="c in hotCells" :key="c.key" class="hot-row">
@@ -253,7 +323,7 @@
             </li>
           </ul>
         </div>
-        <SeqLegend class="hex-legend" :min="legendMin" :max="legendMax" />
+        <SeqLegend class="hex-legend" title="Sessions" :min="legendMin" :max="legendMax" />
       </footer>
 
       <ul class="visually-hidden">
@@ -281,6 +351,7 @@
   .hex-chart svg {
     width: 100%;
     height: auto;
+    overflow: visible;
   }
 
   .hexcell {
@@ -295,11 +366,6 @@
 
   .hexcell:focus {
     outline: none;
-  }
-
-  .hexcell:focus-visible {
-    stroke: var(--accent-hot);
-    stroke-width: 2;
   }
 
   @keyframes hex-in {
@@ -317,7 +383,7 @@
     align-items: center;
     gap: 16px;
     border-top: 1px solid var(--grid-line);
-    padding-top: 10px;
+    padding: 10px 0;
     margin-top: 10px;
     min-height: 26px;
   }
@@ -336,6 +402,13 @@
     color: var(--text-dim);
     flex: none;
     white-space: nowrap;
+  }
+
+  .hex-footer-grain {
+    margin-left: 8px;
+    font-weight: 500;
+    letter-spacing: normal;
+    text-transform: none;
   }
 
   .hot-list {
@@ -381,18 +454,42 @@
       flex-direction: column;
       align-items: flex-start;
       gap: 10px;
-      padding-top: 12px;
+      padding: 12px 0 0;
       min-height: auto;
     }
 
     .hex-footer-left {
       width: 100%;
-      flex-wrap: wrap;
+      flex-direction: column;
+      align-items: stretch;
+      gap: 10px;
+    }
+
+    .hex-footer,
+    .hex-legend {
+      min-width: 0;
     }
 
     .hot-list {
-      flex-wrap: wrap;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      column-gap: 9px;
       row-gap: 6px;
+    }
+
+    .hot-row {
+      grid-column: 1 / -1;
+      display: grid;
+      grid-template-columns: subgrid;
+    }
+
+    .hot-row + .hot-row {
+      border-top: 1px dotted var(--grid-line);
+      padding-top: 8px;
+    }
+
+    .hot-value {
+      text-align: right;
     }
 
     .hex-legend {

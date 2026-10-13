@@ -9,8 +9,10 @@
   import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
   import { useReducedMotion } from '@/composables/useReducedMotion'
   import { hexPoints } from '@/utils/hex'
-  import { seq, needsDarkInk } from '@/composables/useSeqScale'
-  import { useHwTooltip } from '@/composables/useHwTooltip'
+  import { seq, inkFor } from '@/composables/useSeqScale'
+  import { useHwTooltip, type TooltipRow } from '@/composables/useHwTooltip'
+  import { useRovingGrid } from '@/composables/useRovingGrid'
+  import HexFocusRing from '@/components/base/HexFocusRing.vue'
   import { fmtCompact, fmtNumber } from '@/utils/format'
 
   export interface MatrixEntity {
@@ -59,18 +61,22 @@
   const PY = 40
   const HR = 16.6
 
-  // Measured against the live --font-mono stack (monospace, so one width
-  // fits every char): 7px/char advance, 12/3 ascent/descent regardless of
+  // Labels render at a fixed on-screen size (the svg scales with its viewBox,
+  // so the unit size is px / scale; see `scale`). Metrics are measured against
+  // the live --font-mono stack (monospace, so one advance fits every char),
+  // in em: 7px/char advance, 12/3 ascent/descent at 11.5px, regardless of
   // content.
-  const AXIS_CHAR_W = 7
-  const AXIS_ASCENT = 12
-  const AXIS_DESCENT = 3
+  const AXIS_PX = 12
+  const CELL_PX = 12
+  const AXIS_CHAR_EM = 0.61
+  const AXIS_ASCENT_EM = 1.04
+  const AXIS_DESCENT_EM = 0.26
   const AXIS_ROTATE_DEG = 38
   const AXIS_COS = Math.cos((AXIS_ROTATE_DEG * Math.PI) / 180)
   const AXIS_SIN = Math.sin((AXIS_ROTATE_DEG * Math.PI) / 180)
   // Antialiasing/hinting nudges glyphs past their measured width; this
   // absorbs that residue instead of padding by guesswork.
-  const AXIS_SAFETY = 4
+  const AXIS_SAFETY_EM = 0.35
   // Fixed breathing room between a label's anchor and the grid it labels.
   const ROW_LABEL_GAP = 12
   const COL_LABEL_GAP = 10
@@ -95,19 +101,22 @@
 
   /** How far a right-anchored row label reaches left of its anchor - capped
    *  text width plus the safety margin. */
-  function rowLabelReach(charCount: number): number {
-    return Math.min(charCount, MAX_LABEL_CHARS) * AXIS_CHAR_W + AXIS_SAFETY
+  function rowLabelReach(charCount: number, fs: number): number {
+    return (Math.min(charCount, MAX_LABEL_CHARS) * AXIS_CHAR_EM + AXIS_SAFETY_EM) * fs
   }
 
   /** Reach of a rotated (-AXIS_ROTATE_DEG), end-anchored column label past
    *  its anchor: top-left corner -> `left` (feeds GX), bottom-left ->
    *  `bottom` (feeds GY), bottom-right -> `right` (charCount-independent). */
-  function colLabelReach(charCount: number): { left: number; right: number; bottom: number } {
-    const w = Math.min(charCount, MAX_LABEL_CHARS) * AXIS_CHAR_W
+  function colLabelReach(
+    charCount: number,
+    fs: number,
+  ): { left: number; right: number; bottom: number } {
+    const w = Math.min(charCount, MAX_LABEL_CHARS) * AXIS_CHAR_EM
     return {
-      left: w * AXIS_COS + AXIS_ASCENT * AXIS_SIN + AXIS_SAFETY,
-      right: AXIS_DESCENT * AXIS_SIN + AXIS_SAFETY,
-      bottom: w * AXIS_SIN + AXIS_DESCENT * AXIS_COS + AXIS_SAFETY,
+      left: (w * AXIS_COS + AXIS_ASCENT_EM * AXIS_SIN + AXIS_SAFETY_EM) * fs,
+      right: (AXIS_DESCENT_EM * AXIS_SIN + AXIS_SAFETY_EM) * fs,
+      bottom: (w * AXIS_SIN + AXIS_DESCENT_EM * AXIS_COS + AXIS_SAFETY_EM) * fs,
     }
   }
 
@@ -115,11 +124,11 @@
   // slicing later keeps that ranking.
   const candidateUsers = computed(() => {
     const withPair = new Set(props.pairs.map((p) => p.username))
-    return props.users.filter((u) => withPair.has(u.label))
+    return props.users.filter((u) => withPair.has(u.label)).slice(0, phoneCap.value)
   })
   const candidatePasswords = computed(() => {
     const withPair = new Set(props.pairs.map((p) => p.password))
-    return props.passwords.filter((p) => withPair.has(p.label))
+    return props.passwords.filter((p) => withPair.has(p.label)).slice(0, phoneCap.value)
   })
 
   // Sized off the CANDIDATE lists (pre-fit), not displayed* - GX/GY must
@@ -140,23 +149,29 @@
   /** Row-label gutter: fits the longest candidate username, or column 0's
    *  rotated label off the viewBox's left edge - whichever needs more. */
   const GX = computed(() => {
-    const forRowLabels = ROW_LABEL_GAP + rowLabelReach(maxUserChars.value)
-    const forColumnZero = colLabelReach(maxPasswordChars.value).left - PX_BASE / 2
+    const forRowLabels = ROW_LABEL_GAP + rowLabelReach(maxUserChars.value, axisFs.value)
+    const forColumnZero = colLabelReach(maxPasswordChars.value, axisFs.value).left - PX_BASE / 2
     return Math.max(forRowLabels, forColumnZero)
   })
   /** Column-label band below the grid, sized to the longest candidate
    *  password's rotated label. */
-  const GY = computed(() => COL_LABEL_GAP + colLabelReach(maxPasswordChars.value).bottom)
-
-  // Feeds only the column-fit scale below - reading displayedUsers here would
-  // make sizing depend on `cols` and spin.
-  const scaleHeight = computed(() => CELL_TOP_PAD + candidateUsers.value.length * PY + GY.value)
+  const GY = computed(
+    () => COL_LABEL_GAP + colLabelReach(maxPasswordChars.value, axisFs.value).bottom,
+  )
 
   // svg is flex:1/min-height:0 inside the card, so its box never depends on
   // our viewBox - safe to observe.
   const svgEl = useTemplateRef('svg')
   const boxW = ref(0)
   const boxH = ref(0)
+  // Phone-width cards get a square top-N grid (rows and columns) so labels
+  // and cells stay legible; chosen from the measured width, not the device.
+  const PHONE_MAX_W = 520
+  const PHONE_NARROW_W = 310
+  const phoneCap = computed(() => {
+    if (boxW.value <= 0 || boxW.value >= PHONE_MAX_W) return Infinity
+    return boxW.value < PHONE_NARROW_W ? 4 : 5
+  })
   let ro: ResizeObserver | null = null
   onMounted(() => {
     if (!svgEl.value) return
@@ -168,20 +183,32 @@
   })
   onUnmounted(() => ro?.disconnect())
 
-  // Columns that fit at the card's live size: derive scale from scaleHeight,
-  // then how many PX_BASE-wide columns fit in width. Falls back to every
-  // candidate column pre-measurement (first paint, or jsdom's no-op RO stub).
+  // Rendered scale (px per viewBox unit) the column fit assumes: the svg is
+  // height-bound on the CANDIDATE rows (reading displayedUsers would make
+  // sizing depend on `cols` and spin). Label unit size is AXIS_PX / scale and
+  // the label band grows with it, so scale = boxH / (a + k * AXIS_PX / scale);
+  // solve it in closed form rather than iterate. 1 until measured.
+  const scale = computed(() => {
+    if (!Number.isFinite(boxH.value) || boxH.value <= 0) return 1
+    const a = CELL_TOP_PAD + candidateUsers.value.length * PY + COL_LABEL_GAP
+    const k = colLabelReach(maxPasswordChars.value, 1).bottom
+    return Math.max(0.3, (boxH.value - AXIS_PX * k) / a)
+  })
+  const axisFs = computed(() => AXIS_PX / scale.value)
+
+  // Columns that fit at the card's live size: how many PX_BASE-wide columns fit
+  // in width at `scale`. Falls back to every candidate column pre-measurement
+  // (first paint, or jsdom's no-op RO stub).
   const cols = computed(() => {
     // Check finiteness before dividing - NaN would slip past a falsy check.
     if (!Number.isFinite(boxW.value) || !Number.isFinite(boxH.value)) {
       return candidatePasswords.value.length
     }
     if (boxW.value <= 0 || boxH.value <= 0) return candidatePasswords.value.length
-    const scale = boxH.value / scaleHeight.value
     // Estimate only - charCount-independent, so using maxPasswordChars here
     // (before displayedPasswords is known) can't skew it.
-    const estimatedRightPad = colLabelReach(maxPasswordChars.value).right
-    const raw = Math.floor((boxW.value / scale - GX.value - estimatedRightPad) / PX_BASE)
+    const estimatedRightPad = colLabelReach(maxPasswordChars.value, axisFs.value).right
+    const raw = Math.floor((boxW.value / scale.value - GX.value - estimatedRightPad) / PX_BASE)
     return Math.min(candidatePasswords.value.length, Math.max(6, raw))
   })
   // candidatePasswords arrive sorted by count desc, so slicing from the front
@@ -216,11 +243,10 @@
     ) {
       return PX_BASE
     }
-    const scale = boxH.value / scaleHeight.value
-    const available = boxW.value / scale
+    const available = boxW.value / scale.value
     let bound = Infinity
     displayedPasswords.value.forEach((p, j) => {
-      const reach = colLabelReach(p.label.length).right
+      const reach = colLabelReach(p.label.length, axisFs.value).right
       bound = Math.min(bound, (available - GX.value - reach) / (j + 0.5))
     })
     return Number.isFinite(bound) ? Math.max(PX_BASE, bound) : PX_BASE
@@ -232,12 +258,15 @@
     const gridRight = GX.value + displayedPasswords.value.length * px.value
     let maxLabelRight = gridRight
     displayedPasswords.value.forEach((p, j) => {
-      maxLabelRight = Math.max(maxLabelRight, colX(j) + colLabelReach(p.label.length).right)
+      maxLabelRight = Math.max(
+        maxLabelRight,
+        colX(j) + colLabelReach(p.label.length, axisFs.value).right,
+      )
     })
     return maxLabelRight
   })
   // Grid's actual (post-fit) bottom edge; height and colLabelY key off this,
-  // not the pre-fit scaleHeight. Driven by displayedUsers, so a rare
+  // not the pre-fit candidate height. Driven by displayedUsers, so a rare
   // pruning-after-fit frame may letterbox slightly rather than reopen the
   // cols loop.
   const gridBottom = computed(() => CELL_TOP_PAD + displayedUsers.value.length * PY)
@@ -251,12 +280,13 @@
     { immediate: true },
   )
 
-  // In-cell count is 8px in viewBox units; below ~9px on-screen it's mush -
-  // drop it and let fill/tooltip/drawer carry the number instead.
-  const LABEL_MIN_SCALE = 9 / 8
+  // In-cell counts render at CELL_PX; when the longest one is wider than the
+  // hex there, drop them all and let fill/tooltip/drawer carry the number.
+  const cellFs = computed(() => CELL_PX / scale.value)
   const showLabels = computed(() => {
     if (!Number.isFinite(boxH.value) || boxH.value <= 0) return true
-    return boxH.value / height.value >= LABEL_MIN_SCALE
+    const chars = Math.max(0, ...cells.value.map((c) => label(c).length))
+    return chars * AXIS_CHAR_EM * cellFs.value <= HR * 1.6
   })
 
   function colX(j: number): number {
@@ -277,16 +307,17 @@
     password: string
   }
 
+  // JSON tuples for lookup and v-for keys: labels may hold any separator.
   const cells = computed<Cell[]>(() => {
-    const real = new Map(props.pairs.map((p) => [`${p.username} ${p.password}`, p]))
+    const real = new Map(props.pairs.map((p) => [JSON.stringify([p.username, p.password]), p]))
     const out: Cell[] = []
     displayedUsers.value.forEach((u, i) => {
       const y = rowY(i)
       displayedPasswords.value.forEach((p, j) => {
         const x = colX(j)
-        const hit = real.get(`${u.label} ${p.label}`)
+        const hit = real.get(JSON.stringify([u.label, p.label]))
         out.push({
-          key: `${u.label}|${p.label}`,
+          key: JSON.stringify([u.label, p.label]),
           x,
           y,
           n: hit?.count ?? 0,
@@ -315,10 +346,14 @@
   function fill(c: Cell): string {
     return c.observed && c.n > 0 ? seq(heat(c)) : 'var(--surface-2)'
   }
-  // In-cell count flips to dark ink when the fill is bright enough that
-  // light text would fail contrast.
-  function isDark(c: Cell): boolean {
-    return needsDarkInk(heat(c))
+  // In-cell count takes whichever ink contrasts best with its fill (WCAG).
+  function ink(c: Cell): string {
+    return inkFor(heat(c))
+  }
+  // selectedKey is `${username}|${password}` (set by the caller), so compare
+  // against that format rather than the JSON cell key.
+  function isSelected(c: Cell): boolean {
+    return props.selectedKey === `${c.username}|${c.password}`
   }
   function label(c: Cell): string {
     return c.observed ? fmtCompact(c.n) : ''
@@ -327,8 +362,8 @@
     if (!c.observed) return `${c.username} with password ${c.password}: never tried`
     return `${c.username} with password ${c.password}: ${fmtNumber(c.n)} attempts${c.accepted ? ', accepted' : ''}`
   }
-  function showTooltip(c: Cell, e: { clientX?: number; clientY?: number }): void {
-    tooltip.show(
+  function tip(c: Cell): [string, TooltipRow[]] {
+    return [
       `${c.username}:${c.password}`,
       c.observed
         ? [
@@ -336,10 +371,7 @@
             ['Outcome', c.accepted ? 'accepted' : 'rejected'],
           ]
         : [['Outcome', 'never tried']],
-    )
-    if (e.clientX !== undefined && e.clientY !== undefined) {
-      tooltip.move({ clientX: e.clientX, clientY: e.clientY })
-    }
+    ]
   }
 
   function selectCell(c: Cell): void {
@@ -351,12 +383,14 @@
       observed: c.observed,
     })
   }
-  function onKeydown(c: Cell, e: KeyboardEvent): void {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault()
-      selectCell(c)
-    }
-  }
+  const { tabKey, ring, onFocus, onBlur, onKeydown } = useRovingGrid({
+    cells,
+    cols: () => displayedPasswords.value.length,
+    home: () => cells.value.reduce<Cell | null>((b, c) => (!b || c.n > b.n ? c : b), null)?.key,
+    geom: (c) => ({ cx: c.x, cy: c.y, r: HR }),
+    tip,
+    activate: selectCell,
+  })
 
   function cellDelay(idx: number): string {
     return reduced.value ? '0ms' : `${idx * 12}ms`
@@ -382,6 +416,7 @@
       class="mx-axis"
       text-anchor="end"
       :aria-label="p.label"
+      :font-size="axisFs"
       :x="colX(j)"
       :y="colLabelY"
       :transform="`rotate(-${AXIS_ROTATE_DEG} ${colX(j)} ${colLabelY})`"
@@ -394,8 +429,9 @@
       class="mx-axis"
       text-anchor="end"
       :aria-label="u.label"
+      :font-size="axisFs"
       :x="GX - ROW_LABEL_GAP"
-      :y="rowY(i) + 4"
+      :y="rowY(i) + axisFs * 0.35"
     >
       {{ truncateLabel(u.label) }}
     </text>
@@ -406,39 +442,52 @@
         class="mcell"
         :points="hexPoints(c.x, c.y, HR)"
         :fill="fill(c)"
-        :stroke="c.accepted ? 'var(--ok)' : 'none'"
+        :stroke="c.accepted ? ink(c) : 'none'"
         :stroke-width="c.accepted ? 1.8 : 0"
         :style="{ animationDelay: cellDelay(idx) }"
-        tabindex="0"
+        :tabindex="c.key === tabKey ? 0 : -1"
         role="button"
         :aria-label="ariaLabel(c)"
-        @pointerenter="showTooltip(c, $event)"
+        @pointerenter="tooltip.show(...tip(c), undefined, $event)"
         @pointermove="tooltip.move($event)"
         @pointerleave="tooltip.hide()"
-        @focus="showTooltip(c, {})"
-        @blur="tooltip.hide()"
+        @focus="onFocus(c, $event)"
+        @blur="onBlur"
         @click="selectCell(c)"
         @keydown="onKeydown(c, $event)"
+      />
+      <!-- Non-colour "accepted" cue: a solid dot near the top vertex (survives at mobile hex size).
+           Inked like the label so it holds contrast on every ramp stop. -->
+      <circle
+        v-if="c.accepted"
+        class="mx-accept-dot"
+        :cx="c.x"
+        :cy="c.y - HR * 0.62"
+        r="2.6"
+        :fill="ink(c)"
+        aria-hidden="true"
       />
       <text
         v-if="showLabels && label(c)"
         class="mx-cell-label"
-        :class="{ dark: isDark(c) }"
+        :style="{ fill: ink(c) }"
         text-anchor="middle"
+        :font-size="cellFs"
         :x="c.x"
-        :y="c.y + 3"
+        :y="c.y + cellFs * 0.36"
         aria-hidden="true"
       >
         {{ label(c) }}
       </text>
       <polygon
-        v-if="c.key === selectedKey"
+        v-if="isSelected(c)"
         class="mx-select-ring"
         :points="hexPoints(c.x, c.y, HR)"
         fill="none"
         aria-hidden="true"
       />
     </g>
+    <HexFocusRing v-if="ring" v-bind="ring" />
     <!-- eslint-enable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
   </svg>
 </template>
@@ -447,24 +496,23 @@
   .hex-matrix {
     display: block;
     width: 100%;
+    overflow: visible;
   }
 
   .mx-axis {
     fill: var(--text-muted);
-    font-size: 11.5px;
     font-family: var(--font-mono);
   }
 
   .mx-cell-label {
     fill: var(--text);
-    font-size: 8px;
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
     pointer-events: none;
   }
 
-  .mx-cell-label.dark {
-    fill: var(--bg-1);
+  .mx-accept-dot {
+    pointer-events: none;
   }
 
   .mx-select-ring {
@@ -485,11 +533,6 @@
 
   .mcell:focus {
     outline: none;
-  }
-
-  .mcell:focus-visible {
-    stroke: var(--accent-hot);
-    stroke-width: 2;
   }
 
   @keyframes mcell-in {
