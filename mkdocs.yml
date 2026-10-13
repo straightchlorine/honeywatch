@@ -1,5 +1,5 @@
 site_name: Honeywatch
-site_description: SSH honeypot with attack visualization and threat analysis
+site_description: "SSH honeypot with a live attack dashboard: Cowrie, PostgreSQL, a read-only API and a Vue dashboard"
 site_author: Piotr Krzysztof Lis, Jakub Kucharski
 site_url: https://docs.honeywatch.piotrkrzysztof.dev
 

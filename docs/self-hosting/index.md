@@ -1,5 +1,6 @@
 ---
-description: "Deploy Honeywatch on a VPS with Docker Compose, pin every port to loopback, and verify it before exposing anything."
+title: Deploy the Honeywatch Honeypot Stack on a VPS
+description: "Deploy Honeywatch on a VPS with Docker Compose, pin every published port to loopback and verify the stack works before you expose anything to the internet."
 ---
 
 # Deploy the Stack

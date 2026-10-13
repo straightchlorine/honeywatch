@@ -19,6 +19,15 @@
   text-underline-offset: 0.15em;
 }
 
+/* Material draws comments, variables and punctuation in rgba(0,0,0,.54), 4.47:1 on #f5f5f5 */
+[data-md-color-scheme="default"] {
+  --md-code-hl-comment-color: #595959;
+  --md-code-hl-variable-color: #595959;
+  --md-code-hl-punctuation-color: #595959;
+  --md-code-hl-operator-color: #595959;
+  --md-code-hl-generic-color: #595959;
+}
+
 .md-copyright {
   color: var(--md-footer-fg-color--light);
 }

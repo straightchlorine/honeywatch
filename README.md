@@ -123,3 +123,11 @@ uv run --with-requirements docs/requirements.txt mkdocs serve
 This product includes GeoLite Data created by MaxMind, available from https://www.maxmind.com.
 
 Country boundaries are made with Natural Earth.
+
+---
+
+<div align="center">
+
+To the only God, be honour and glory for ever and ever.
+
+</div>

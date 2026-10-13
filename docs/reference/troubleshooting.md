@@ -1,5 +1,6 @@
 ---
-description: "Symptoms and fixes for the failures the Honeywatch stack actually produces."
+title: "Honeywatch Troubleshooting: Symptoms and Fixes"
+description: "Symptoms and fixes for failures the Honeywatch stack produces, starting with three commands that answer most questions about containers, logs and data."
 ---
 
 # Troubleshooting

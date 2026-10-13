@@ -1,5 +1,6 @@
 ---
-description: "Every Honeywatch REST endpoint, the conventions, the privacy guarantees and the generated TypeScript client."
+title: "Honeywatch REST API: Endpoints and Conventions"
+description: "Every Honeywatch REST endpoint under /api/v1, the response conventions, how source IPs are kept out of responses and how the TypeScript client is generated."
 ---
 
 # REST API
@@ -49,8 +50,10 @@ They do not work through the dashboard's 8080 forward, whose nginx matches
 | Pagination | `page` and `per_page` (max 100); body is `{items, meta}` with `meta` as `{page, per_page, pages, total}` |
 | Errors | `{code, status, message}`, plus `errors` naming the fields. 422 for validation, 404 for not found, 503 for unhealthy |
 
-JSON responses carry `Cache-Control: public, max-age=30`, except the map (120)
-and a country detail (300). Errors and the spec are `no-store`.
+JSON responses carry `Cache-Control: public, max-age=30`, except the heavier
+aggregates (top-credentials, countries, asns, auth-outcomes, password-composition,
+passwords-by-length, map, ssh-clients, fingerprints) at 120 and a country detail
+at 300. Errors and the spec are `no-store`.
 
 ## Endpoints
 
@@ -59,7 +62,8 @@ and a country detail (300). Errors and the spec are `no-store`.
 | Path | Returns |
 | --- | --- |
 | `/api/v1/sessions/` | Paginated session summaries, plus `max_interest` for normalizing scores |
-| `/api/v1/sessions/{session_id}` | Full detail: auth attempts, commands, downloads, client info. 404 if unknown |
+| `/api/v1/sessions/run` | One page of the sessions folded into a run of a `fold` list |
+| `/api/v1/sessions/{session_id}` | Full detail: auth attempts, commands, downloads, client info, `interest` and `max_interest`. 404 if unknown |
 
 The trailing slash on the list route is part of the path. Session ids are
 Cowrie's opaque identifiers; get them from the list rather than guessing.
@@ -76,6 +80,27 @@ Query parameters for the list:
 | `sort` | `recent` | `recent`, `country`, `active`, `interest` or `duration` |
 | `has` | | Comma-separated flags, e.g. `commands,success` |
 | `sha256` | | Sessions that downloaded that payload |
+| `fold` | `false` | Fold runs of 3+ consecutive look-alike sessions into one row; see below |
+
+
+With `fold=true`, each run of three or more consecutive sessions (in the
+requested order and filters) with the same story - command, download and relay
+counts, login outcome, client banner - becomes one row:
+its first session, with a `run` object giving the number of sessions folded behind it,
+their countries, duration and start-time ranges, and the run's `offset`.
+
+Every other row has `run: null`. `meta.pages` then counts rows rather than sessions, so
+every page but the last holds exactly `per_page` rows, while `meta.total` is
+still the session count. The response carries `as_of`: the list is a
+snapshot, and sessions started after it show up once the snapshot refreshes,
+within about a minute.
+
+When the server cannot build a snapshot within a few seconds (it builds one at a time),
+the response is the plain list instead, with every `run` null and `meta.pages` counting sessions.
+
+`/api/v1/sessions/run` lists a run's sessions. Pass the folded list's own
+filters, `sort` and `order`, plus its `as_of` and the run's `offset` and
+`count`; `page` and `per_page` page through the run.
 
 ### Stats
 

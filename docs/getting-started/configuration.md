@@ -1,5 +1,6 @@
 ---
-description: "Every environment variable Honeywatch reads, what reads it, its default, and what breaks when it is wrong."
+title: "Honeywatch Configuration: Every .env Variable"
+description: "Every Honeywatch environment variable: which service reads it, its default and whether docker-compose.yml passes it on. Also lists the Cowrie config files."
 ---
 
 # Configuration

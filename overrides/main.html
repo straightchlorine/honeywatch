@@ -40,7 +40,8 @@
           "name": {{ config.site_name | tojson }},
           "url": {{ site | tojson }},
           "description": {{ config.site_description | tojson }},
-          "inLanguage": "en"
+          "inLanguage": "en",
+          "author": { "@id": {{ person | tojson }} }
         },
         {
           "@type": "Person",
@@ -84,4 +85,13 @@
     }
     </script>
   {% endif %}
+{% endblock %}
+
+{% block scripts %}
+  {{ super() }}
+  {#- Material's search dialog has role="dialog" but no accessible name -#}
+  <script>
+    var searchDialog = document.querySelector('.md-search[role="dialog"]');
+    if (searchDialog && !searchDialog.hasAttribute("aria-label")) searchDialog.setAttribute("aria-label", "Search");
+  </script>
 {% endblock %}

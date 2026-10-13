@@ -1,5 +1,6 @@
 ---
-description: "Move your real SSH server off port 22, prove you can still log in, then hand the port to the Cowrie honeypot."
+title: Expose Port 22 to a Honeypot Without Lockout
+description: "Move your real SSH server off port 22, prove you can still log in on the new port, then hand port 22 to Cowrie and check it from another machine with nmap."
 ---
 
 # Exposing Port 22
@@ -175,8 +176,8 @@ The host-key flags matter here. Your `known_hosts` still holds your real
 server's key for this address, and OpenSSH aborts with
 `REMOTE HOST IDENTIFICATION HAS CHANGED` before asking for a password.
 
-A `[root@centos ~]#` prompt means the whole path works, and that session is in
-the dashboard within seconds.
+A `[root@centos ~]#` prompt means the whole path works, and that session reaches
+the dashboard within a minute.
 
 ## What Attackers See
 

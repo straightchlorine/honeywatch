@@ -1,5 +1,6 @@
 ---
-description: "Toolchain, test gates, the OpenAPI drift check, migrations and CI for contributing to Honeywatch."
+title: "Developing Honeywatch: Toolchain, Tests and CI"
+description: "Development guide for Honeywatch: toolchain versions, test gates, the OpenAPI drift check, database migrations and where just test still falls short of CI."
 ---
 
 # Development

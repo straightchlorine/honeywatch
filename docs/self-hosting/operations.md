@@ -1,5 +1,6 @@
 ---
-description: "Logs, updates, GeoLite2 refresh, backups, pruning and metrics for a running Honeywatch honeypot."
+title: "Operating a Honeywatch Honeypot: Logs, Backups"
+description: "Read logs, update the stack, refresh GeoLite2 geolocation, back up and prune the database, and watch ingestor metrics on a running Honeywatch honeypot."
 ---
 
 # Operating It

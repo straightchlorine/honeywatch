@@ -1,5 +1,6 @@
 ---
-description: "Bring the Honeywatch stack up on your laptop with Docker Compose and see your first honeypot session in the dashboard."
+title: Honeywatch Quick Start With Docker Compose
+description: "Bring the Honeywatch stack up on your laptop with Docker Compose, log in to the fake SSH server on port 2222 and see your first session in the dashboard."
 ---
 
 # Quick Start
@@ -89,9 +90,11 @@ purpose. A box where the four most-guessed passwords all work looks like a
 honeypot.
 
 Once you are in, type a few commands (`uname -a`, `cat /etc/os-release`,
-`wget http://example.com/x`), then `exit`. Within a second or two the session
-shows up at <http://localhost:8080> on the Overview feed and under Sessions,
-where you can read the transcript back.
+`wget http://example.com/x`), then `exit`. The ingestor writes the session
+within a second or two. The dashboard at <http://localhost:8080> shows it after
+its next refresh, up to about a minute later: the Overview feed polls every 20
+seconds, and the Sessions page needs a reload. There you can read the
+transcript back.
 
 To watch the raw events as the ingestor sees them:
 

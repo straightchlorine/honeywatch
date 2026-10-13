@@ -1,6 +1,6 @@
 ---
 title: SSH honeypot with live attack dashboard
-description: "Run your own SSH honeypot: Cowrie, PostgreSQL, a read-only API and a Vue dashboard in five Docker containers."
+description: "Run your own SSH honeypot. Cowrie records the attacks, an ingestor stores them in PostgreSQL and a read-only API feeds a Vue dashboard with a world map."
 ---
 
 # Honeywatch
@@ -30,7 +30,7 @@ PostgreSQL. A read-only Flask API serves aggregates over that data, and a Vue
 dashboard turns them into a world map, an activity heatmap, credential
 leaderboards and per-session replays.
 
-The whole thing is five containers on one Docker network. Simplest
+The default setup is five containers on one Docker network. Simplest
 configuration would include the following:
 
 1. Clone the repo onto a VPS or a spare machine;

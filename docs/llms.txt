@@ -1,6 +1,6 @@
 # Honeywatch
 
-> SSH honeypot with a live attack dashboard: Cowrie, PostgreSQL, a read-only API and a Vue dashboard in five Docker containers.
+> SSH honeypot with a live attack dashboard: Cowrie, PostgreSQL, a read-only API and a Vue dashboard. The default setup is five containers on one Docker network.
 
 Honeywatch answers SSH on port 22 pretending to be a neglected CentOS box, records every session into PostgreSQL, and serves aggregates (world map, activity heatmap, credential leaderboards, session replays) through a read-only Flask API and a Vue dashboard. These docs cover running your own instance and how it works.
 
@@ -8,7 +8,7 @@ Honeywatch answers SSH on port 22 pretending to be a neglected CentOS box, recor
 
 - [Home](https://docs.honeywatch.piotrkrzysztof.dev/): what Honeywatch is and how the pieces fit
 - [Quick Start](https://docs.honeywatch.piotrkrzysztof.dev/getting-started/quick-start/): bring the stack up locally with Docker Compose
-- [Configuration](https://docs.honeywatch.piotrkrzysztof.dev/getting-started/configuration/): every environment variable, its default and what breaks when it is wrong
+- [Configuration](https://docs.honeywatch.piotrkrzysztof.dev/getting-started/configuration/): every environment variable, its default and whether the compose file passes it on
 - [Deploy the Stack](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/): deploy on a VPS with every port pinned to loopback
 - [Exposing Port 22](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/exposing/): move real SSH off port 22 and hand it to the honeypot
 - [Watching It Remotely](https://docs.honeywatch.piotrkrzysztof.dev/self-hosting/remote-access/): reach the dashboard and API over an SSH port forward
@@ -23,3 +23,7 @@ Honeywatch answers SSH on port 22 pretending to be a neglected CentOS box, recor
 
 - [Source repository](https://github.com/straightchlorine/honeywatch): code, issues and releases
 - [Live dashboard](https://honey.piotrkrzysztof.dev): the public instance
+- [Author](https://piotrkrzysztof.dev/): Piotr Krzysztof Lis
+- [Author](https://www.linkedin.com/in/jakub-kucharski-360811305/): Jakub Kucharski
+
+To the only God, be honour and glory for ever and ever.

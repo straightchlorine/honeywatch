@@ -1,5 +1,6 @@
 ---
-description: "Read the Honeywatch dashboard and API from your laptop over an SSH port forward without publishing them."
+title: Watch Honeywatch Over an SSH Port Forward
+description: "Read the Honeywatch dashboard and API from your laptop over an SSH port forward, keeping the dashboard, API and database bound to loopback on the server."
 ---
 
 # Watching It Remotely
@@ -58,7 +59,7 @@ curl -s -i localhost:5000/health/ready
 curl -s localhost:5000/api/v1/stats/totals
 ```
 
-Three things need the 5000 forward rather than 8080:
+Two things need the 5000 forward rather than 8080:
 
 - `/health` and `/health/ready` sit at the API root, not under `/api/`, so the
   dashboard's nginx does not proxy them.
@@ -104,7 +105,7 @@ error:
 | Overview | 120s, live feed every 20s |
 | Origins | 120s |
 | Payloads | 60s |
-| Credentials | 30s leaderboards, 60s the rest |
+| Credentials | 120s |
 | Pulse | 10s charts, 60s heatmap |
 | Sessions | none |
 

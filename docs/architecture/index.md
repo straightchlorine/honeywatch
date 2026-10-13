@@ -1,10 +1,11 @@
 ---
-description: "How Honeywatch works: Cowrie, the ingestor, the Postgres schema, the read-only API and the polling dashboard."
+title: How the Honeywatch SSH Honeypot Pipeline Works
+description: "How the five Honeywatch containers hand data to each other, what each one reads and writes, the Postgres schema and how often the dashboard polls the API."
 ---
 
 # How It Works
 
-Honeywatch is five containers on one Docker bridge network. Each one does a
+The default setup is five containers on one Docker bridge network. Each one does a
 single job and hands off through a file or a database table, so every stage
 can be inspected on its own.
 
@@ -197,7 +198,8 @@ the Docker healthcheck uses, so a database blip does not restart the API.
 unreachable.
 
 Responses carry a short `Cache-Control` window (30 seconds for most JSON, 120
-for the map, 300 for a country detail) so many dashboard tabs polling at once
+for the heavier aggregates such as credentials, networks and the map, 300 for a
+country detail) so many dashboard tabs polling at once
 collapse into fewer queries. The API does no rate limiting and sends no CORS
 headers; rate limiting is a reverse-proxy concern, and the missing CORS
 headers are why the dashboard and API must be same-origin.
@@ -252,7 +254,7 @@ refetch interval on its queries:
 | --- | --- |
 | Overview | 120s, live feed 20s |
 | Pulse | 10s for charts, 60s for the heatmap |
-| Credentials | 30s for the matrix and leaderboards, 60s for the rest |
+| Credentials | 120s |
 | Origins | 120s |
 | Payloads | 60s |
 | Sessions | none |

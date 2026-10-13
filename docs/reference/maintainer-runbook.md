@@ -1,5 +1,6 @@
 ---
-description: "How the public Honeywatch instance is released, rolled back and operated. Not a deployment guide."
+title: Operating the Public Honeywatch Instance
+description: "How the public Honeywatch instance is released, rolled back and operated. It records one deployment and is not a guide for deploying your own honeypot."
 ---
 
 # Operating This Instance
