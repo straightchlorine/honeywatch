@@ -547,6 +547,56 @@ export type ReadyResponse = {
     status: string;
 };
 
+export type RunSessionsResponse = {
+    /**
+     * Page of the run's sessions, in list order.
+     */
+    items: Array<SessionSummaryResponse>;
+    /**
+     * Pagination over the run; `total` is its count.
+     */
+    meta: PaginationMeta;
+};
+
+export type RunSummaryResponse = {
+    /**
+     * Sessions in the run after the one carrying it.
+     */
+    count: number;
+    /**
+     * Distinct source countries among the folded sessions.
+     */
+    countries: number;
+    /**
+     * Name of the one source country, when `countries` is 1.
+     */
+    country: string | null;
+    /**
+     * The one source country, when `countries` is 1.
+     */
+    country_code: string | null;
+    /**
+     * Longest finished session, seconds.
+     */
+    max_duration_s: number | null;
+    /**
+     * Shortest finished session, seconds.
+     */
+    min_duration_s: number | null;
+    /**
+     * Latest start among the folded sessions.
+     */
+    newest: string;
+    /**
+     * Position of the run's first folded session in the list's order; the `offset` for /sessions/run.
+     */
+    offset: number;
+    /**
+     * Earliest start among the folded sessions.
+     */
+    oldest: string;
+};
+
 export type SessionDetailResponse = {
     /**
      * Authentication attempts recorded during the session.
@@ -585,6 +635,10 @@ export type SessionDetailResponse = {
      */
     id: string;
     /**
+     * DB-computed interest score: 2*commands + 5*downloads + 2*tcpip + 3*auth_success.
+     */
+    interest: number;
+    /**
      * Latitude of the source IP, when resolved.
      */
     lat: number | null;
@@ -592,6 +646,10 @@ export type SessionDetailResponse = {
      * Longitude of the source IP, when resolved.
      */
     lon: number | null;
+    /**
+     * Highest interest value across all sessions - the ceiling `interest` is normalized against.
+     */
+    max_interest: number;
     /**
      * Application protocol observed.
      */
@@ -692,6 +750,10 @@ export type SessionSummaryResponse = {
      */
     protocol: string;
     /**
+     * With `fold`: the look-alike sessions folded behind this one, or null. Absent otherwise.
+     */
+    run?: RunSummaryResponse | null;
+    /**
      * Source TCP port of the attacker connection.
      */
     src_port: number;
@@ -702,6 +764,10 @@ export type SessionSummaryResponse = {
 };
 
 export type SessionsListResponse = {
+    /**
+     * With `fold`: when the folded list's snapshot was taken. Sessions started later are not in it yet; pass it to /sessions/run.
+     */
+    as_of?: string;
     /**
      * Page of session summaries.
      */
@@ -861,6 +927,10 @@ export type ListSessionsData = {
          */
         q?: string | null;
         /**
+         * Fold each run of 3 or more consecutive sessions with the same story (counters, outcome, client) into its first session, which carries a `run` summary. Pages then count display rows, so each holds per_page of them. While the layout cannot be built (another build is running), the plain unfolded list is returned instead, with `run` null on every item and `meta` counting sessions, not display rows.
+         */
+        fold?: boolean;
+        /**
          * Scope to a single ISO 3166-1 alpha-2 source country.
          */
         country?: string | null;
@@ -913,6 +983,88 @@ export type ListSessionsResponses = {
 };
 
 export type ListSessionsResponse = ListSessionsResponses[keyof ListSessionsResponses];
+
+export type ListRunSessionsData = {
+    body?: never;
+    path?: never;
+    query: {
+        /**
+         * Page number to fetch (1-indexed).
+         */
+        page?: number;
+        /**
+         * Number of items per page (max 100).
+         */
+        per_page?: number;
+        /**
+         * Session id prefix, lowercase hex only (2-64 chars). Matched with a leading-anchor search, so it never carries a LIKE wildcard.
+         */
+        q?: string | null;
+        /**
+         * Scope to a single ISO 3166-1 alpha-2 source country.
+         */
+        country?: string | null;
+        /**
+         * Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.
+         */
+        category?: 'active' | 'login' | 'failed' | 'probe' | null;
+        /**
+         * Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first), 'interest' (highest interest score first), 'duration' (longest session first).
+         */
+        sort?: 'recent' | 'country' | 'active' | 'interest' | 'duration';
+        /**
+         * Sort direction, overriding the chosen sort key's own default direction. Omit to use the per-key default.
+         */
+        order?: 'asc' | 'desc' | null;
+        /**
+         * Comma-separated filters, all must match: 'commands' (n_commands > 0), 'downloads' (n_downloads > 0), 'success' (auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, did nothing at all - mutually exclusive with the others).
+         */
+        has?: string | null;
+        /**
+         * Only sessions that captured this payload. Lowercase hex; the pattern is the whole defence, so the value can never reach SQL as anything but a digest.
+         */
+        sha256?: string | null;
+        /**
+         * The folded list's `as_of`.
+         */
+        as_of: string;
+        /**
+         * The run's `offset`.
+         */
+        offset: number;
+        /**
+         * The run's `count`.
+         */
+        count: number;
+    };
+    url: '/api/v1/sessions/run';
+};
+
+export type ListRunSessionsErrors = {
+    /**
+     * Request validation failed.
+     */
+    422: Error;
+    /**
+     * An unexpected server error occurred.
+     */
+    500: Error;
+    /**
+     * Default error response
+     */
+    default: Error;
+};
+
+export type ListRunSessionsError = ListRunSessionsErrors[keyof ListRunSessionsErrors];
+
+export type ListRunSessionsResponses = {
+    /**
+     * OK
+     */
+    200: RunSessionsResponse;
+};
+
+export type ListRunSessionsResponse = ListRunSessionsResponses[keyof ListRunSessionsResponses];
 
 export type GetSessionByIdData = {
     body?: never;

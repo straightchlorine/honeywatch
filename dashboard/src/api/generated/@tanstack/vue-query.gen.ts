@@ -3,8 +3,8 @@
 import { type InfiniteData, infiniteQueryOptions, queryOptions } from '@tanstack/vue-query';
 
 import { client } from '../client.gen';
-import { getSessionById, healthLive, healthReady, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCountries, statsCountryDetail, statsDownloadDetail, statsDownloads, statsFingerprints, statsHeatmap, statsMap, statsOutcomes, statsPasswordComposition, statsPasswordsByLength, statsSshClients, statsTcpipDestinations, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
-import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsCountryDetailData, StatsCountryDetailError, StatsCountryDetailResponse, StatsDownloadDetailData, StatsDownloadDetailError, StatsDownloadDetailResponse, StatsDownloadsData, StatsDownloadsError, StatsDownloadsResponse, StatsFingerprintsData, StatsFingerprintsError, StatsFingerprintsResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsMapData, StatsMapError, StatsMapResponse, StatsOutcomesData, StatsOutcomesError, StatsOutcomesResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsSshClientsData, StatsSshClientsError, StatsSshClientsResponse, StatsTcpipDestinationsData, StatsTcpipDestinationsError, StatsTcpipDestinationsResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
+import { getSessionById, healthLive, healthReady, listRunSessions, listSessions, type Options, statsActivity, statsAsns, statsAuthOutcomes, statsCountries, statsCountryDetail, statsDownloadDetail, statsDownloads, statsFingerprints, statsHeatmap, statsMap, statsOutcomes, statsPasswordComposition, statsPasswordsByLength, statsSshClients, statsTcpipDestinations, statsTopCountries, statsTopCredentials, statsTopPasswords, statsTotals, statsTrend } from '../sdk.gen';
+import type { GetSessionByIdData, GetSessionByIdError, GetSessionByIdResponse, HealthLiveData, HealthLiveError, HealthLiveResponse, HealthReadyData, HealthReadyError, HealthReadyResponse, ListRunSessionsData, ListRunSessionsError, ListRunSessionsResponse, ListSessionsData, ListSessionsError, ListSessionsResponse, StatsActivityData, StatsActivityError, StatsActivityResponse, StatsAsnsData, StatsAsnsError, StatsAsnsResponse, StatsAuthOutcomesData, StatsAuthOutcomesError, StatsAuthOutcomesResponse, StatsCountriesData, StatsCountriesError, StatsCountriesResponse, StatsCountryDetailData, StatsCountryDetailError, StatsCountryDetailResponse, StatsDownloadDetailData, StatsDownloadDetailError, StatsDownloadDetailResponse, StatsDownloadsData, StatsDownloadsError, StatsDownloadsResponse, StatsFingerprintsData, StatsFingerprintsError, StatsFingerprintsResponse, StatsHeatmapData, StatsHeatmapError, StatsHeatmapResponse, StatsMapData, StatsMapError, StatsMapResponse, StatsOutcomesData, StatsOutcomesError, StatsOutcomesResponse, StatsPasswordCompositionData, StatsPasswordCompositionError, StatsPasswordCompositionResponse, StatsPasswordsByLengthData, StatsPasswordsByLengthError, StatsPasswordsByLengthResponse, StatsSshClientsData, StatsSshClientsError, StatsSshClientsResponse, StatsTcpipDestinationsData, StatsTcpipDestinationsError, StatsTcpipDestinationsResponse, StatsTopCountriesData, StatsTopCountriesError, StatsTopCountriesResponse, StatsTopCredentialsData, StatsTopCredentialsError, StatsTopCredentialsResponse, StatsTopPasswordsData, StatsTopPasswordsError, StatsTopPasswordsResponse, StatsTotalsData, StatsTotalsError, StatsTotalsResponse, StatsTrendData, StatsTrendError, StatsTrendResponse } from '../types.gen';
 
 export type QueryKey<TOptions extends Options> = [
     Pick<TOptions, 'baseUrl' | 'body' | 'headers' | 'path' | 'query'> & {
@@ -112,6 +112,54 @@ export const listSessionsInfiniteOptions = (options?: Options<ListSessionsData>)
             return data;
         },
         queryKey: listSessionsInfiniteQueryKey(options)
+    });
+    return opts as Omit<typeof opts, 'initialData'>;
+};
+
+export const listRunSessionsQueryKey = (options: Options<ListRunSessionsData>) => createQueryKey('listRunSessions', options, false, ['sessions']);
+
+/**
+ * Return a page of the sessions folded into one run of a folded list.
+ */
+export const listRunSessionsOptions = (options: Options<ListRunSessionsData>) => queryOptions<ListRunSessionsResponse, ListRunSessionsError, ListRunSessionsResponse, ReturnType<typeof listRunSessionsQueryKey>>({
+    queryFn: async ({ queryKey, signal }) => {
+        const { data } = await listRunSessions({
+            ...options,
+            ...queryKey[0],
+            signal,
+            throwOnError: true
+        });
+        return data;
+    },
+    queryKey: listRunSessionsQueryKey(options)
+});
+
+export const listRunSessionsInfiniteQueryKey = (options: Options<ListRunSessionsData>): QueryKey<Options<ListRunSessionsData>> => createQueryKey('listRunSessions', options, true, ['sessions']);
+
+/**
+ * Return a page of the sessions folded into one run of a folded list.
+ */
+export const listRunSessionsInfiniteOptions = (options: Options<ListRunSessionsData>) => {
+    const opts = infiniteQueryOptions<ListRunSessionsResponse, ListRunSessionsError, InfiniteData<ListRunSessionsResponse>, QueryKey<Options<ListRunSessionsData>>, number | Pick<QueryKey<Options<ListRunSessionsData>>[0], 'body' | 'headers' | 'path' | 'query'>>(
+    // @ts-ignore
+    {
+        queryFn: async ({ pageParam, queryKey, signal }) => {
+            // @ts-ignore
+            const page: Pick<QueryKey<Options<ListRunSessionsData>>[0], 'body' | 'headers' | 'path' | 'query'> = typeof pageParam === 'object' ? pageParam : {
+                query: {
+                    page: pageParam
+                }
+            };
+            const params = createInfiniteParams(queryKey, page);
+            const { data } = await listRunSessions({
+                ...options,
+                ...params,
+                signal,
+                throwOnError: true
+            });
+            return data;
+        },
+        queryKey: listRunSessionsInfiniteQueryKey(options)
     });
     return opts as Omit<typeof opts, 'initialData'>;
 };
