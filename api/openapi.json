@@ -1047,6 +1047,103 @@
         ],
         "type": "object"
       },
+      "RunSessionsResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "description": "Page of the run's sessions, in list order.",
+            "items": {
+              "$ref": "#/components/schemas/SessionSummaryResponse"
+            },
+            "type": "array"
+          },
+          "meta": {
+            "$ref": "#/components/schemas/PaginationMeta",
+            "description": "Pagination over the run; `total` is its count."
+          }
+        },
+        "required": [
+          "items",
+          "meta"
+        ],
+        "type": "object"
+      },
+      "RunSummaryResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "description": "Sessions in the run after the one carrying it.",
+            "example": 12,
+            "type": "integer"
+          },
+          "countries": {
+            "description": "Distinct source countries among the folded sessions.",
+            "example": 3,
+            "type": "integer"
+          },
+          "country": {
+            "description": "Name of the one source country, when `countries` is 1.",
+            "example": "United States",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "country_code": {
+            "description": "The one source country, when `countries` is 1.",
+            "example": "US",
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "max_duration_s": {
+            "description": "Longest finished session, seconds.",
+            "example": 58,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "min_duration_s": {
+            "description": "Shortest finished session, seconds.",
+            "example": 4,
+            "type": [
+              "integer",
+              "null"
+            ]
+          },
+          "newest": {
+            "description": "Latest start among the folded sessions.",
+            "example": "2026-05-28T12:40:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "offset": {
+            "description": "Position of the run's first folded session in the list's order; the `offset` for /sessions/run.",
+            "example": 41,
+            "type": "integer"
+          },
+          "oldest": {
+            "description": "Earliest start among the folded sessions.",
+            "example": "2026-05-28T12:34:00Z",
+            "format": "date-time",
+            "type": "string"
+          }
+        },
+        "required": [
+          "count",
+          "countries",
+          "country",
+          "country_code",
+          "max_duration_s",
+          "min_duration_s",
+          "newest",
+          "offset",
+          "oldest"
+        ],
+        "type": "object"
+      },
       "SessionDetailResponse": {
         "additionalProperties": false,
         "properties": {
@@ -1323,6 +1420,17 @@
             "example": "ssh",
             "type": "string"
           },
+          "run": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RunSummaryResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "With `fold`: the look-alike sessions folded behind this one, or null. Absent otherwise."
+          },
           "src_port": {
             "description": "Source TCP port of the attacker connection.",
             "example": 51234,
@@ -1367,6 +1475,12 @@
       "SessionsListResponse": {
         "additionalProperties": false,
         "properties": {
+          "as_of": {
+            "description": "With `fold`: when the folded list's snapshot was taken. Sessions started later are not in it yet; pass it to /sessions/run.",
+            "example": "2026-05-28T12:40:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
           "items": {
             "description": "Page of session summaries.",
             "items": {
@@ -1697,6 +1811,17 @@
             }
           },
           {
+            "description": "Fold each run of 3 or more consecutive sessions with the same story (counters, outcome, client) into its first session, which carries a `run` summary. Pages then count display rows, so each holds per_page of them.",
+            "in": "query",
+            "name": "fold",
+            "required": false,
+            "schema": {
+              "default": false,
+              "example": true,
+              "type": "boolean"
+            }
+          },
+          {
             "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
             "in": "query",
             "name": "country",
@@ -1821,6 +1946,216 @@
           }
         },
         "summary": "Return a paginated list of session summaries.",
+        "tags": [
+          "sessions"
+        ]
+      }
+    },
+    "/api/v1/sessions/run": {
+      "get": {
+        "operationId": "listRunSessions",
+        "parameters": [
+          {
+            "description": "Page number to fetch (1-indexed).",
+            "in": "query",
+            "name": "page",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "example": 1,
+              "maximum": 50000,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Number of items per page (max 100).",
+            "in": "query",
+            "name": "per_page",
+            "required": false,
+            "schema": {
+              "default": 20,
+              "example": 20,
+              "maximum": 100,
+              "minimum": 1,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "Session id prefix, lowercase hex only (2-64 chars). Matched with a leading-anchor search, so it never carries a LIKE wildcard.",
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "a1b2c3",
+              "maxLength": 64,
+              "minLength": 2,
+              "pattern": "^[0-9a-f]+$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Scope to a single ISO 3166-1 alpha-2 source country.",
+            "in": "query",
+            "name": "country",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "CN",
+              "pattern": "^[A-Za-z]{2}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Session class (mutually exclusive): 'active' ran a command, 'login' logged in without running one, 'failed' tried to log in but never succeeded, 'probe' never attempted a login.",
+            "in": "query",
+            "name": "category",
+            "required": false,
+            "schema": {
+              "default": null,
+              "enum": [
+                "active",
+                "login",
+                "failed",
+                "probe",
+                null
+              ],
+              "example": "active",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Result ordering: 'recent' (newest first, default), 'country' (source country A-Z), 'active' (most commands first), 'interest' (highest interest score first), 'duration' (longest session first).",
+            "in": "query",
+            "name": "sort",
+            "required": false,
+            "schema": {
+              "default": "recent",
+              "enum": [
+                "recent",
+                "country",
+                "active",
+                "interest",
+                "duration"
+              ],
+              "example": "country",
+              "type": "string"
+            }
+          },
+          {
+            "description": "Sort direction, overriding the chosen sort key's own default direction. Omit to use the per-key default.",
+            "in": "query",
+            "name": "order",
+            "required": false,
+            "schema": {
+              "default": null,
+              "enum": [
+                "asc",
+                "desc",
+                null
+              ],
+              "example": "asc",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Comma-separated filters, all must match: 'commands' (n_commands > 0), 'downloads' (n_downloads > 0), 'success' (auth_success), 'tcpip' (n_tcpip > 0), 'none' (interest = 0, did nothing at all - mutually exclusive with the others).",
+            "in": "query",
+            "name": "has",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "commands,success",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "Only sessions that captured this payload. Lowercase hex; the pattern is the whole defence, so the value can never reach SQL as anything but a digest.",
+            "in": "query",
+            "name": "sha256",
+            "required": false,
+            "schema": {
+              "default": null,
+              "example": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+              "pattern": "^[0-9a-f]{64}$",
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          {
+            "description": "The folded list's `as_of`.",
+            "in": "query",
+            "name": "as_of",
+            "required": true,
+            "schema": {
+              "example": "2026-05-28T12:40:00Z",
+              "format": "date-time",
+              "type": "string"
+            }
+          },
+          {
+            "description": "The run's `offset`.",
+            "in": "query",
+            "name": "offset",
+            "required": true,
+            "schema": {
+              "example": 41,
+              "minimum": 0,
+              "type": "integer"
+            }
+          },
+          {
+            "description": "The run's `count`.",
+            "in": "query",
+            "name": "count",
+            "required": true,
+            "schema": {
+              "example": 12,
+              "minimum": 1,
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunSessionsResponse"
+                }
+              }
+            },
+            "description": "OK"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableEntity"
+          },
+          "500": {
+            "$ref": "#/components/responses/InternalServerError"
+          },
+          "default": {
+            "$ref": "#/components/responses/DEFAULT_ERROR"
+          }
+        },
+        "summary": "Return a page of the sessions folded into one run of a folded list.",
         "tags": [
           "sessions"
         ]

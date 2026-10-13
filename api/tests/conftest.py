@@ -18,6 +18,7 @@ from src.models.command import Command
 from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
+from src.services.sessions import clear_layout_cache
 
 
 def _resolve_test_db_url() -> str:
@@ -73,6 +74,12 @@ def db_session(engine: Any) -> Generator[Session, None, None]:
     connection.close()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_fold_layouts() -> None:
+    # Layouts are cached per filter set; each test's rows are its own.
+    clear_layout_cache()
+
+
 @pytest.fixture(scope="session")
 def app(engine: Any) -> Any:
     os.environ.setdefault("ENVIRONMENT", "development")
@@ -93,8 +100,16 @@ def client(app: Any, db_session: Session) -> Generator[Any, None, None]:
 
 # Path args no fixture can synthesize.
 _UNCOVERABLE = {"static"}
+
 # Endpoints whose required query arg has no load_default.
-_REQUIRED_QUERY = {"stats.stats_passwords_by_length": {"length": 12}}
+_REQUIRED_QUERY: dict[str, dict[str, Any]] = {
+    "stats.stats_passwords_by_length": {"length": 12},
+    "sessions.list_run_sessions": {
+        "as_of": "2100-01-01T00:00:00+00:00",
+        "offset": 0,
+        "count": 100,
+    },
+}
 
 
 @pytest.fixture()

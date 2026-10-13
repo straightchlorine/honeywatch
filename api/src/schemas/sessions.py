@@ -9,7 +9,7 @@ from src.schemas.common import (
     sort_order_field,
 )
 from src.services.categories import CATEGORY_DESCRIPTION, SESSION_CATEGORIES
-from src.services.sessions import VALID_HAS_FILTERS
+from src.services.sessions import RUN_MIN, VALID_HAS_FILTERS
 
 
 class AuthAttemptResponse(BaseSchema):
@@ -197,6 +197,80 @@ class _SessionResponseBase(BaseSchema):
     )
 
 
+class RunSummaryResponse(BaseSchema):
+    """A run of look-alike sessions folded behind the row that carries it.
+
+    Describes the sessions after that row; fetch them from /sessions/run.
+    """
+
+    count = fields.Int(
+        required=True,
+        metadata={
+            "description": "Sessions in the run after the one carrying it.",
+            "example": 12,
+        },
+    )
+    offset = fields.Int(
+        required=True,
+        metadata={
+            "description": (
+                "Position of the run's first folded session in the list's "
+                "order; the `offset` for /sessions/run."
+            ),
+            "example": 41,
+        },
+    )
+    countries = fields.Int(
+        required=True,
+        metadata={
+            "description": "Distinct source countries among the folded sessions.",
+            "example": 3,
+        },
+    )
+    country_code = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "The one source country, when `countries` is 1.",
+            "example": "US",
+        },
+    )
+    country = fields.Str(
+        required=True,
+        allow_none=True,
+        metadata={
+            "description": "Name of the one source country, when `countries` is 1.",
+            "example": "United States",
+        },
+    )
+    min_duration_s = fields.Int(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Shortest finished session, seconds.", "example": 4},
+    )
+    max_duration_s = fields.Int(
+        required=True,
+        allow_none=True,
+        metadata={"description": "Longest finished session, seconds.", "example": 58},
+    )
+    oldest = fields.DateTime(
+        required=True,
+        format="iso",
+        metadata={
+            "description": "Earliest start among the folded sessions.",
+            "example": "2026-05-28T12:34:00Z",
+        },
+    )
+    newest = fields.DateTime(
+        required=True,
+        format="iso",
+        metadata={
+            "description": "Latest start among the folded sessions.",
+            "example": "2026-05-28T12:40:00Z",
+        },
+    )
+
+
 class SessionSummaryResponse(_SessionResponseBase):
     """List-endpoint shape; src_ip omitted like everywhere else in the API."""
 
@@ -275,6 +349,16 @@ class SessionSummaryResponse(_SessionResponseBase):
             "example": "SSH-2.0-libssh2_1.10.0",
         },
     )
+    run = fields.Nested(
+        RunSummaryResponse,
+        allow_none=True,
+        metadata={
+            "description": (
+                "With `fold`: the look-alike sessions folded behind this one, "
+                "or null. Absent otherwise."
+            )
+        },
+    )
 
 
 class SessionDetailResponse(_SessionResponseBase):
@@ -349,6 +433,30 @@ class SessionsListResponse(BaseSchema):
             "example": 56,
         },
     )
+    as_of = fields.DateTime(
+        format="iso",
+        metadata={
+            "description": (
+                "With `fold`: when the folded list's snapshot was taken. "
+                "Sessions started later are not in it yet; pass it to "
+                "/sessions/run."
+            ),
+            "example": "2026-05-28T12:40:00Z",
+        },
+    )
+
+
+class RunSessionsResponse(BaseSchema):
+    items = fields.List(
+        fields.Nested(SessionSummaryResponse),
+        required=True,
+        metadata={"description": "Page of the run's sessions, in list order."},
+    )
+    meta = fields.Nested(
+        PaginationMeta,
+        required=True,
+        metadata={"description": "Pagination over the run; `total` is its count."},
+    )
 
 
 def _validate_has(value: str) -> None:
@@ -391,6 +499,18 @@ class SessionsListQuery(BaseSchema):
                 "wildcard."
             ),
             "example": "a1b2c3",
+        },
+    )
+    fold = fields.Bool(
+        load_default=False,
+        metadata={
+            "description": (
+                f"Fold each run of {RUN_MIN} or more consecutive sessions with "
+                "the same story (counters, outcome, client) into its first "
+                "session, which carries a `run` summary. Pages then count "
+                "display rows, so each holds per_page of them."
+            ),
+            "example": True,
         },
     )
     country = country_filter_field()
@@ -444,6 +564,32 @@ class SessionsListQuery(BaseSchema):
                 "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
             ),
         },
+    )
+
+
+class SessionRunQuery(SessionsListQuery):
+    """The folded list's own query, plus where its run sits in that list."""
+
+    class Meta:
+        exclude = ("fold",)
+
+    as_of = fields.DateTime(
+        required=True,
+        format="iso",
+        metadata={
+            "description": "The folded list's `as_of`.",
+            "example": "2026-05-28T12:40:00Z",
+        },
+    )
+    offset = fields.Int(
+        required=True,
+        validate=validate.Range(min=0),
+        metadata={"description": "The run's `offset`.", "example": 41},
+    )
+    count = fields.Int(
+        required=True,
+        validate=validate.Range(min=1),
+        metadata={"description": "The run's `count`.", "example": 12},
     )
 
 

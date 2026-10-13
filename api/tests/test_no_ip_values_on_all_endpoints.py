@@ -125,6 +125,7 @@ def test_no_ip_value_in_any_response(
         "/api/v1/stats/top-credentials?country=US",
         "/api/v1/stats/top-credentials?country=??",
         "/api/v1/stats/asns?country=??",
+        "/api/v1/sessions/?fold=true",
     ]
     urls = (
         get_urls(session_id="leak-001", sha256=leaky_seed["sha256"], a2="US") + extras

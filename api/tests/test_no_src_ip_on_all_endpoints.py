@@ -20,6 +20,7 @@ def test_no_src_ip_in_any_response(
         "/api/v1/stats/top-credentials?country=US",
         "/api/v1/stats/top-credentials?country=??",
         "/api/v1/stats/asns?country=??",
+        "/api/v1/sessions/?fold=true",
     ]
     urls = get_urls(session_id="sess-001", sha256=download_sha256, a2="US") + extras
 
