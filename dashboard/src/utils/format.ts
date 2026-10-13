@@ -28,15 +28,26 @@ export function fmtCompact(n: number | null | undefined): string {
   return `${value.toFixed(1).replace(/\.0$/, '')}${suffix}`
 }
 
-export function fmtDelta(t: { delta: number; pct_change: number | null }): string {
+/** The two halves of fmtDelta, for layouts that style or separate them; pct is null without one. */
+export function fmtDeltaParts(t: { delta: number; pct_change: number | null }): {
+  abs: string
+  pct: string | null
+} {
   const sign = t.delta > 0 ? '+' : t.delta < 0 ? '-' : ''
-  const abs = fmtCompact(Math.abs(t.delta))
-  if (t.pct_change === null) return `${sign}${abs}`
+  const abs = `${sign}${fmtCompact(Math.abs(t.delta))}`
+  if (t.pct_change === null) return { abs, pct: null }
   // Keep small percentages precise (12.5%) but compact the runaway ones a
   // honeypot produces from a near-empty prior window (1822.8% -> 1.8k%).
   const p = Math.abs(t.pct_change)
-  const pct = p >= 1000 ? fmtCompact(p) : p >= 100 ? String(Math.round(p)) : p.toFixed(1)
-  return `${sign}${abs} (${sign}${pct}%)`
+  // Round before branching so 999.6 becomes "1k%" rather than "1000%".
+  const r = Math.round(p)
+  const pct = r >= 1000 ? fmtCompact(r) : r >= 100 ? String(r) : p.toFixed(1)
+  return { abs, pct: `${sign}${pct}%` }
+}
+
+export function fmtDelta(t: { delta: number; pct_change: number | null }): string {
+  const { abs, pct } = fmtDeltaParts(t)
+  return pct === null ? abs : `${abs} (${pct})`
 }
 
 export function fmtRelativeTime(iso: string): string {
@@ -60,4 +71,12 @@ export function fmtUtcDate(d: Date): string {
 /** UTC time in 24-hour format (e.g. "14:23:45"). */
 export function fmtUtcClock(d: Date): string {
   return d.toLocaleTimeString('en-GB', { hour12: false, timeZone: 'UTC' })
+}
+
+/** Seconds-precision UTC stamp ("2026-05-28 12:34:00 UTC"); undefined when missing or unparseable. */
+export function fmtUtcStamp(iso: string | null | undefined): string | undefined {
+  const d = new Date(iso ?? NaN)
+  return Number.isNaN(d.getTime())
+    ? undefined
+    : `${d.toISOString().slice(0, 19).replace('T', ' ')} UTC`
 }

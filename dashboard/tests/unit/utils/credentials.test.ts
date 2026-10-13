@@ -275,6 +275,19 @@ describe('buildMatrixPairs', () => {
     expect(pairs).toEqual([{ username: 'guest', password: 'guest', count: 4, accepted: true }])
   })
 
+  it('keeps pairs whose space-joined text collides as separate pairs', () => {
+    const pairs = buildMatrixPairs(
+      [
+        { username: 'admin x', password: 'y', count: 3, distinct_ips: null },
+        { username: 'admin', password: 'x y', count: 5, distinct_ips: null },
+      ],
+      [{ username: 'admin', password: 'x y', count: 2, distinct_ips: null }],
+    )
+    expect(pairs).toHaveLength(2)
+    expect(pairs).toContainEqual({ username: 'admin x', password: 'y', count: 3, accepted: false })
+    expect(pairs).toContainEqual({ username: 'admin', password: 'x y', count: 5, accepted: true })
+  })
+
   it('sanitizes both fields so the merge key cannot be spoofed by attacker text', () => {
     const pairs = buildMatrixPairs(
       [{ username: 'http://1.2.3.4/x', password: 'y', count: 2, distinct_ips: null }],

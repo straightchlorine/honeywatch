@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 
 import type { HeatmapPointResponse } from '@/api/generated/types.gen'
 import { buildHeatmapGrid } from '@/utils/heatmapGrid'
-import { pulseReadings } from '@/utils/pulseReadings'
+import { pulseReadings, quietReading } from '@/utils/pulseReadings'
 
 describe('pulseReadings', () => {
   it('returns empty array for empty heatmap', () => {
@@ -221,7 +221,7 @@ describe('pulseReadings', () => {
         const code = reading.charCodeAt(i)
         expect(code).toBeLessThan(128)
       }
-      expect(reading).not.toContain('—')
+      expect(reading).not.toContain('\u2014')
     }
   })
 
@@ -356,5 +356,33 @@ describe('pulseReadings weekday ties', () => {
     ).toBe(true)
     expect(out.some((r) => r.match(/^(Sundays|Mondays|Tuesdays|Wednesdays|Thursdays|Fridays|Saturdays) run/))).toBe(false)
     expect(out.some((r) => r.includes('Weekends are 60% quieter than weekdays.'))).toBe(true)
+  })
+})
+
+describe('quietReading', () => {
+  const week = (counts: number[]) =>
+    buildHeatmapGrid(counts.map((count, weekday) => ({ weekday, hour: 12, count })))
+
+  it('names the emptiest weekday and its gap to the average', () => {
+    expect(quietReading(week([50, 60, 20, 60, 60, 60, 50]))).toBe(
+      'Tuesdays are quietest, 61% below average.',
+    )
+  })
+
+  it('is null for a flat week, a tied low, and too little data', () => {
+    expect(quietReading(week([20, 20, 20, 20, 20, 20, 20]))).toBeNull()
+    expect(quietReading(week([10, 10, 60, 60, 60, 60, 60]))).toBeNull()
+    expect(quietReading(week([1, 2, 3, 4, 5, 6, 7]))).toBeNull()
+  })
+
+  it('is null when the emptiest day sits under 5% below average', () => {
+    expect(quietReading(week([50, 50, 50, 50, 50, 50, 48]))).toBeNull()
+  })
+
+  it('pins the 5% cutoff: 5% below average reads, 4% does not', () => {
+    expect(quietReading(week([100, 100, 94, 100, 100, 100, 100]))).toBe(
+      'Tuesdays are quietest, 5% below average.',
+    )
+    expect(quietReading(week([100, 100, 95, 100, 100, 100, 100]))).toBeNull()
   })
 })

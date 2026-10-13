@@ -246,7 +246,9 @@ export function buildMatrixPairs(
   const upsert = (it: TopCredentialResponse, accepted: boolean): void => {
     const username = cleanCred(it.username ?? '') || EMPTY
     const password = cleanCred(it.password ?? '') || EMPTY
-    const key = `${username} ${password}`
+    // JSON tuple, not a joined string: a credential can hold the separator, so
+    // ('admin x','y') and ('admin','x y') must stay two pairs.
+    const key = JSON.stringify([username, password])
     const prev = byKey.get(key)
     byKey.set(key, {
       username,

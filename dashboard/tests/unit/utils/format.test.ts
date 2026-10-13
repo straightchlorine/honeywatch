@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { fmtCompact, fmtDelta, fmtNumber, fmtRelativeTime } from '@/utils/format'
+import { fmtCompact, fmtDelta, fmtDeltaParts, fmtNumber, fmtRelativeTime, fmtUtcStamp } from '@/utils/format'
 
 describe('fmtNumber', () => {
   it('formats integers with thousands separators', () => {
@@ -90,6 +90,11 @@ describe('fmtDelta', () => {
   it('rounds mid-range percentages to whole numbers', () => {
     expect(fmtDelta({ delta: 500, pct_change: 342.7 })).toBe('+500 (+343%)')
   })
+
+  it('compacts a percentage that rounds up to 1000 instead of showing 1000%', () => {
+    expect(fmtDelta({ delta: 3, pct_change: 999.6 })).toBe('+3 (+1k%)')
+    expect(fmtDelta({ delta: 3, pct_change: 999.4 })).toBe('+3 (+999%)')
+  })
 })
 
 describe('fmtRelativeTime', () => {
@@ -134,5 +139,32 @@ describe('fmtRelativeTime', () => {
 
   it('reports multi-day deltas', () => {
     expect(fmtRelativeTime(ago(5 * 24 * 60 * 60_000))).toBe('5d ago')
+  })
+})
+
+describe('fmtUtcStamp', () => {
+  it('prints UTC to the second, whatever offset the input carries', () => {
+    expect(fmtUtcStamp('2026-05-28T12:34:56Z')).toBe('2026-05-28 12:34:56 UTC')
+    expect(fmtUtcStamp('2026-05-28T14:34:56.789+02:00')).toBe('2026-05-28 12:34:56 UTC')
+  })
+
+  it('returns undefined instead of throwing for missing or unparseable input', () => {
+    expect(fmtUtcStamp(null)).toBeUndefined()
+    expect(fmtUtcStamp(undefined)).toBeUndefined()
+    expect(fmtUtcStamp('')).toBeUndefined()
+    expect(fmtUtcStamp('not a date')).toBeUndefined()
+  })
+})
+
+describe('fmtDeltaParts', () => {
+  it('splits the absolute change from the percentage', () => {
+    expect(fmtDeltaParts({ delta: -37800, pct_change: -70.7 })).toEqual({
+      abs: '-37.8k',
+      pct: '-70.7%',
+    })
+  })
+
+  it('has no percentage when pct_change is null', () => {
+    expect(fmtDeltaParts({ delta: 7, pct_change: null })).toEqual({ abs: '+7', pct: null })
   })
 })

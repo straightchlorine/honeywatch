@@ -179,3 +179,16 @@ export function pulseReadings(heatmap: HeatmapGrid): string[] {
 
   return readings
 }
+
+/** Counterpart to the weekday lift: the emptiest weekday. Null when none sits clearly below average or the low is tied. */
+export function quietReading(heatmap: HeatmapGrid): string | null {
+  const byDay = heatmap.grid.map((row) => row.reduce((a, b) => a + b, 0))
+  const total = byDay.reduce((a, b) => a + b, 0)
+  if (total < MIN_SESSIONS_FOR_READINGS) return null
+
+  const low = Math.min(...byDay)
+  const day = byDay.indexOf(low)
+  if (byDay.filter((n) => n === low).length > 1) return null
+  const drop = Math.round((1 - low / (total / 7)) * 100)
+  return drop >= 5 ? `${DAY_PLURAL[day]} are quietest, ${drop}% below average.` : null
+}
