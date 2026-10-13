@@ -44,8 +44,6 @@
     --space-4: 16px;
     --space-5: 24px;
     --space-6: 32px;
-    --space-7: 48px;
-    --space-8: 64px;
 
     --radius-sm: 4px;
     --radius-md: 8px;
@@ -75,16 +73,13 @@
 
     --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
     --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.5);
-    --shadow-glow: 0 0 24px var(--accent-glow);
-
-    --bp-sm: 640px;
-    --bp-md: 768px;
-    --bp-lg: 1024px;
-    --bp-xl: 1280px;
 
     /* Min height for interactive controls (buttons, dropdown, options). Bumped
        to a 44px touch target on coarse pointers below (WCAG 2.5.5). */
     --control-h: 32px;
+
+    /* Mobile bottom tab bar (TopBar); pages pad by it so nothing hides behind. */
+    --bottomnav-h: 0px;
 
     --bg-0: #120d09;
     --glass: rgba(22, 16, 11, 0.78);
@@ -127,7 +122,6 @@
 
     --radius-lg: 14px;
     --shadow-lift: 0 12px 40px rgba(0, 0, 0, 0.55);
-    --glow: 0 0 24px var(--accent-glow);
 
     --font-display: 'Bricolage Grotesque Variable', ui-sans-serif, system-ui, sans-serif;
     --font-mono: 'JetBrains Mono Variable', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -139,6 +133,8 @@
      node outside Vue's tree, so its styling must be global, not scoped. */
   .hw-tooltip {
     position: fixed;
+    /* Lives on <body>, outside the zoomed .shell, so it carries the 4K zoom itself. */
+    zoom: var(--ui-zoom, 1);
     pointer-events: none;
     z-index: 100;
     background: var(--glass);
@@ -253,5 +249,18 @@
 @media (pointer: coarse) {
   :root {
     --control-h: 44px;
+  }
+}
+
+@media (max-width: 759.98px) {
+  :root {
+    --bottomnav-h: calc(56px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
+/* 4K: scale the whole UI (applied as zoom on .shell). */
+@media (min-width: 2560px) {
+  :root {
+    --ui-zoom: 1.5;
   }
 }

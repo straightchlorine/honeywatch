@@ -1,5 +1,5 @@
 <script setup lang="ts">
-  import { computed, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { useQuery } from '@tanstack/vue-query'
   import {
@@ -10,6 +10,7 @@
     statsActivityOptions,
     statsAuthOutcomesOptions,
   } from '@/api/generated/@tanstack/vue-query.gen'
+  import { suspenseAll } from '@/api/queries'
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
@@ -17,7 +18,7 @@
   import WorldMap from '@/components/map/WorldMap.vue'
   import CountryDrawer from '@/components/map/CountryDrawer.vue'
   import LiveFeed from '@/components/map/LiveFeed.vue'
-  import { fmtNumber, fmtDelta } from '@/utils/format'
+  import { fmtNumber, fmtCompact, fmtDelta, fmtDeltaParts } from '@/utils/format'
   import { WORLD_COUNTRY_COUNT } from '@/utils/countries'
   import { ICONS } from '@/components/icons'
 
@@ -67,13 +68,7 @@
   // alone can't drive the drawer's loading state - gate it on a selection too.
   const countryLoading = computed(() => !!selectedCountry.value && countryQ.isPending.value)
 
-  await Promise.all([
-    mapQ.suspense(),
-    totalsQ.suspense(),
-    trendQ.suspense(),
-    activityQ.suspense(),
-    authQ.suspense(),
-  ])
+  await suspenseAll(mapQ, totalsQ, trendQ, activityQ, authQ)
 
   const countries = computed(() => mapQ.data.value?.countries ?? [])
   const cities = computed(() => mapQ.data.value?.cities ?? [])
@@ -96,43 +91,60 @@
   const trendLabel = computed(() =>
     trend.value ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change }) : '',
   )
+  // Tile line: this week's count, then only the percentage (the delta when there is no percentage).
+  const trendPct = computed(() => {
+    const p = trend.value ? fmtDeltaParts(trend.value) : null
+    return p ? (p.pct ?? p.abs) : ''
+  })
 
   const tt = useHwTooltip()
-  type Pt = { clientX?: number; clientY?: number }
+  type Pt = { clientX?: number; clientY?: number; currentTarget?: EventTarget | null }
   function showTip(e: Pt, title: string, rows: [string, string, ('pos' | 'neg')?][]): void {
-    tt.show(title, rows, undefined, e)
+    // Focus and touch-tap carry no pointer coordinates: anchor to the element instead.
+    if (e.clientX === undefined && e.currentTarget instanceof Element) {
+      tt.showAt(e.currentTarget, title, rows)
+    } else tt.show(title, rows, undefined, e)
   }
 
   const INFO = {
     sessions: {
       title: 'Sessions',
-      text: 'One session is one visit to the honeypot, from connecting to leaving.',
-      label: 'Sessions: One session is one visit to the honeypot, from connecting to leaving.',
+      text: 'One session is one visit to the honeypot, from connecting to leaving. Below: sessions this week, and the change from the week before.',
     },
     logins: {
-      title: 'Login attempts',
+      title: 'Logins',
       text: 'Every username and password tried, across all sessions. One session can try many.',
-      label: 'Login attempts: Every username and password tried, across all sessions. One session can try many.',
     },
     ips: {
       title: 'Unique IPs',
       text: 'How many different addresses attacked, not how many times they connected.',
-      label: 'Unique IPs: How many different addresses attacked, not how many times they connected.',
     },
   }
   type InfoKey = keyof typeof INFO
-  const showInfo = (k: InfoKey): void => showTip({}, INFO[k].title, [['', INFO[k].text]])
+  const infoLabel = (k: InfoKey): string => `${INFO[k].title}: ${INFO[k].text}`
+  const showInfo = (k: InfoKey, e: Event): void => showTip(e, INFO[k].title, [['', INFO[k].text]])
+
+  // Hover and focus open the same tip; Escape closes it.
+  function tipEvents(show: (e: Event) => void) {
+    return {
+      pointerenter: show,
+      pointermove: (e: PointerEvent) => tt.move(e),
+      pointerleave: () => tt.hide(),
+      focus: show,
+      blur: () => tt.hide(),
+      keydown: (e: KeyboardEvent) => {
+        if (e.key === 'Escape') tt.hide()
+      },
+    }
+  }
 
   function showTrendTooltip(e: Pt): void {
     const t = trend.value
+    const tone = trendTone.value === 'up' ? 'pos' : trendTone.value === 'down' ? 'neg' : undefined
     showTip(e, '7-day trend', [
       ['This week', fmtNumber(t?.current ?? 0)],
       ['Prior week', fmtNumber(t?.previous ?? 0)],
-      [
-        'Change',
-        t ? fmtDelta({ delta: t.delta, pct_change: t.pct_change }) : 'no data',
-        t && t.delta > 0 ? 'pos' : t && t.delta < 0 ? 'neg' : undefined,
-      ],
+      ['Change', t ? fmtDelta({ delta: t.delta, pct_change: t.pct_change }) : 'no data', tone],
     ])
   }
 
@@ -152,12 +164,28 @@
     ])
   }
 
-  // The stat group only scrolls (and so needs a tab stop) in the mobile row layout.
+  // The stat group only scrolls (and so needs a tab stop) in the phone row layout.
   const kpisScroll = ref(false)
   let kpisMql: MediaQueryList | null = null
   const syncKpis = (): void => {
     kpisScroll.value = !!kpisMql?.matches
   }
+
+  // Phone row opens on the middle tile; re-centred when the numbers land, until the user scrolls.
+  const kpisEl = useTemplateRef<HTMLElement>('kpis')
+  let kpisTouched = false
+  function touchKpis(): void {
+    kpisTouched = true
+  }
+  function centerKpis(): void {
+    const el = kpisEl.value
+    const mid = el?.querySelector<HTMLElement>('.tile-sessions')
+    if (!el || !mid || !kpisMql?.matches || kpisTouched) return
+    el.style.scrollSnapType = 'none'
+    el.scrollLeft = mid.offsetLeft - (el.clientWidth - mid.offsetWidth) / 2
+    el.style.scrollSnapType = ''
+  }
+  watch(totalsQ.dataUpdatedAt, () => nextTick(centerKpis))
 
   // LiveFeed detects new rows; WorldMap owns the SVG to animate arcs
   const mapRef = useTemplateRef('map')
@@ -180,6 +208,7 @@
       syncKpis()
       kpisMql.addEventListener('change', syncKpis)
     }
+    centerKpis()
   })
   onUnmounted(() => {
     window.removeEventListener('keydown', onKeydown)
@@ -194,6 +223,7 @@
     </template>
 
     <div class="overview">
+      <h1 class="visually-hidden">Overview</h1>
       <WorldMap
         ref="map"
         :countries="countries"
@@ -205,22 +235,27 @@
       />
 
       <div
+        ref="kpis"
         class="kpis"
+        @pointerdown.passive="touchKpis"
+        @wheel.passive="touchKpis"
         :tabindex="kpisScroll ? 0 : undefined"
         role="group"
         aria-label="Overview stats"
       >
-        <StatTile label="Sessions" glass :value="fmtNumber(totals?.total_sessions)" :spark="spark">
+        <StatTile
+          class="tile-sessions"
+          label="Sessions"
+          glass
+          :value="fmtNumber(totals?.total_sessions)"
+          :spark="spark"
+        >
           <template #label-extra>
             <button
               type="button"
               class="info-btn"
-              :aria-label="INFO.sessions.label"
-              @pointerenter="showInfo('sessions')"
-              @pointermove="tt.move($event)"
-              @pointerleave="tt.hide()"
-              @focus="showInfo('sessions')"
-              @blur="tt.hide()"
+              :aria-label="infoLabel('sessions')"
+              v-on="tipEvents((e) => showInfo('sessions', e))"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path :d="ICONS.info" />
@@ -229,32 +264,31 @@
           </template>
           <template #meta>
             <span
-              class="meta-tip"
+              class="meta-tip trend-tip"
               :class="`trend-${trendTone}`"
               role="group"
               tabindex="0"
-              :aria-label="`${trendLabel}, 7-day trend: sessions this week compared with last week`"
-              @pointerenter="showTrendTooltip($event)"
-              @pointermove="tt.move($event)"
-              @pointerleave="tt.hide()"
-              @focus="showTrendTooltip({})"
-              @blur="tt.hide()"
+              :aria-label="`${fmtCompact(trend?.current)} sessions this week, ${trendLabel} vs prior week`"
+              v-on="tipEvents(showTrendTooltip)"
             >
-              {{ trendLabel }}
+              <span class="trend-count">{{ fmtCompact(trend?.current) }}</span>
+              <span class="trend-dot" aria-hidden="true">&middot;</span>
+              <span class="trend-pct">{{ trendPct }}</span>
             </span>
           </template>
         </StatTile>
-        <StatTile label="Login attempts" glass :value="fmtNumber(totals?.total_auth_attempts)">
+        <StatTile
+          class="tile-login"
+          label="Logins"
+          glass
+          :value="fmtNumber(totals?.total_auth_attempts)"
+        >
           <template #label-extra>
             <button
               type="button"
               class="info-btn"
-              :aria-label="INFO.logins.label"
-              @pointerenter="showInfo('logins')"
-              @pointermove="tt.move($event)"
-              @pointerleave="tt.hide()"
-              @focus="showInfo('logins')"
-              @blur="tt.hide()"
+              :aria-label="infoLabel('logins')"
+              v-on="tipEvents((e) => showInfo('logins', e))"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path :d="ICONS.info" />
@@ -267,11 +301,7 @@
               role="group"
               tabindex="0"
               :aria-label="`${acceptedPct}, login success rate: accepted logins out of total attempts`"
-              @pointerenter="showAuthTooltip($event)"
-              @pointermove="tt.move($event)"
-              @pointerleave="tt.hide()"
-              @focus="showAuthTooltip({})"
-              @blur="tt.hide()"
+              v-on="tipEvents(showAuthTooltip)"
             >
               {{ acceptedPct }}
             </span>
@@ -282,12 +312,8 @@
             <button
               type="button"
               class="info-btn"
-              :aria-label="INFO.ips.label"
-              @pointerenter="showInfo('ips')"
-              @pointermove="tt.move($event)"
-              @pointerleave="tt.hide()"
-              @focus="showInfo('ips')"
-              @blur="tt.hide()"
+              :aria-label="infoLabel('ips')"
+              v-on="tipEvents((e) => showInfo('ips', e))"
             >
               <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
                 <path :d="ICONS.info" />
@@ -300,11 +326,7 @@
               role="group"
               tabindex="0"
               :aria-label="`${countries.length} countries, share of the world represented`"
-              @pointerenter="showCountriesTooltip($event)"
-              @pointermove="tt.move($event)"
-              @pointerleave="tt.hide()"
-              @focus="showCountriesTooltip({})"
-              @blur="tt.hide()"
+              v-on="tipEvents(showCountriesTooltip)"
             >
               {{ countries.length }} countries
             </span>
@@ -337,6 +359,8 @@
     position: relative;
     flex: 1 1 auto;
     min-height: 0;
+    --hud-gap: 12px;
+    --hud-ctl-h: 32px;
     display: flex;
     overflow: clip;
   }
@@ -347,34 +371,70 @@
     left: 22px;
     top: 76px;
     width: fit-content;
-    display: flex;
-    flex-direction: column;
+    display: grid;
     gap: 10px;
   }
 
-  .kpis:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: 2px;
+  .trend-up .trend-pct {
+    color: var(--ok);
+  }
+  .trend-down .trend-pct {
+    color: var(--bad);
   }
 
   .kpis :deep(.stat-tile) {
-    min-height: 88px;
+    text-align: center;
+    position: relative;
   }
-
-  .trend-up {
-    color: var(--ok);
+  .kpis :deep(.spark) {
+    order: 3;
   }
-  .trend-down {
-    color: var(--bad);
+  .kpis :deep(.meta) {
+    order: 4;
+    justify-content: center;
   }
-  .trend-neutral {
-    color: var(--text-muted);
+  /* Header line: label top-left, info dot pinned top-right on the same line (one line,
+     so the label can size the tile when numbers are short). */
+  .kpis :deep(.label-row) {
+    contain: none;
+    text-align: left;
+    padding-right: 22px;
   }
-
+  .kpis :deep(.label) {
+    white-space: nowrap;
+  }
+  .kpis :deep(.tail button) {
+    position: absolute;
+    top: 11px;
+    right: 16px;
+    margin: 0;
+  }
+  .kpis :deep(.stat-tile:not(:has(.spark)) .meta) {
+    flex: 1;
+    align-items: center;
+  }
   .meta-tip {
+    flex: none;
+    min-width: 0;
     cursor: help;
     transition: opacity var(--motion-fast);
   }
+  /* Touch: 44px hit area, visuals unchanged. */
+  @media (pointer: coarse) {
+    .meta-tip {
+      position: relative;
+    }
+    .meta-tip::after {
+      content: '';
+      position: absolute;
+      inset: -16px 0;
+    }
+  }
+
+  .trend-dot {
+    padding: 0 6px;
+  }
+
   .meta-tip:hover {
     opacity: 0.8;
   }
@@ -403,11 +463,17 @@
     position: relative;
   }
 
-  /* 24px hit area (WCAG 2.5.8) around the 16px control. */
+  /* 24px hit area (WCAG 2.5.8) around the 16px control; 44px on touch. */
   .info-btn::after {
     content: '';
     position: absolute;
     inset: -4px;
+  }
+
+  @media (pointer: coarse) {
+    .info-btn::after {
+      inset: -14px;
+    }
   }
 
   .info-btn:hover {
@@ -428,14 +494,14 @@
   }
 
   @media (max-width: 900px) {
-    /* Full-bleed scroller: the inset lives in the padding, not in the box, so
-       the first and last tiles reach the screen edges instead of being clipped
-       by a narrower scroll container. */
+    /* Swipeable row; tiles grow with their numbers. Spark sits above the meta so a
+       caption-only tile centres its meta in the same band. */
     .kpis {
       top: 66px;
       left: 0;
       right: 0;
       width: auto;
+      display: flex;
       flex-direction: row;
       overflow-x: auto;
       overscroll-behavior-x: contain;
@@ -447,11 +513,19 @@
     .kpis::-webkit-scrollbar {
       display: none;
     }
+    .kpis:focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: -2px;
+    }
     .kpis :deep(.stat-tile) {
-      min-width: 148px;
       flex: none;
-      scroll-snap-align: start;
+      min-width: 148px;
+      scroll-snap-align: center;
       box-shadow: none;
+    }
+    /* DOM is Sessions-first (desktop stack); phones show Logins first. Tab order follows the DOM. */
+    .kpis :deep(.tile-login) {
+      order: -1;
     }
   }
 </style>

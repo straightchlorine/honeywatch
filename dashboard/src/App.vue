@@ -39,7 +39,8 @@
   <ErrorBoundary>
     <RouterView v-slot="{ Component }">
       <Suspense :timeout="LOADER_WAIT_MS" @pending="onPending" @resolve="onResolve">
-        <component :is="Component" />
+        <!-- Component is undefined until the first route matches; Suspense warns on that bare placeholder. -->
+        <component :is="Component" v-if="Component" />
         <template #fallback>
           <LoadingState :immediate="!splashUp()" />
         </template>

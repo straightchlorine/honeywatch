@@ -58,6 +58,16 @@ describe('OverviewView', () => {
     expect(w.text()).toContain('no data')
   })
 
+  it('keeps the DOM Sessions-first so the desktop stack leads with Sessions', async () => {
+    const w = await mountOverview()
+    const labels = w.findAll('.kpis .stat-tile .label').map((l) => l.text())
+    expect(labels.map((t) => t.split(' ').slice(0, 2).join(' '))).toEqual([
+      'Sessions',
+      'Logins',
+      'Unique IPs',
+    ])
+  })
+
   it('explains each KPI in the tooltip when its info button takes keyboard focus', async () => {
     const w = await mountOverview()
     const btn = w.find('button[aria-label^="Unique IPs"]')
@@ -68,5 +78,29 @@ describe('OverviewView', () => {
     expect(tip.textContent).toContain('How many different addresses attacked')
     await btn.trigger('blur')
     expect(tip.classList.contains('show')).toBe(false)
+  })
+
+  it('closes a focus-opened tooltip when Escape is pressed', async () => {
+    const w = await mountOverview()
+    const btn = w.find('button[aria-label^="Sessions"]')
+    await btn.trigger('focus')
+    const tip = document.querySelector('.hw-tooltip')!
+    expect(tip.classList.contains('show')).toBe(true)
+    await btn.trigger('keydown', { key: 'Escape' })
+    expect(tip.classList.contains('show')).toBe(false)
+  })
+
+  it('labels each info button with its title and explanation', async () => {
+    const w = await mountOverview()
+    expect(w.get('button[aria-label^="Sessions"]').attributes('aria-label')).toBe(
+      'Sessions: One session is one visit to the honeypot, from connecting to leaving. Below: sessions this week, and the change from the week before.',
+    )
+  })
+
+  it('shows the weekly count and only the percentage, tinted by direction', async () => {
+    const w = await mountOverview()
+    expect(w.get('.trend-tip').text()).toBe('10\u00b7+100%')
+    expect(w.get('.trend-tip').attributes('aria-label')).toContain('vs prior week')
+    expect(w.get('.trend-pct').text()).toBe('+100%')
   })
 })

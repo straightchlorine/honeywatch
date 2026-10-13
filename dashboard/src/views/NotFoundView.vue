@@ -1,7 +1,8 @@
 <script setup lang="ts">
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
-  import HwCard from '@/components/base/HwCard.vue'
+  import EmptyState from '@/components/base/EmptyState.vue'
+  import HexIcon from '@/components/base/HexIcon.vue'
 </script>
 
 <template>
@@ -10,63 +11,43 @@
       <TopBar />
     </template>
 
-    <div class="not-found">
-      <div class="page-head">
-        <h1>Page not found</h1>
-        <span class="sub">The page you requested doesn't exist.</span>
-      </div>
-
-      <HwCard class="card">
-        <div class="recover">
-          <RouterLink to="/" class="back-link">Back to overview</RouterLink>
-        </div>
-      </HwCard>
-    </div>
+    <EmptyState
+      class="not-found"
+      title="Page not found"
+      hint="The page you requested doesn't exist."
+      :heading-level="1"
+    >
+      <template #icon>
+        <HexIcon :size="44" class="hex" />
+      </template>
+      <RouterLink to="/" class="back-link">Back to overview</RouterLink>
+    </EmptyState>
   </PageShell>
 </template>
 
 <style scoped>
+  /* Fills the shell body so the empty state centres on desktop and mobile. */
   .not-found {
-    display: flex;
-    flex-direction: column;
-    gap: 14px;
     flex: 1 1 auto;
     min-height: 0;
   }
 
-  .page-head {
-    display: flex;
-    align-items: baseline;
-    gap: 16px;
-    flex: none;
-  }
-
-  .page-head h1 {
-    margin: 0;
+  .not-found :deep(.empty-title) {
     font-family: var(--font-display);
     font-size: 26px;
+    line-height: 1.2;
     font-weight: 700;
   }
 
-  .sub {
-    color: var(--text-dim);
-    font-size: 13px;
-  }
-
-  .card {
-    flex: none;
-  }
-
-  .recover {
-    display: flex;
-    justify-content: center;
-    padding: var(--space-6) var(--space-4);
+  .hex {
+    margin-bottom: var(--space-2);
   }
 
   .back-link {
     display: inline-flex;
     align-items: center;
-    min-height: 40px;
+    min-height: 44px;
+    margin-top: var(--space-3);
     padding: 0 22px;
     border-radius: 999px;
     background: var(--accent);
@@ -86,19 +67,10 @@
     outline-offset: 2px;
   }
 
-  @media (max-width: 760px) {
-    .page-head {
-      flex-wrap: wrap;
-      gap: 4px;
-    }
-
-    .page-head h1 {
-      font-size: 22px;
-      flex-basis: 100%;
-    }
-
-    .sub {
-      flex-basis: 100%;
+  @media (max-width: 900px) {
+    /* Shell is natural-height on mobile; give the body a viewport-based floor. */
+    .not-found {
+      min-height: 60dvh;
     }
   }
 </style>

@@ -2,19 +2,30 @@
   import { computed, nextTick, ref, watch } from 'vue'
   import { useRoute, useRouter } from 'vue-router'
   import { keepPreviousData, useQuery, useQueryClient } from '@tanstack/vue-query'
-  import type { ListSessionsResponse } from '@/api/generated/types.gen'
+  import type { ListSessionsResponse, RunSessionsResponse } from '@/api/generated/types.gen'
   import { getSessionByIdOptions } from '@/api/queries'
-  import { listSessionsOptions } from '@/api/generated/@tanstack/vue-query.gen'
+  import {
+    listRunSessionsOptions,
+    listSessionsOptions,
+  } from '@/api/generated/@tanstack/vue-query.gen'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import SessionTerminal from '@/components/sessions/SessionTerminal.vue'
-  import { sessionsListQuery } from '@/utils/pagination'
+  import { SESSIONS_PER_PAGE, sessionsListQuery } from '@/utils/pagination'
+  import { buildSequence } from '@/utils/sessionSequence'
+  import { setLastViewed } from '@/utils/lastViewed'
 
   const route = useRoute()
   const router = useRouter()
-  const sessionId = computed(() => String(route.params.id ?? ''))
+  // This page stays mounted while the next one loads, after the route has already moved on. An
+  // empty id would fetch /sessions/, the list, into this page's detail query, so keep the last id.
+  const sessionId = computed<string>((prev) => {
+    const id = route.params.id
+    return typeof id === 'string' ? id : (prev ?? '')
+  })
 
   const queryClient = useQueryClient()
+  watch(sessionId, setLastViewed, { immediate: true })
 
   // Previous/Next swap the id on this instance; keepPreviousData holds the old session until the new one lands.
   const detailQ = useQuery(
@@ -25,34 +36,69 @@
   )
   await detailQ.suspense()
 
-  const session = computed(() => detailQ.data.value!)
+  // Only a 404 means not-found; any other failure surfaces the real API error.
+  const detailErr = detailQ.error.value as { code?: number } | null
+  if (detailErr && detailQ.data.value === undefined && detailErr.code !== 404) throw detailErr
+
+  // Undefined for an unknown id (404): suspense() resolves on error, so show a not-found state.
+  const session = computed(() => detailQ.data.value)
 
   // Restore exact list state (sort, filters, page) when returning; router.back()
   // only works if list is in history, so fall back to /sessions for deep links.
   // Use history.state (not vue-router's stack) to detect the previous page.
   function listBack(): string | null {
     const back = window.history.state?.back
-    const cameFromList = typeof back === 'string' && back.startsWith('/sessions') && !back.startsWith('/sessions/')
+    const cameFromList =
+      typeof back === 'string' && back.startsWith('/sessions') && !back.startsWith('/sessions/')
     return cameFromList ? back : null
   }
 
-  // Neighbours come from the cached list page, rebuilt from the list URL's query. No cache, or
-  // this session not on that page, means no links; the first/last row of a page has one neighbour.
+  // Neighbours come from the cached list page and the runs the list had open, rebuilt from the
+  // list URL's query. No cache, or this session not in that sequence, means no links; the first
+  // and last session have one neighbour.
   const nav = computed(() => {
     const back = listBack()
     if (!back) return null
     const q = new URL(back, window.location.origin).searchParams
-    const opts = listSessionsOptions({ query: sessionsListQuery((k) => q.get(k) ?? undefined) })
-    const page = queryClient.getQueryData<ListSessionsResponse>(opts.queryKey)
-    const i = page?.items.findIndex((r) => r.id === sessionId.value) ?? -1
-    if (!page || i < 0) return null
+    const listQuery = sessionsListQuery((k) => q.get(k) ?? undefined)
+    const page = queryClient.getQueryData<ListSessionsResponse>(
+      listSessionsOptions({ query: listQuery }).queryKey,
+    )
+    if (!page) return null
+    const { sort, order, has, country, q: term, sha256 } = listQuery
+    const seq = buildSequence(
+      page,
+      (q.get('run') ?? '').split(','),
+      (first, n) =>
+        page.as_of && first.run
+          ? queryClient.getQueryData<RunSessionsResponse>(
+              listRunSessionsOptions({
+                query: {
+                  sort,
+                  order,
+                  has,
+                  country,
+                  q: term,
+                  sha256,
+                  as_of: page.as_of,
+                  offset: first.run.offset,
+                  count: first.run.count,
+                  page: n,
+                  per_page: SESSIONS_PER_PAGE,
+                },
+              }).queryKey,
+            )?.items
+          : undefined,
+      SESSIONS_PER_PAGE,
+    )
+    const i = seq.findIndex((r) => r.id === sessionId.value)
+    if (i < 0) return null
     return {
-      row: page.items[i]!,
+      row: seq[i]!,
       position: i + 1,
-      count: page.items.length,
-      maxInterest: page.max_interest,
-      prev: page.items[i - 1]?.id,
-      next: page.items[i + 1]?.id,
+      count: seq.length,
+      prev: seq[i - 1]?.id,
+      next: seq[i + 1]?.id,
     }
   })
 
@@ -63,7 +109,9 @@
   watch(sessionId, async () => {
     await nextTick()
     heading.value?.focus({ preventScroll: true })
-    announcement.value = nav.value ? `Session ${nav.value.position} of ${nav.value.count} on this page` : ''
+    announcement.value = nav.value
+      ? `Session ${nav.value.position} of ${nav.value.count} on this page`
+      : ''
   })
 
   function goBack() {
@@ -97,30 +145,24 @@
             :to="{ name: 'session-detail', params: { id: nav.prev } }"
             replace
             class="pager-link"
-            >
-Previous
-</RouterLink
           >
-          <span v-else class="pager-link disabled" aria-disabled="true">Previous</span>
+            Previous
+          </RouterLink>
+          <span v-else class="pager-link disabled" role="link" aria-disabled="true">Previous</span>
           <RouterLink
             v-if="nav.next"
             :to="{ name: 'session-detail', params: { id: nav.next } }"
             replace
             class="pager-link"
-            >
-Next
-</RouterLink
           >
-          <span v-else class="pager-link disabled" aria-disabled="true">Next</span>
+            Next
+          </RouterLink>
+          <span v-else class="pager-link disabled" role="link" aria-disabled="true">Next</span>
         </div>
       </div>
       <span class="visually-hidden" role="status" aria-live="polite">{{ announcement }}</span>
-      <SessionTerminal
-        :session="session"
-        :row="nav?.row"
-        :max-interest="nav?.maxInterest"
-        class="terminal-hero"
-      />
+      <p v-if="!session" class="missing" role="alert">Session not found.</p>
+      <SessionTerminal v-else :session="session" :row="nav?.row" class="terminal-hero" />
     </div>
   </PageShell>
 </template>
@@ -183,6 +225,12 @@ Next
     cursor: default;
   }
 
+  .missing {
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 14px;
+  }
+
   h1:focus {
     outline: none;
   }
@@ -225,7 +273,8 @@ Next
     min-height: 0;
   }
 
-  @media (max-width: 760px) {
+  /* Same phone edge as LIST_PHONE_MQ in utils/breakpoints.ts. */
+  @media (max-width: 759.98px) {
     .pager-link {
       display: inline-flex;
       align-items: center;

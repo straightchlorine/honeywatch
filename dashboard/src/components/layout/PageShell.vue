@@ -1,3 +1,9 @@
+<script lang="ts">
+  // Module scope, shared by every PageShell: each view mounts its own, so a flag inside
+  // <script setup> would reset on every navigation and the announcement would never fire.
+  let hasNavigated = false
+</script>
+
 <script setup lang="ts">
   /**
    * 100dvh flex column on desktop (no page scroll), natural height on mobile.
@@ -19,8 +25,7 @@
   const isFetching = useIsFetching()
 
   // Route-change a11y (WCAG 4.1.3, 2.4.3): announce new page and focus <main>.
-  // Module-level flag skips initial document load; subsequent mounts fire announcement.
-  let hasNavigated = false
+  // The module-level flag skips the initial document load; later mounts announce.
   const routeAnnounce = ref('')
   onMounted(() => {
     if (hasNavigated) {

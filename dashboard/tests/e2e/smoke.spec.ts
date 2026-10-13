@@ -283,6 +283,8 @@ async function mockApi(page: Page): Promise<void> {
         country_code: 'US',
         started_at: '2026-05-31T13:40:52+00:00',
         ended_at: '2026-05-31T13:41:50+00:00',
+        interest: 12,
+        max_interest: 20,
         auth_attempts: [
           {
             id: 1,
@@ -331,6 +333,82 @@ async function dismissIntro(page: Page): Promise<void> {
   await page.getByRole('button', { name: 'Enter', exact: true }).click()
   await expect(page.getByRole('dialog', { name: 'About Honeywatch' })).toBeHidden()
 }
+
+// Serve a server-folded sessions list: items[runFrom] carries the rest of the run (items after it) behind it.
+async function mockFoldedSessions(
+  page: Page,
+  items: Record<string, unknown>[],
+  runFrom: number,
+  perPage = 40,
+): Promise<void> {
+  const members = items.slice(runFrom + 1)
+  const shown = items.slice(0, runFrom + 1).map((it, i) =>
+    i < runFrom
+      ? it
+      : {
+          ...it,
+          run: {
+            count: members.length,
+            offset: runFrom + 1,
+            countries: 1,
+            country_code: 'US',
+            country: 'United States',
+            min_duration_s: 58,
+            max_duration_s: 58,
+            oldest: '2026-05-31T13:40:52+00:00',
+            newest: '2026-05-31T13:40:52+00:00',
+          },
+        },
+  )
+  const fulfil = (body: unknown) => ({
+    status: 200,
+    contentType: 'application/json',
+    body: JSON.stringify(body),
+  })
+  await page.route(/\/api\/v1\/sessions\/run\?/, (route) =>
+    route.fulfill(
+      fulfil({
+        items: members,
+        meta: { page: 1, per_page: 40, pages: 1, total: members.length },
+      }),
+    ),
+  )
+  await page.route(/\/api\/v1\/sessions\/(\?|$)/, (route) =>
+    route.fulfill(
+      fulfil({
+        items: shown,
+        as_of: '2026-06-01T00:00:00+00:00',
+        max_interest: 20,
+        meta: { page: 1, pages: 1, per_page: perPage, total: items.length },
+      }),
+    ),
+  )
+}
+
+// A valid summary row for the phone list (a probe unless `over` says otherwise).
+const sessionItem = (id: string, over: Record<string, unknown> = {}) => ({
+  id,
+  src_port: 45214,
+  dst_port: 2222,
+  protocol: 'ssh',
+  country: 'United States',
+  country_code: 'US',
+  city: 'Ashburn',
+  started_at: '2026-05-31T13:40:52+00:00',
+  ended_at: '2026-05-31T13:41:50+00:00',
+  auth_attempt_count: 1,
+  command_count: 0,
+  has_successful_login: false,
+  category: 'probe',
+  n_commands: 0,
+  n_downloads: 0,
+  n_tcpip: 0,
+  auth_success: false,
+  interest: 1,
+  asn_org: 'OVH SAS',
+  client_version: 'SSH-2.0-Go',
+  ...over,
+})
 
 async function expectAxeClean(page: Page): Promise<void> {
   // The loading splash covers the page and animates; wait until it is gone, then scan.
@@ -383,8 +461,8 @@ test.describe('dashboard accessibility smoke', () => {
     // clear hover tooltips to avoid a stale freeze-on-click.
     await page.getByRole('button', { name: /8 characters/ }).click()
     const drill = page.locator('.drill')
-    await expect(drill.getByText('123456', { exact: true })).toBeVisible()
-    await expect(drill.getByText('qwerty')).toBeVisible()
+    await expect(drill.locator('.rk-label').nth(0)).toContainText('123456')
+    await expect(drill.locator('.rk-label').nth(1)).toContainText('qwerty')
     const back = page.getByRole('button', { name: /Anatomy/ })
     await expect(back).toBeVisible()
     await expect(page.getByRole('tooltip')).toHaveCount(0)
@@ -393,6 +471,89 @@ test.describe('dashboard accessibility smoke', () => {
 
     await back.click()
     await expect(page.getByRole('button', { name: /8 characters/ })).toBeVisible()
+  })
+
+  test('phone credentials matrix has fewer columns than desktop and no overlapping labels', async ({
+    page,
+  }) => {
+    const names = ['root', 'admin', 'user', 'test', 'guest', 'oracle', 'pi', 'ubuntu']
+    const pwds = [
+      '123456',
+      'password',
+      'admin',
+      'qwerty',
+      'letmein',
+      'toor',
+      'root',
+      'welcome',
+      'abc123',
+      'default',
+    ]
+    const pairs = names.flatMap((u, i) =>
+      pwds.map((p, j) => ({
+        username: u,
+        password: p,
+        count: 100 - i * 5 - j * 3,
+        distinct_ips: null,
+      })),
+    )
+    await page.route('**/api/v1/stats/top-credentials**', (route) => {
+      const q = new URL(route.request().url()).searchParams
+      if (q.get('outcome') === 'success' || q.get('metric') === 'ip_fanout') return route.fallback()
+      const body =
+        q.get('by') === 'username'
+          ? names.map((u, i) => ({
+              username: u,
+              password: null,
+              count: 200 - i * 10,
+              distinct_ips: null,
+            }))
+          : q.get('by') === 'password'
+            ? pwds.map((p, j) => ({
+                username: null,
+                password: p,
+                count: 200 - j * 10,
+                distinct_ips: null,
+              }))
+            : pairs
+      return route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(body),
+      })
+    })
+    const svg = page.locator('svg.hex-matrix')
+    const columns = () => svg.locator('text.mx-axis[transform^="rotate"]')
+
+    await page.setViewportSize({ width: 1280, height: 900 })
+    await page.goto('/credentials')
+    await dismissIntro(page)
+    await expect(svg).toBeVisible()
+    await expect(columns().first()).toBeVisible()
+    const desktopCols = await columns().count()
+
+    await page.setViewportSize({ width: 390, height: 844 })
+    await page.reload()
+    await expect(columns().first()).toBeVisible()
+    await expect.poll(() => columns().count()).toBeLessThanOrEqual(5)
+    const phoneCols = await columns().count()
+    expect(phoneCols).toBeGreaterThan(0)
+    expect(phoneCols).toBeLessThan(desktopCols)
+
+    const boxes = []
+    for (let i = 0; i < phoneCols; i++) {
+      const b = await columns().nth(i).boundingBox()
+      expect(b).not.toBeNull()
+      boxes.push(b!)
+    }
+    for (let i = 0; i < boxes.length; i++)
+      for (let j = i + 1; j < boxes.length; j++) {
+        const A = boxes[i]!
+        const B = boxes[j]!
+        const hit =
+          A.x < B.x + B.width && B.x < A.x + A.width && A.y < B.y + B.height && B.y < A.y + A.height
+        expect(hit, `x labels ${i} and ${j} overlap`).toBe(false)
+      }
   })
 
   test('origins renders the hive, drills into a country, toggles table and keys, axe-clean', async ({
@@ -450,7 +611,15 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(page.getByText('Where payloads are hosted')).toHaveCount(0)
     await expect(page.getByText('Source URL recorded')).toHaveCount(0)
     await expect(page.getByText('Sessions that fetched a file')).toBeVisible()
-    await expect(page.getByText('1 in 60 of the 120 that got control')).toBeVisible()
+    // The tile keeps the full sentence on desktop and a short form on a phone.
+    await expect(
+      page.getByText(
+        test.info().project.name === 'mobile-chromium'
+          ? '1 in 60 sessions'
+          : '1 in 60 of the 120 that got control',
+        { exact: true },
+      ),
+    ).toBeVisible()
     await expect(page.getByRole('heading', { level: 2, name: 'Relay attempts' })).toBeVisible()
     await expect(page.getByText('ip-who.com')).toBeVisible()
     await expect(page.getByText('Unknown network')).toBeVisible()
@@ -466,6 +635,46 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(page.locator('.spec').first().locator('a.vt')).toHaveCount(0)
 
     await expectAxeClean(page)
+  })
+
+  test('payloads on a phone lists 8 specimens until Show all, with no sideways scroll', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.route(/\/api\/v1\/stats\/downloads/, (route) =>
+      route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify(
+          Array.from({ length: 12 }, (_, i) => ({
+            sha256: String(i).padStart(2, '0').repeat(32),
+            name: `file${i}`,
+            sessions: 20 - i,
+            machines: 2,
+            first_seen: null,
+            last_seen: null,
+            countries: [],
+            host: null,
+          })),
+        ),
+      }),
+    )
+    await page.goto('/payloads')
+    await dismissIntro(page)
+    const cards = page.locator('.specimens .spec')
+    await expect(cards.first()).toBeVisible()
+    expect(
+      await cards.evaluateAll((els) => els.filter((e) => e.getClientRects().length).length),
+    ).toBe(8)
+    await page.getByRole('button', { name: 'Show all 12' }).click()
+    expect(
+      await cards.evaluateAll((els) => els.filter((e) => e.getClientRects().length).length),
+    ).toBe(12)
+    expect(
+      await page.evaluate(
+        () => document.documentElement.scrollWidth <= document.documentElement.clientWidth,
+      ),
+    ).toBe(true)
   })
 
   test('overview: selecting a country opens the intel drawer', async ({ page }) => {
@@ -513,9 +722,19 @@ test.describe('dashboard accessibility smoke', () => {
     await page.goto('/')
     await dismissIntro(page)
     const scene = page.locator('svg.worldmap > g')
-    // Mobile opens zoomed on Europe, so reset to the world view first - this
-    // test is specifically about the clamp at k = minK.
-    await page.getByRole('button', { name: 'Reset view' }).click()
+    // Mobile opens zoomed on Europe and Home returns there, so zoom out step by
+    // step to the world view - this test is specifically about the clamp at k = minK.
+    const zoomOut = page.getByRole('button', { name: 'Zoom out' })
+    // Each click is an animated tween that ignores nothing but may overlap, so
+    // click, let it settle, and stop once a click no longer changes the view.
+    let last = ''
+    for (let i = 0; i < 20; i++) {
+      await zoomOut.click()
+      await page.waitForTimeout(400)
+      const now = (await scene.getAttribute('transform')) ?? ''
+      if (now === last) break
+      last = now
+    }
     const before = await scene.getAttribute('transform')
     await page.locator('svg.worldmap').hover()
     await page.mouse.down()
@@ -525,6 +744,95 @@ test.describe('dashboard accessibility smoke', () => {
     // no-op. This fails for any future code path that writes tx/ty without
     // going through usePanZoom's commit().
     expect(await scene.getAttribute('transform')).toBe(before)
+  })
+
+  test('SPA navigation from overview to credentials renders without an error', async ({ page }) => {
+    await page.goto('/')
+    await dismissIntro(page)
+    await page
+      .getByRole('navigation', { name: 'Main' })
+      .getByRole('link', { name: /Credentials/ })
+      .click()
+    await expect(page).toHaveURL(/\/credentials/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Credentials' })).toBeVisible()
+    await expect(page.getByRole('alert')).toHaveCount(0)
+    await expect(page.getByText('Something went wrong')).toHaveCount(0)
+  })
+
+  test('a forced view error shows the error state and no loading splash', async ({ page }) => {
+    await page.route('**/api/v1/stats/top-credentials**', (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: '{"code":400,"status":"Bad Request","message":"nope"}',
+      }),
+    )
+    await page.goto('/credentials')
+    const alert = page.getByRole('alert')
+    await expect(alert).toBeVisible({ timeout: 15_000 })
+    await expect(alert).toContainText('Something went wrong')
+    await expect(alert.getByRole('button', { name: 'Try again' })).toBeVisible()
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
+  })
+
+  test('leaving a session replay for credentials neither crashes nor fetches an empty id', async ({
+    page,
+  }) => {
+    // The generated client sends a bare /api/v1/sessions/ only for an empty id. List calls carry
+    // query parameters, so requiring an empty search leaves them out of the check.
+    const isEmptyIdFetch = (url: URL) =>
+      url.pathname === '/api/v1/sessions/' && url.search === ''
+    const detailFetches: string[] = []
+    const emptyIdRequests: string[] = []
+    page.on('request', (r) => {
+      const url = new URL(r.url())
+      if (url.pathname.startsWith('/api/v1/sessions/')) detailFetches.push(url.pathname)
+      if (isEmptyIdFetch(url)) emptyIdRequests.push(r.url())
+    })
+    await page.goto('/sessions/726faaebd6b9')
+    await dismissIntro(page)
+    await expect(page.getByRole('region', { name: /^Replay of the/i })).toBeVisible()
+    // Positive control: the listener sees real detail fetches, so a clean run is not vacuous.
+    expect(detailFetches).toContain('/api/v1/sessions/726faaebd6b9')
+    emptyIdRequests.length = 0
+    await page.locator('a[href="/credentials"]').first().click({ delay: 120 })
+    await expect(page).toHaveURL(/\/credentials/)
+    await expect(page.getByRole('heading', { level: 1, name: 'Credentials' })).toBeVisible()
+    await expect(page.getByText('Something went wrong')).toHaveCount(0)
+    expect(emptyIdRequests).toEqual([])
+  })
+
+  test('a view error inside the fallback delay leaves no loader, also after Try again', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await dismissIntro(page)
+    await page.route('**/api/v1/stats/password-composition*', (route) =>
+      route.fulfill({
+        status: 400,
+        contentType: 'application/json',
+        body: '{"code":400,"status":"Bad Request","message":"nope"}',
+      }),
+    )
+    await page.locator('a[href="/credentials"]').first().click({ delay: 120 })
+    await page.waitForTimeout(400)
+    await expect(page.locator('[role=alert]')).toHaveCount(1)
+    await expect(page.locator('.loading')).toHaveCount(0)
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
+    await page.getByRole('button', { name: 'Try again' }).click()
+    await page.waitForTimeout(600)
+    await expect(page.locator('[role=alert]')).toHaveCount(1)
+    await expect(page.locator('.loading')).toHaveCount(0)
+    await expect(page.locator('#hw-splash')).toHaveCount(0)
+  })
+
+  test('phone shows the brand wordmark and a GitHub link', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.goto('/')
+    await dismissIntro(page)
+    const brand = page.getByRole('link', { name: 'Honeywatch', exact: true })
+    await expect(brand.getByText('Honeywatch')).toBeVisible()
+    await expect(page.getByRole('link', { name: 'GitHub', exact: true })).toBeVisible()
   })
 
   test('not-found renders and is axe-clean', async ({ page }) => {
@@ -570,6 +878,7 @@ test.describe('dashboard accessibility smoke', () => {
   test('sessions list expands a row and opens the full replay, IPs blotted, axe-clean', async ({
     page,
   }) => {
+    test.skip(test.info().project.name === 'mobile-chromium', 'table layout is desktop only')
     await page.goto('/sessions')
     await dismissIntro(page)
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
@@ -615,10 +924,781 @@ test.describe('dashboard accessibility smoke', () => {
     await expect(replay).toBeVisible()
     await expect(replay).toContainText('<ip>')
     await expect(replay).not.toContainText('34.11.136.102')
+    await expect(replay.getByRole('img', { name: /^Interest score/ })).toBeVisible()
     await expectAxeClean(page)
   })
 
+  test('phone: the sessions list is axe-clean and a tapped row opens its replay, IPs blotted', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.goto('/sessions')
+    await dismissIntro(page)
+    await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
+    // The link is named in prose; the id on screen is the first 8 characters of the 12.
+    const row = page.getByRole('link', { name: /^726faaeb,/ })
+    await expect(row).toBeVisible()
+    await expectAxeClean(page)
+
+    await row.click({ delay: 120 })
+    await expect(page).toHaveURL(/\/sessions\/726faaebd6b9$/)
+    await expect(page.locator('tr.expand')).toHaveCount(0)
+    const replay = page.getByRole('region', { name: /^Replay of the/i })
+    await expect(replay).toBeVisible()
+    await expect(replay).toContainText('<ip>')
+    await expect(replay).not.toContainText('34.11.136.102')
+    await expect(replay.getByRole('img', { name: /^Interest score/ })).toBeVisible()
+    await expect(page.getByText('726faaebd6b9').first()).toBeVisible()
+    await expectAxeClean(page)
+  })
+
+  test('sessions folds identical sessions into a group row that expands', async ({ page }) => {
+    test.skip(test.info().project.name === 'mobile-chromium', 'table layout is desktop only')
+    const item = (id: string) => ({
+      id,
+      src_port: 45214,
+      dst_port: 2222,
+      protocol: 'ssh',
+      country: 'United States',
+      country_code: 'US',
+      started_at: '2026-05-31T13:40:52+00:00',
+      ended_at: '2026-05-31T13:41:50+00:00',
+      auth_attempt_count: 1,
+      command_count: 0,
+      has_successful_login: false,
+      category: 'scan',
+      n_commands: 0,
+      n_downloads: 0,
+      n_tcpip: 0,
+      auth_success: false,
+      interest: 1,
+      asn_org: 'OVH SAS',
+      client_version: 'SSH-2.0-Go',
+    })
+    await mockFoldedSessions(
+      page,
+      ['aaaaaaaaaaa1', 'aaaaaaaaaaa2', 'aaaaaaaaaaa3', 'aaaaaaaaaaa4'].map(item),
+      0,
+    )
+    await page.goto('/sessions')
+    await dismissIntro(page)
+    const rows = page.locator('tr.srow')
+    await expect(rows).toHaveCount(1)
+    const group = page.locator('tr.sgroup')
+    await expect(group).toHaveAttribute('aria-expanded', 'false')
+    await group.click()
+    await expect(group).toHaveAttribute('aria-expanded', 'true')
+    await expect(rows).toHaveCount(4)
+    // The run shares one score, so the children repeat none of it.
+    await expect(page.locator('tr.srow.nested .score-hex')).toHaveCount(0)
+    // ... but each child keeps its own story badges.
+    expect(await page.locator('tr.srow.nested .chips > *').count()).toBeGreaterThan(0)
+  })
+
+  test('phone: a run folds look-alikes under its leader and its members keep their own chips', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await mockFoldedSessions(
+      page,
+      ['aaaaaaaaaaa1', 'aaaaaaaaaaa2', 'aaaaaaaaaaa3', 'aaaaaaaaaaa4'].map((id) => sessionItem(id)),
+      0,
+    )
+    await page.goto('/sessions')
+    await dismissIntro(page)
+    const rows = page.locator('a.row')
+    await expect(rows).toHaveCount(1)
+    const head = page.locator('.run-head')
+    await expect(head).toHaveAttribute('aria-expanded', 'false')
+    await head.click({ delay: 120 })
+    await expect(head).toHaveAttribute('aria-expanded', 'true')
+    await expect(rows).toHaveCount(4)
+    await expect(page.locator('a.row.child .score-hex')).toHaveCount(0)
+    await expect(page.getByRole('list', { name: 'Sessions like aaaaaaaa' })).toBeVisible()
+    expect(await page.locator('a.row.child .chips > *').count()).toBeGreaterThan(0)
+  })
+
+  test('an expanded nested child panel respects the child indent', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'desktop layout only')
+    const item = (id: string) => ({
+      id,
+      src_port: 45214,
+      dst_port: 2222,
+      protocol: 'ssh',
+      country: 'United States',
+      country_code: 'US',
+      started_at: '2026-05-31T13:40:52+00:00',
+      ended_at: '2026-05-31T13:41:50+00:00',
+      auth_attempt_count: 1,
+      command_count: 0,
+      has_successful_login: false,
+      category: 'scan',
+      n_commands: 0,
+      n_downloads: 0,
+      n_tcpip: 0,
+      auth_success: false,
+      interest: 1,
+      asn_org: 'OVH SAS',
+      client_version: 'SSH-2.0-Go',
+    })
+    await mockFoldedSessions(page, ['aaaaaaaaaaa1', 'aaaaaaaaaaa2', 'aaaaaaaaaaa3'].map(item), 0)
+    await page.goto('/sessions')
+    await dismissIntro(page)
+    await page.locator('tr.sgroup').click()
+    const child = page.locator('tr.srow.nested').first()
+    await expect(child).toBeVisible()
+    await child.click()
+    await expect(child).toHaveAttribute('aria-expanded', 'true')
+    const panel = page.locator('tr.expand.nested:not([hidden]) td > *').first()
+    await expect(panel).toBeVisible()
+    const childBox = await child.locator('.chevron').boundingBox()
+    const panelBox = await panel.boundingBox()
+    expect(childBox).not.toBeNull()
+    expect(panelBox).not.toBeNull()
+    expect(panelBox!.x).toBeGreaterThanOrEqual(childBox!.x - 1)
+  })
+
+  test.describe('phone rows show only what the sort calls for', () => {
+    const rowItem = (id: string, minutes: number, interest: number) =>
+      sessionItem(id, {
+        ended_at: new Date(
+          Date.parse('2026-05-31T13:40:52+00:00') + minutes * 60_000,
+        ).toISOString(),
+        command_count: 2,
+        has_successful_login: true,
+        category: 'active',
+        n_commands: 2,
+        auth_success: true,
+        interest,
+      })
+
+    test.beforeEach(async ({ page }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await page.route(/\/api\/v1\/sessions\/(\?|$)/, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: [rowItem('cccccccccc01', 7, 12), rowItem('cccccccccc02', 3, 9)],
+            max_interest: 20,
+            meta: { page: 1, pages: 1, per_page: 25, total: 2 },
+          }),
+        }),
+      )
+    })
+
+    test('most interesting: id, flag and city, no time or duration', async ({ page }) => {
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      const row = page.locator('a.row').first()
+      await expect(row).toBeVisible()
+      await expect(row.locator('.val')).toHaveCount(0)
+      await expect(row.locator('.place')).toHaveText('Ashburn')
+      await expect(row.getByRole('img', { name: 'United States' })).toBeVisible()
+    })
+
+    test('most recent: "ago" shown, duration not', async ({ page }) => {
+      await page.goto('/sessions?sort=recent')
+      await dismissIntro(page)
+      const row = page.locator('a.row').first()
+      await expect(row.locator('.val')).toContainText(/ago/)
+      await expect(row.locator('.val')).not.toHaveText('7m')
+      await expect(row.getByRole('img', { name: 'United States' })).toBeVisible()
+    })
+
+    test('duration: duration shown, "ago" not', async ({ page }) => {
+      await page.goto('/sessions?sort=duration')
+      await dismissIntro(page)
+      const row = page.locator('a.row').first()
+      await expect(row.locator('.val')).not.toContainText(/ago/)
+      await expect(row.locator('.val')).toHaveText('7m')
+      await expect(row.getByRole('img', { name: 'United States' })).toBeVisible()
+    })
+
+    test('by origin: the country replaces the city, with no value', async ({ page }) => {
+      await page.goto('/sessions?sort=country')
+      await dismissIntro(page)
+      const row = page.locator('a.row').first()
+      await expect(row.locator('.place')).toHaveText('United States')
+      await expect(row.locator('.val')).toHaveCount(0)
+    })
+  })
+
+  test.describe('phone session row and page', () => {
+    const sess = (id: string) =>
+      sessionItem(id, {
+        started_at: new Date(Date.now() - 28 * 86_400_000).toISOString(),
+        ended_at: new Date(Date.now() - 28 * 86_400_000 + 420_000).toISOString(),
+        command_count: 2,
+        has_successful_login: true,
+        category: 'active',
+        n_commands: 2,
+        auth_success: true,
+        interest: 12,
+      })
+
+    test.beforeEach(async ({ page }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await page.route(/\/api\/v1\/sessions\/(\?|$)/, (route) =>
+        route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: [sess('dddddddddd01'), sess('dddddddddd02')],
+            max_interest: 20,
+            meta: { page: 1, pages: 1, per_page: 25, total: 2 },
+          }),
+        }),
+      )
+      await page.goto('/sessions?sort=recent')
+      await dismissIntro(page)
+    })
+
+    test('Started is relative with the UTC time on the link, and a tap opens the full id with no inline panel', async ({
+      page,
+    }) => {
+      const row = page.locator('a.row').first()
+      await expect(row.locator('.val')).toContainText(/ago/)
+      await expect(row).toHaveAttribute('title', /\d{4}-\d{2}-\d{2}.*UTC/)
+      await row.click({ delay: 120 })
+      await expect(page).toHaveURL(/\/sessions\/dddddddddd01$/)
+      await expect(page.getByText('dddddddddd01').first()).toBeVisible()
+      await expect(page.locator('tr.expand')).toHaveCount(0)
+    })
+
+    test('a row is two lines under 60px with its pieces in order', async ({ page }) => {
+      const row = page.locator('a.row').first()
+      const box = (await row.boundingBox())!
+      expect(box.height).toBeLessThanOrEqual(60)
+      const at = async (sel: string) => (await row.locator(sel).first().boundingBox())!
+      const [hex, id, flag, place, chip] = [
+        await at('.score-hex'),
+        await at('.id'),
+        await at('.flag'),
+        await at('.place'),
+        await at('.chip'),
+      ]
+      // Lead, then text; the id above the flag and place; the chips at the trailing edge.
+      expect(id.x).toBeGreaterThan(hex.x + hex.width)
+      expect(Math.abs(flag.x - id.x)).toBeLessThanOrEqual(1)
+      expect(flag.y).toBeGreaterThan(id.y)
+      expect(place.x).toBeGreaterThan(flag.x + flag.width)
+      expect(chip.x).toBeGreaterThan(place.x + place.width)
+      expect(chip.x + chip.width).toBeLessThanOrEqual(box.x + box.width)
+    })
+  })
+
+  test('overview Sessions tile: the sub-line is centred in the tile', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'desktop layout only')
+    await page.goto('/')
+    await dismissIntro(page)
+    const tile = page.locator('.kpis .stat-tile').filter({ hasText: 'Sessions' })
+    await expect(tile.locator('.meta')).toBeVisible()
+    const c = await tile.evaluate((el) => {
+      const range = document.createRange()
+      range.selectNodeContents(el.querySelector('.meta')!)
+      const m = range.getBoundingClientRect()
+      const t = el.getBoundingClientRect()
+      return { meta: m.left + m.width / 2, tile: t.left + t.width / 2 }
+    })
+    expect(Math.abs(c.meta - c.tile)).toBeLessThanOrEqual(2)
+  })
+
+  test('overview: the three stat tiles share one height; on phones the row scrolls', async ({
+    page,
+  }) => {
+    await page.goto('/')
+    await dismissIntro(page)
+    const tiles = page.locator('.kpis .stat-tile')
+    await expect(tiles).toHaveCount(3)
+    await expect(tiles.first().locator('.value')).toBeVisible()
+    const m = await tiles.evaluateAll((els) =>
+      els.map((el) => {
+        const cs = getComputedStyle(el)
+        const range = document.createRange()
+        range.selectNodeContents(el.querySelector('.value')!)
+        return {
+          w: el.getBoundingClientRect().width,
+          h: el.getBoundingClientRect().height,
+          text: range.getBoundingClientRect().width,
+          pad:
+            parseFloat(cs.paddingLeft) +
+            parseFloat(cs.paddingRight) +
+            parseFloat(cs.borderLeftWidth) +
+            parseFloat(cs.borderRightWidth),
+        }
+      }),
+    )
+    if (test.info().project.name === 'mobile-chromium') {
+      // Phone: swipeable row, tile widths follow their numbers, heights match.
+      for (const t of m) expect(Math.abs(t.h - m[0]!.h)).toBeLessThanOrEqual(1)
+      const sc = await page.locator('.kpis').evaluate((el) => ({
+        cw: el.clientWidth,
+        sw: el.scrollWidth,
+      }))
+      expect(sc.sw).toBeGreaterThanOrEqual(sc.cw)
+    } else {
+      for (const t of m) expect(Math.abs(t.w - m[0]!.w)).toBeLessThanOrEqual(1)
+      // Desktop: no tile is wider than its content needs (largest value + padding), floored at 12rem.
+      const widest = Math.max(...m.map((t) => t.text))
+      for (const t of m) expect(t.w).toBeLessThanOrEqual(Math.max(widest + t.pad + 12, 192))
+    }
+  })
+
+  test('overview: Logins fits on one line in its tile', async ({ page }) => {
+    test.skip(test.info().project.name !== 'chromium', 'desktop layout only')
+    await page.goto('/')
+    await dismissIntro(page)
+    const label = page
+      .locator('.kpis .stat-tile')
+      .filter({ hasText: 'Logins' })
+      .locator('.label')
+    await expect(label).toBeVisible()
+    const oneLine = await label.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      const lh = parseFloat(cs.lineHeight) || parseFloat(cs.fontSize) * 1.2
+      return el.getBoundingClientRect().height <= lh * 1.5
+    })
+    expect(oneLine).toBe(true)
+  })
+
+  test('phone overview: the Sessions tile is centred in the scroll row on load', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.goto('/')
+    await dismissIntro(page)
+    const tile = page.locator('.kpis .stat-tile').filter({ hasText: 'Sessions' })
+    await expect(tile).toBeVisible()
+    await expect
+      .poll(async () => {
+        const row = await page.locator('.kpis').boundingBox()
+        const t = await tile.boundingBox()
+        return Math.abs(t!.x + t!.width / 2 - (row!.x + row!.width / 2))
+      })
+      .toBeLessThanOrEqual(2)
+  })
+
+  test.describe('folded sessions pages', () => {
+    const lookAlike = (id: string) => ({
+      id,
+      src_port: 45214,
+      dst_port: 2222,
+      protocol: 'ssh',
+      country: 'United States',
+      country_code: 'US',
+      started_at: '2026-05-31T13:40:52+00:00',
+      ended_at: '2026-05-31T13:41:50+00:00',
+      auth_attempt_count: 1,
+      command_count: 0,
+      has_successful_login: false,
+      category: 'probe',
+      n_commands: 0,
+      n_downloads: 0,
+      n_tcpip: 0,
+      auth_success: false,
+      interest: 1,
+      asn_org: 'OVH SAS',
+      client_version: 'SSH-2.0-Go',
+    })
+    // 40 sessions: 37 distinct rows, the last one fronting a run of 3 look-alikes.
+    const page40 = Array.from({ length: 40 }, (_, i) =>
+      lookAlike(`cccccccc${String(i).padStart(4, '0')}`),
+    )
+
+    test('a full page shows exactly per_page rows once its run is expanded', async ({ page }) => {
+      test.skip(test.info().project.name === 'mobile-chromium', 'table layout is desktop only')
+      await mockFoldedSessions(page, page40, 36)
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      const rows = page.locator('tr.srow')
+      await expect(rows).toHaveCount(37)
+      await page.locator('tr.sgroup').click()
+      await expect(rows).toHaveCount(40)
+    })
+
+    test('expanding a run requests and lists its members', async ({ page }) => {
+      test.skip(test.info().project.name === 'mobile-chromium', 'table layout is desktop only')
+      await mockFoldedSessions(page, page40, 36)
+      const runReq = page.waitForRequest(/\/api\/v1\/sessions\/run\?/)
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      await page.locator('tr.sgroup').click()
+      const url = new URL((await runReq).url())
+      expect(url.searchParams.get('offset')).toBe('37')
+      expect(url.searchParams.get('count')).toBe('3')
+      for (const i of [37, 38, 39])
+        await expect(
+          page
+            .locator('tr.srow.nested')
+            .filter({ hasText: `cccccccc${String(i).padStart(4, '0')}` }),
+        ).toBeVisible()
+    })
+
+    test('phone: a full page shows exactly per_page rows once its run is expanded', async ({
+      page,
+    }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await mockFoldedSessions(page, page40, 36)
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      const rows = page.locator('a.row')
+      await expect(rows).toHaveCount(37)
+      await page.locator('.run-head').click({ delay: 120 })
+      await expect(rows).toHaveCount(40)
+    })
+
+    test('phone: expanding a run requests and lists its members', async ({ page }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await mockFoldedSessions(page, page40, 36)
+      const runReq = page.waitForRequest(/\/api\/v1\/sessions\/run\?/)
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      await page.locator('.run-head').click({ delay: 120 })
+      const url = new URL((await runReq).url())
+      expect(url.searchParams.get('offset')).toBe('37')
+      expect(url.searchParams.get('count')).toBe('3')
+      for (const i of [37, 38, 39])
+        await expect(
+          page.locator(`a.row.child[data-id="cccccccc${String(i).padStart(4, '0')}"]`),
+        ).toBeVisible()
+    })
+  })
+
+  test('phone: tapping a row opens its session, and Back returns to a list with nothing expanded', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.goto('/sessions')
+    await dismissIntro(page)
+    const row = page.getByRole('link', { name: /^726faaeb,/ })
+    await expect(row).toBeVisible()
+    for (let i = 0; i < 2; i++) {
+      await row.click({ delay: 120 })
+      await expect(page).toHaveURL(/\/sessions\/726faaebd6b9$/)
+      await expect(page.locator('tr.expand')).toHaveCount(0)
+      await page.goBack()
+      await expect(page).toHaveURL(/\/sessions$/)
+      await expect(row).toBeVisible()
+    }
+    // Two taps in the same tick must not stack a second history entry.
+    await row.dblclick({ delay: 0 })
+    await expect(page).toHaveURL(/\/sessions\/726faaebd6b9$/)
+    await page.goBack()
+    await expect(page).toHaveURL(/\/sessions$/)
+  })
+
+  test('phone: most recent puts the age on the second line beside the place', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.goto('/sessions?sort=recent')
+    await dismissIntro(page)
+    const row = page.locator('a.row').first()
+    const val = row.locator('.val')
+    await expect(val).toContainText(/ago/)
+    const a = await row.locator('.place').boundingBox()
+    const b = await val.boundingBox()
+    const id = await row.locator('.id').boundingBox()
+    expect(a).not.toBeNull()
+    expect(b).not.toBeNull()
+    expect(Math.abs(a!.y - b!.y)).toBeLessThanOrEqual(4)
+    expect(b!.x).toBeGreaterThan(a!.x)
+    expect(a!.y).toBeGreaterThan(id!.y + id!.height - 2)
+  })
+
+  test.describe('phone runs', () => {
+    // One leader fronting 45 look-alikes: a second page of 5 behind "Show 5 more".
+    const items = [
+      sessionItem('aaaaaaaaaaa0', { n_commands: 3, interest: 9 }),
+      ...Array.from({ length: 45 }, (_, i) =>
+        sessionItem(`aaaaaaaaaa${String(i + 1).padStart(2, '0')}`, { n_commands: 3, interest: 9 }),
+      ),
+    ]
+    test.beforeEach(async ({ page }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await mockFoldedSessions(page, items, 0)
+      await page.route(/\/api\/v1\/sessions\/run\?/, (route) => {
+        const q = new URL(route.request().url()).searchParams
+        const pg = Number(q.get('page'))
+        const per = Number(q.get('per_page'))
+        const members = items.slice(1)
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: members.slice((pg - 1) * per, pg * per),
+            meta: { page: pg, per_page: per, pages: Math.ceil(members.length / per), total: 45 },
+          }),
+        })
+      })
+    })
+
+    test('the head hangs under its leader, the members hang deeper, and ?run= follows', async ({
+      page,
+    }) => {
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      const head = page.locator('.run-head')
+      await expect(head).toHaveAttribute('aria-expanded', 'false')
+      await expect(head).toContainText('45')
+      await expect(page.locator('a.row.child')).toHaveCount(0)
+
+      const hex = (await page.locator('a.row .score-hex').first().boundingBox())!
+      const leaderId = (await page.locator('a.row .id').first().boundingBox())!
+      const count = (await head.locator('.cnt').boundingBox())!
+      expect(count.x).toBeGreaterThan(hex.x)
+      expect(count.y).toBeGreaterThan(leaderId.y)
+
+      await head.click({ delay: 120 })
+      await expect(head).toHaveAttribute('aria-expanded', 'true')
+      await expect(page).toHaveURL(/[?&]run=aaaaaaaaaaa0(&|$)/)
+      const kids = page.locator('a.row.child')
+      await expect(kids).toHaveCount(40)
+      await expect(page.locator('a.row.child .score-hex')).toHaveCount(0)
+      const kidId = (await kids.first().locator('.id').boundingBox())!
+      expect(kidId.x).toBeGreaterThan(leaderId.x + 4)
+      expect(await kids.first().locator('.chip').count()).toBeGreaterThan(0)
+
+      await page.getByRole('button', { name: 'Show 5 more' }).click()
+      await expect(kids).toHaveCount(45)
+      await expect(page.getByRole('button', { name: /^Show \d+ more/ })).toHaveCount(0)
+
+      await page.reload()
+      await expect(page.locator('.run-head')).toHaveAttribute('aria-expanded', 'true')
+      await expect(page.locator('a.row.child')).toHaveCount(40)
+
+      await page.locator('.run-head').click({ delay: 120 })
+      await expect(page.locator('a.row.child')).toHaveCount(0)
+      await expect(page).not.toHaveURL(/run=/)
+    })
+
+    test('tapping a run head keeps the scroll position', async ({ page }) => {
+      const many = [
+        ...Array.from({ length: 24 }, (_, i) =>
+          sessionItem(`bbbbbbbbbb${String(i).padStart(2, '0')}`, {
+            n_commands: i + 1,
+            command_count: i + 1,
+          }),
+        ),
+        ...['aaaaaaaaaaa1', 'aaaaaaaaaaa2', 'aaaaaaaaaaa3'].map((id) => sessionItem(id)),
+      ]
+      await mockFoldedSessions(page, many, 24, 50)
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      const head = page.locator('.run-head')
+      await head.scrollIntoViewIfNeeded()
+      await page.evaluate(() => window.scrollBy(0, 150))
+      await page.waitForTimeout(200)
+      const before = await page.evaluate(() => window.scrollY)
+      expect(before).toBeGreaterThan(100)
+      await head.click({ delay: 120 })
+      await expect(head).toHaveAttribute('aria-expanded', 'true')
+      await page.waitForTimeout(300)
+      const after = await page.evaluate(() => window.scrollY)
+      expect(Math.abs(after - before)).toBeLessThanOrEqual(4)
+    })
+  })
+
+  test.describe('phone Back restores the list', () => {
+    // 30 distinct rows, then a leader fronting a run of 45 (a second page of 5 behind "Show 5 more").
+    const distinct = Array.from({ length: 30 }, (_, i) =>
+      sessionItem(`bbbbbbbbbb${String(i).padStart(2, '0')}`, { n_commands: 30 - i, interest: 9 }),
+    )
+    const run = Array.from({ length: 46 }, (_, i) =>
+      sessionItem(`aaaaaaaaaa${String(i).padStart(2, '0')}`, { n_commands: 3, interest: 9 }),
+    )
+    const items = [...distinct, ...run]
+
+    test.beforeEach(async ({ page }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await mockFoldedSessions(page, items, distinct.length)
+      await page.route(/\/api\/v1\/sessions\/run\?/, (route) => {
+        const q = new URL(route.request().url()).searchParams
+        const pg = Number(q.get('page'))
+        const per = Number(q.get('per_page'))
+        const members = run.slice(1)
+        return route.fulfill({
+          status: 200,
+          contentType: 'application/json',
+          body: JSON.stringify({
+            items: members.slice((pg - 1) * per, pg * per),
+            meta: { page: pg, per_page: per, pages: Math.ceil(members.length / per), total: 45 },
+          }),
+        })
+      })
+    })
+
+    // Puts the row 300px below the top of the screen, taps it, and returns the screen line it was on.
+    async function tapAt(page: Page, id: string): Promise<number> {
+      const row = page.locator(`a.row[data-id="${id}"]`)
+      await row.scrollIntoViewIfNeeded()
+      await page.evaluate((id) => {
+        const top = document.querySelector(`a.row[data-id="${id}"]`)!.getBoundingClientRect().top
+        window.scrollBy(0, top - 300)
+      }, id)
+      await page.waitForTimeout(200)
+      const top = (await row.boundingBox())!.y
+      await row.click({ delay: 120 })
+      await expect(page).toHaveURL(new RegExp(`/sessions/${id}$`))
+      return top
+    }
+
+    async function expectRestored(page: Page, id: string, top: number): Promise<void> {
+      const row = page.locator(`a.row[data-id="${id}"]`)
+      await expect(row).toBeFocused()
+      await expect
+        .poll(async () => Math.abs((await row.boundingBox())!.y - top))
+        .toBeLessThanOrEqual(6)
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(
+        true,
+      )
+    }
+
+    for (const width of [390, 360]) {
+      for (const how of ['browser back', 'back link'] as const) {
+        test(`${width}px, ${how}: lands on the tapped row inside a run opened with Show more`, async ({
+          page,
+        }) => {
+          await page.setViewportSize({ width, height: 780 })
+          await page.goto('/sessions?sort=recent&has=commands')
+          await dismissIntro(page)
+          await page.locator('.run-head').click({ delay: 120 })
+          await page.getByRole('button', { name: 'Show 5 more' }).click()
+          const id = 'aaaaaaaaaa44'
+          const top = await tapAt(page, id)
+          if (how === 'browser back') await page.goBack()
+          else await page.getByRole('button', { name: /All sessions/ }).click({ delay: 120 })
+          await expect(page).toHaveURL(/\/sessions\?sort=recent&has=commands&run=aaaaaaaaaa00$/)
+          await expect(page.locator('.run-head')).toHaveAttribute('aria-expanded', 'true')
+          await expectRestored(page, id, top)
+        })
+
+        test(`${width}px, ${how}: lands on the tapped row on page 2 with a filter`, async ({
+          page,
+        }) => {
+          await page.setViewportSize({ width, height: 780 })
+          await page.goto('/sessions?page=2&has=commands')
+          await dismissIntro(page)
+          const id = 'bbbbbbbbbb20'
+          const top = await tapAt(page, id)
+          if (how === 'browser back') await page.goBack()
+          else await page.getByRole('button', { name: /All sessions/ }).click({ delay: 120 })
+          await expect(page).toHaveURL(/\/sessions\?page=2&has=commands$/)
+          await expectRestored(page, id, top)
+        })
+      }
+    }
+
+    test('a cold ?run= load still finds the tapped member, and ?open= focuses its row without expanding it', async ({
+      page,
+    }) => {
+      await page.goto('/sessions?run=aaaaaaaaaa00')
+      await dismissIntro(page)
+      await expect(page.locator('a.row.child')).toHaveCount(40)
+      const id = 'aaaaaaaaaa20'
+      const top = await tapAt(page, id)
+      await page.goBack()
+      await expectRestored(page, id, top)
+
+      await page.goto('/sessions?open=bbbbbbbbbb10')
+      const row = page.locator('a.row[data-id="bbbbbbbbbb10"]')
+      await expect(row).toBeFocused()
+      await expect(row).toBeInViewport()
+      await expect(page).toHaveURL(/\/sessions$/)
+      await expect(page.locator('[aria-expanded="true"]:not(.run-head)')).toHaveCount(0)
+    })
+  })
+
+  test.describe('phone list layout', () => {
+    // Every outcome, each as a row with counts or as a bare outcome icon.
+    const mixed = [
+      sessionItem('eeeeeeeeee01', {
+        category: 'active',
+        n_commands: 4,
+        n_downloads: 1,
+        interest: 40,
+      }),
+      sessionItem('eeeeeeeeee02', { category: 'login', auth_success: true, interest: 14 }),
+      sessionItem('eeeeeeeeee03', { category: 'failed', interest: 6 }),
+      sessionItem('eeeeeeeeee04', { category: 'probe', interest: 1 }),
+    ]
+    test.beforeEach(async ({ page }) => {
+      test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+      await mockFoldedSessions(page, mixed, mixed.length)
+    })
+
+    for (const [w, h] of [
+      [390, 844],
+      [360, 780],
+    ]) {
+      test(`${w}px: two compact lines per row, no sideways scroll, icon-only outcomes, axe-clean`, async ({
+        page,
+      }) => {
+        await page.setViewportSize({ width: w!, height: h! })
+        await page.goto('/sessions')
+        await dismissIntro(page)
+        const rows = page.locator('a.row')
+        await expect(rows).toHaveCount(4)
+        expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(
+          w!,
+        )
+        for (const row of await rows.all()) {
+          const box = (await row.boundingBox())!
+          expect(box.height).toBeGreaterThanOrEqual(52)
+          expect(box.height).toBeLessThanOrEqual(60)
+          const id = (await row.locator('.id').boundingBox())!
+          const meta = (await row.locator('.l2').boundingBox())!
+          expect(meta.y).toBeGreaterThanOrEqual(id.y + id.height - 2)
+          expect(await row.locator('.id').innerText()).toHaveLength(8)
+        }
+        // No outcome word sits beside an outcome icon; the words are the chip's name.
+        const bare = page.locator('a.row .chip.only')
+        await expect(bare).toHaveCount(3)
+        for (const chip of await bare.all()) {
+          expect(await chip.innerText()).toBe('')
+          await expect(chip).toHaveAttribute('role', 'img')
+          expect(await chip.getAttribute('aria-label')).toMatch(/\w{4}/)
+          expect(await chip.getAttribute('title')).toBeTruthy()
+        }
+        for (const chip of await page.locator('a.row .chip').all())
+          expect(await chip.getAttribute('aria-label')).toBeTruthy()
+        await expectAxeClean(page)
+      })
+    }
+
+    test('the header names the sort in a short clause', async ({ page }) => {
+      await page.goto('/sessions')
+      await dismissIntro(page)
+      await expect(page.locator('.sub')).toContainText('most interesting first')
+      await page.goto('/sessions?sort=recent')
+      await expect(page.locator('.sub')).toContainText('newest first')
+    })
+
+    test('crossing 760px swaps in the table and keeps the filters', async ({ page }) => {
+      await page.goto('/sessions?sort=recent')
+      await dismissIntro(page)
+      await expect(page.locator('ul.sessions-phone')).toBeVisible()
+      await page.setViewportSize({ width: 900, height: 800 })
+      await expect(page.locator('tr.srow')).toHaveCount(4)
+      await expect(page.locator('ul.sessions-phone')).toHaveCount(0)
+      await expect(page).toHaveURL(/sort=recent/)
+      await page.setViewportSize({ width: 390, height: 844 })
+      await expect(page.locator('ul.sessions-phone')).toBeVisible()
+    })
+  })
+
+  test('the downloads chip on a session links to its payload', async ({ page }) => {
+    await page.goto('/sessions/726faaebd6b9')
+    await dismissIntro(page)
+    const chip = page.locator('a.dl-chip')
+    await expect(chip).toBeVisible()
+    await expect(chip).toHaveAttribute(
+      'href',
+      '/payloads#spec-8da193366e1554c08b2870c50f737b9587c3372b656151c4a96028af26f51334',
+    )
+  })
+
   test('sessions filters and sort drive the URL, axe-clean', async ({ page }) => {
+    test.skip(test.info().project.name === 'mobile-chromium', 'phone uses the bottom sheet')
     await page.goto('/sessions')
     await dismissIntro(page)
     await expect(page.getByRole('heading', { level: 1, name: 'Sessions' })).toBeVisible()
@@ -644,17 +1724,11 @@ test.describe('dashboard accessibility smoke', () => {
     await page.getByRole('option', { name: 'Most recent' }).click()
     await expect(page).toHaveURL(/sort=recent/)
 
-    // The country dropdown is dropped below 760px on purpose - three controls
-    // do not fit, and a removable chip stands in for it - so only drive it on
-    // desktop, and assert the deliberate absence on mobile.
-    const countryPicker = page.getByRole('button', { name: 'All countries' })
-    if (test.info().project.name === 'mobile-chromium') {
-      await expect(countryPicker).toHaveCount(0)
-    } else {
-      await countryPicker.click()
-      await page.getByRole('option', { name: 'United States' }).click()
-      await expect(page).toHaveURL(/country=US/)
-    }
+    // Shown at every width: on a phone it sits on its own full-width row, so a
+    // country filter can be started there and not only removed.
+    await page.getByRole('button', { name: 'All countries' }).click()
+    await page.getByRole('option', { name: 'United States' }).click()
+    await expect(page).toHaveURL(/country=US/)
 
     // Reloading with these params in the URL restores the same filter state (URL is state).
     await page.reload()
@@ -662,6 +1736,67 @@ test.describe('dashboard accessibility smoke', () => {
     await page.getByRole('button', { name: 'Outcome: Got control' }).click()
     await expect(page.getByRole('checkbox', { name: 'Got control' })).toBeChecked()
 
+    await expectAxeClean(page)
+  })
+
+  test('phone filters open a bottom sheet and drive the URL, axe-clean', async ({ page }) => {
+    test.skip(test.info().project.name !== 'mobile-chromium', 'phone layout only')
+    await page.setViewportSize({ width: 360, height: 780 })
+    await page.goto('/sessions')
+    await dismissIntro(page)
+    const dialog = page.getByRole('dialog')
+
+    const pills = page.locator('button.pc-pill')
+    for (const i of [0, 1, 2]) {
+      const box = (await pills.nth(i).boundingBox())!
+      expect(box.height).toBeGreaterThanOrEqual(44)
+      expect(box.x + box.width).toBeLessThanOrEqual(360)
+      expect(
+        await pills
+          .nth(i)
+          .locator('.pc-text')
+          .evaluate((e) => e.scrollWidth <= e.clientWidth),
+      ).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+
+    await page.getByRole('button', { name: 'Outcome: Outcome' }).click({ delay: 120 })
+    await expect(dialog).toBeVisible()
+    await page.getByRole('checkbox', { name: /Got control/ }).click({ delay: 120 })
+    await expect(page.getByRole('checkbox', { name: /Got control/ })).toBeChecked()
+    // Multi-select: the sheet stays open until Done.
+    await expect(page.getByRole('checkbox', { name: /Ran commands/ })).toBeVisible()
+    await expect(page).toHaveURL(/has=success/)
+    await page.getByRole('button', { name: 'Done' }).click({ delay: 120 })
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Outcome: Got control' })).toBeFocused()
+
+    await page.getByRole('button', { name: 'Sort: Most interesting' }).click({ delay: 120 })
+    const sheetBox = (await dialog.boundingBox())!
+    expect(sheetBox.x).toBeGreaterThanOrEqual(0)
+    expect(sheetBox.x + sheetBox.width).toBeLessThanOrEqual(360)
+    await page.getByRole('radio', { name: /Most recent/ }).click({ delay: 120 })
+    await expect(page).toHaveURL(/sort=recent/)
+    await expect(dialog).toHaveCount(0)
+
+    await page.getByRole('button', { name: 'Country: all' }).click({ delay: 120 })
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(page.getByRole('button', { name: 'Country: all' })).toBeFocused()
+    await page.getByRole('button', { name: 'Country: all' }).click({ delay: 120 })
+    await page.getByRole('radio', { name: /United States/ }).click({ delay: 120 })
+    await expect(page).toHaveURL(/country=US/)
+
+    await page.reload()
+    await expect(page.getByRole('button', { name: 'Outcome: Got control' })).toBeVisible()
+    await expect(page.getByRole('button', { name: 'Country: United States' })).toBeVisible()
+
+    await expectAxeClean(page)
+    await page.getByRole('button', { name: 'Sort: Most recent' }).click({ delay: 120 })
+    // Axe reads colours, so let the sheet finish fading in first.
+    await page.waitForFunction(
+      () => getComputedStyle(document.querySelector('.pc-root')!).opacity === '1',
+    )
     await expectAxeClean(page)
   })
 

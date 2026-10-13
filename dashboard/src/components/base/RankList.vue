@@ -108,8 +108,8 @@
       @scroll.passive="checkMore"
     >
       <div
-        v-for="r in rows"
-        :key="r.label"
+        v-for="(r, i) in rows"
+        :key="`${i}:${r.label}`"
         class="rank-row"
         @pointerenter="tt.show(r.title ?? r.label)"
         @pointermove="tt.move($event)"

@@ -12,12 +12,14 @@
     statsFingerprintsOptions,
     statsCountryDetailOptions,
   } from '@/api/generated/@tanstack/vue-query.gen'
+  import { suspenseAll } from '@/api/queries'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import StatTile from '@/components/base/StatTile.vue'
   import HwCard from '@/components/base/HwCard.vue'
   import ChipButton from '@/components/base/ChipButton.vue'
   import InfoDot from '@/components/base/InfoDot.vue'
+  import EmptyState from '@/components/base/EmptyState.vue'
   import RankList, { type RankRow } from '@/components/base/RankList.vue'
   import CountryHive from '@/components/map/CountryHive.vue'
   import CountryDrawer from '@/components/map/CountryDrawer.vue'
@@ -48,7 +50,9 @@
 
   const countriesQ = useQuery(
     computed(() => ({
-      ...statsCountriesOptions({ query: { sort: countrySort.value, order: countryOrder.value, top_n: 100 } }),
+      ...statsCountriesOptions({
+        query: { sort: countrySort.value, order: countryOrder.value, top_n: 100 },
+      }),
       placeholderData: keepPreviousData,
       refetchInterval: POLL_MS,
     })),
@@ -60,12 +64,7 @@
   const sshClientsQ = useQuery({ ...statsSshClientsOptions(), refetchInterval: POLL_MS })
   const fingerprintsQ = useQuery({ ...statsFingerprintsOptions(), refetchInterval: POLL_MS })
 
-  await Promise.all([
-    countriesQ.suspense(),
-    asnsQ.suspense(),
-    sshClientsQ.suspense(),
-    fingerprintsQ.suspense(),
-  ])
+  await suspenseAll(countriesQ, asnsQ, sshClientsQ, fingerprintsQ)
 
   // '??' is the backend's Unknown-geo bucket (api/src/services/stats/common.py
   // UNKNOWN_COUNTRY) - it never gets a hex or a rank row here.
@@ -76,9 +75,12 @@
     ),
   )
   const totalCountries = computed(() => countriesQ.data.value?.total_countries ?? 0)
-  const geoResolvedLabel = computed(() =>
-    fmtSuccessRate(countriesQ.data.value?.geo_resolved_pct ?? null),
-  )
+  // Floor, never round up: 99.96% must not read as a complete 100.0%.
+  const geoResolvedLabel = computed(() => {
+    const pct = countriesQ.data.value?.geo_resolved_pct ?? null
+    if (pct === null || pct >= 100 || pct < 10) return fmtSuccessRate(pct)
+    return `${(Math.floor(pct * 10) / 10).toFixed(1)}%`
+  })
   const sessionsShown = computed(() =>
     resolvedCountries.value.reduce((sum, c) => sum + c.sessions, 0),
   )
@@ -192,21 +194,38 @@
       </div>
 
       <div class="stat-row">
-        <StatTile v-if="topCountry" label="Top origin" :value="fmtCompact(topCountry.sessions)">
-          <template #meta>
-            {{ useCountryFlag(topCountry.country_code) }} {{ topCountry.country }}
-          </template>
+        <StatTile
+          v-if="topCountry"
+          class="tile-top"
+          label="Top origin"
+          :value="`${useCountryFlag(topCountry.country_code)} ${topCountry.country}`"
+        >
+          <template #meta>{{ fmtCompact(topCountry.sessions) }} sessions</template>
         </StatTile>
         <StatTile label="Located" :value="geoResolvedLabel">
-          <template #meta>of sessions have a known country</template>
-        </StatTile>
-        <StatTile label="Countries seen" :value="fmtNumber(totalCountries)">
+          <template #label-extra>
+            <InfoDot
+              title="Located"
+              text="Share of sessions whose source address could be matched to a country."
+            />
+          </template>
           <template #meta>
-            <span>{{ fmtNumber(sessionsShown) }} sessions with a country attributed</span>
+            <span class="m-full">of sessions have a known country</span>
+            <span class="m-short">of sessions</span>
+          </template>
+        </StatTile>
+        <StatTile label="Countries seen" short="Countries" :value="fmtNumber(totalCountries)">
+          <template #label-extra>
             <InfoDot
               title="Share of world"
               :text="`${((totalCountries / WORLD_COUNTRY_COUNT) * 100).toFixed(1)}% of ${WORLD_COUNTRY_COUNT} recognized countries`"
             />
+          </template>
+          <template #meta>
+            <span class="m-full"
+              >{{ fmtNumber(sessionsShown) }} sessions with a country attributed</span
+            >
+            <span class="m-short">{{ fmtCompact(sessionsShown) }} attributed</span>
           </template>
         </StatTile>
       </div>
@@ -221,12 +240,23 @@
 
       <div class="grid-main">
         <div class="hive-wrapper">
-          <CountryHive v-model:selected="selectedCountry" v-model:sort="countrySort" v-model:order="countryOrder" :countries="resolvedCountries" />
+          <CountryHive
+            v-model:selected="selectedCountry"
+            v-model:sort="countrySort"
+            v-model:order="countryOrder"
+            :countries="resolvedCountries"
+          />
         </div>
 
         <div class="right-col">
           <HwCard title="Networks" note="top networks by session count">
-            <RankList class="fill-list" :rows="networkRows" label-width="168px" />
+            <RankList
+              v-if="networkRows.length"
+              class="fill-list"
+              :rows="networkRows"
+              label-width="168px"
+            />
+            <EmptyState v-else class="fill-list" title="No networks seen yet" />
           </HwCard>
 
           <HwCard title="Software used">
@@ -247,13 +277,24 @@
               </span>
             </template>
             <RankList
-              v-if="clientView === 'clients'"
+              v-if="clientView === 'clients' && clientRows.length"
               class="fill-list"
               :rows="clientRows"
               label-width="215px"
               mono
             />
-            <RankList v-else class="fill-list" :rows="keyRows" label-width="215px" mono />
+            <RankList
+              v-else-if="clientView === 'keys' && keyRows.length"
+              class="fill-list"
+              :rows="keyRows"
+              label-width="215px"
+              mono
+            />
+            <EmptyState
+              v-else
+              class="fill-list"
+              :title="clientView === 'clients' ? 'No software seen yet' : 'No reused keys yet'"
+            />
           </HwCard>
         </div>
       </div>
@@ -297,6 +338,24 @@
     grid-auto-columns: 1fr;
     gap: 12px;
     flex: none;
+  }
+
+  .m-short {
+    display: none;
+  }
+
+  @media (max-width: 480px) {
+    .m-full {
+      display: none;
+    }
+
+    .m-short {
+      display: inline;
+    }
+
+    .stat-row :deep(.value) {
+      font-size: 22px;
+    }
   }
 
   .stat-row :deep(.meta) {
@@ -354,31 +413,14 @@
       row-gap: 8px;
     }
 
-    /* Full-bleed scroller: negative margin cancels the shell's padding so tiles
-       reach both screen edges, and the padding puts the inset back inside the
-       scroll area where it cannot clip the first or last tile. */
+    /* 1 + 2: the Top origin headline spans the row so a long country name never breaks mid-word. */
     .stat-row {
-      display: flex;
-      overflow-x: auto;
-      overscroll-behavior-x: contain;
-      scrollbar-width: none;
-      margin-inline: -14px;
-      padding-inline: 14px;
-      scroll-padding-inline: 14px;
-      scroll-snap-type: x proximity;
+      grid-auto-flow: row;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .stat-row::-webkit-scrollbar {
-      display: none;
-    }
-
-    /* Capped so a second tile is always partly visible, which is what signals
-       the row scrolls; the meta line wraps instead of stretching the tile. */
-    .stat-row > * {
-      flex: 0 0 auto;
-      min-width: 158px;
-      max-width: 240px;
-      scroll-snap-align: start;
+    .stat-row > .tile-top {
+      grid-column: 1 / -1;
     }
 
     .grid-main {
@@ -401,6 +443,21 @@
       margin-left: 0;
       flex-basis: 100%;
       flex-wrap: nowrap;
+    }
+  }
+
+  /* phones show 8 rows flat, no nested scroller; the rest sit behind desktop. */
+  @media (max-width: 759.98px) {
+    .right-col :deep(.card) {
+      max-height: none;
+    }
+
+    .fill-list :deep(.rank-list) {
+      overflow: visible;
+    }
+
+    .fill-list :deep(.rank-row:nth-child(n + 9)) {
+      display: none;
     }
   }
 </style>

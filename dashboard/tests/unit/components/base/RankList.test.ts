@@ -9,6 +9,18 @@ const rows: RankRow[] = [
 ]
 
 describe('RankList', () => {
+  it('renders rows that share a label without duplicate keys', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const dupes: RankRow[] = [
+      { label: '<ip>', value: '5', frac: 1 },
+      { label: '<ip>', value: '3', frac: 0.6 },
+    ]
+    const w = mount(RankList, { props: { rows: dupes } })
+    expect(w.findAll('.rank-row')).toHaveLength(2)
+    expect(warn.mock.calls.flat().join(' ')).not.toMatch(/Duplicate keys/)
+    warn.mockRestore()
+  })
+
   it('renders one row per entry', () => {
     const w = mount(RankList, { props: { rows } })
     expect(w.findAll('.rank-row')).toHaveLength(2)

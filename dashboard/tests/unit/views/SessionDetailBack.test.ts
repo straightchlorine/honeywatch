@@ -3,7 +3,10 @@ import { describe, expect, it, vi, beforeEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { VueQueryPlugin } from '@tanstack/vue-query'
 import type { SessionDetailResponse, SessionSummaryResponse } from '@/api/generated/types.gen'
-import { listSessionsOptions } from '@/api/generated/@tanstack/vue-query.gen'
+import {
+  listRunSessionsOptions,
+  listSessionsOptions,
+} from '@/api/generated/@tanstack/vue-query.gen'
 import { newTestQueryClient } from '../../helpers/mount'
 
 // Both SessionDetailView and PageShell call useRoute(), so share one mock.
@@ -31,6 +34,8 @@ const SESSION: SessionDetailResponse = {
   dst_port: 22,
   protocol: 'ssh',
   sensor: 'edge-01',
+  interest: 0,
+  max_interest: 0,
   country: 'United States',
   country_code: 'US',
   city: null,
@@ -120,7 +125,7 @@ describe('SessionDetailView previous / next', () => {
   async function mountWithCachedPage(ids: string[], back: string | null) {
     const queryClient = newTestQueryClient()
     const key = listSessionsOptions({
-      query: { page: 2, per_page: 40, sort: 'recent' },
+      query: { page: 2, per_page: 40, fold: true, sort: 'recent' },
     }).queryKey
     queryClient.setQueryData(key, { items: ids.map(item), max_interest: 9, meta: {} } as never)
     setHistoryBack(back)
@@ -134,11 +139,12 @@ describe('SessionDetailView previous / next', () => {
     expect(links(w)).toEqual(['Previous:a', 'Next:c'])
   })
 
-  it('keeps the edge control as aria-disabled text so focus is not lost', async () => {
+  it('keeps the edge control as a disabled link so focus is not lost', async () => {
     const w = await mountWithCachedPage(['sess-1', 'c'], '/sessions?sort=recent&page=2')
     expect(links(w)).toEqual(['Next:c'])
     const off = w.get('span.pager-link')
     expect(off.text()).toBe('Previous')
+    expect(off.attributes('role')).toBe('link')
     expect(off.attributes('aria-disabled')).toBe('true')
   })
 
@@ -149,7 +155,29 @@ describe('SessionDetailView previous / next', () => {
   })
 
   it('shows neither when the list page is not cached or not the origin', async () => {
-    expect(links(await mountWithCachedPage(['a', 'sess-1'], '/sessions?sort=recent&page=3'))).toEqual([])
+    expect(
+      links(await mountWithCachedPage(['a', 'sess-1'], '/sessions?sort=recent&page=3')),
+    ).toEqual([])
     expect(links(await mountWithCachedPage(['a', 'sess-1'], null))).toEqual([])
+  })
+
+  it('chains through the members of a run the list had open', async () => {
+    const queryClient = newTestQueryClient()
+    const run = { count: 2, offset: 1, countries: 1, country: null, country_code: null }
+    const leader = { id: 'sess-1', run } as SessionSummaryResponse
+    queryClient.setQueryData(
+      listSessionsOptions({ query: { page: 1, per_page: 40, fold: true, sort: 'recent' } })
+        .queryKey,
+      { items: [item('a'), leader, item('z')], as_of: 'T', max_interest: 9, meta: {} } as never,
+    )
+    queryClient.setQueryData(
+      listRunSessionsOptions({
+        query: { sort: 'recent', as_of: 'T', offset: 1, count: 2, page: 1, per_page: 40 },
+      }).queryKey,
+      { items: [item('m1'), item('m2')], meta: {} } as never,
+    )
+    setHistoryBack('/sessions?sort=recent&run=sess-1')
+    const w = await mountView(queryClient)
+    expect(links(w)).toEqual(['Previous:a', 'Next:m1'])
   })
 })

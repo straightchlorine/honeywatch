@@ -3,7 +3,7 @@
    * Payloads: captured files as "specimens". Backend has no "kind" field
    * (miner/botnet/dropper), so kind filter is omitted to avoid UI controls without data.
    */
-  import { computed, nextTick, onMounted, onUnmounted, useTemplateRef, watch } from 'vue'
+  import { computed, nextTick, onMounted, onUnmounted, ref, useTemplateRef, watch } from 'vue'
   import { useQuery } from '@tanstack/vue-query'
   import { RouterLink, useRoute } from 'vue-router'
   import {
@@ -11,6 +11,7 @@
     statsTcpipDestinationsOptions,
     statsOutcomesOptions,
   } from '@/api/generated/@tanstack/vue-query.gen'
+  import { suspenseAll } from '@/api/queries'
   import type { PayloadDownloadResponse, TcpipDestinationResponse } from '@/api/generated/types.gen'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
@@ -24,30 +25,29 @@
   import { useHwTooltip } from '@/composables/useHwTooltip'
   import { countryDisplayName } from '@/utils/countries'
   import { fmtNumber, fmtRelativeTime } from '@/utils/format'
+  import { ICONS } from '@/components/icons'
   import { cappedFracs } from '@/utils/cappedFracs'
 
   const tt = useHwTooltip()
 
-  /**
-   * Fade indicator when content is cut off by scroll height. Reuses the pattern
-   * RankList already implements; two call sites don't justify extraction.
-   */
-  function useMoreFade(name: string) {
-    const el = useTemplateRef<HTMLElement>(name)
-    function check(): void {
-      const n = el.value
-      if (n) n.classList.toggle('has-more', n.scrollTop + n.clientHeight < n.scrollHeight - 4)
-    }
-    const ro = new ResizeObserver(check)
-    onMounted(() => {
-      check()
-      if (el.value) ro.observe(el.value)
-    })
-    onUnmounted(() => ro.disconnect())
-    return check
+  // Fade indicator when the list is cut off by scroll height.
+  const specimensEl = useTemplateRef<HTMLElement>('specimensEl')
+  function checkSpecimens(): void {
+    const n = specimensEl.value
+    if (n) n.classList.toggle('has-more', n.scrollTop + n.clientHeight < n.scrollHeight - 4)
   }
+  const specimensRo = new ResizeObserver(checkSpecimens)
+  onMounted(() => {
+    checkSpecimens()
+    if (specimensEl.value) specimensRo.observe(specimensEl.value)
+  })
+  onUnmounted(() => specimensRo.disconnect())
 
-  const checkSpecimens = useMoreFade('specimensEl')
+  function jumpToRelay(): void {
+    const t = document.getElementById('relay-card')
+    t?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+    t?.focus({ preventScroll: true })
+  }
 
   // Deep link: scroll to #spec-<sha>. :target cannot match (the list renders after navigation),
   // so the template marks it with .picked. Only the top-N specimens render; a hash for any other sha does nothing.
@@ -75,9 +75,13 @@
   // COUNT(*) FILTER: avoids double-counting sessions with multiple files/networks.
   const outcomesQ = useQuery({ ...statsOutcomesOptions(), refetchInterval: POLL_MS })
 
-  await Promise.all([downloadsQ.suspense(), tcpipQ.suspense(), outcomesQ.suspense()])
+  await suspenseAll(downloadsQ, tcpipQ, outcomesQ)
 
   const downloads = computed<PayloadDownloadResponse[]>(() => downloadsQ.data.value ?? [])
+
+  // Phones list 8 specimens (CSS) until "Show all"; a deep-linked specimen is always kept.
+  const NARROW_LIST = 8
+  const showAll = ref(false)
   const tcpip = computed<TcpipDestinationResponse[]>(() => tcpipQ.data.value ?? [])
 
   // KPIs: four questions a specimen card cannot answer, so nothing on the row is printed twice.
@@ -93,19 +97,17 @@
   }
 
   const fetchedLabel = computed(() => (outcomes.value ? fmtNumber(outcomes.value.downloads) : '-'))
-  const fetchedMeta = computed(() => {
-    const o = outcomes.value
-    if (!o) return ''
-    const ratio = oneIn(o.downloads, o.shell)
-    return ratio ? `${ratio} of the ${fmtNumber(o.shell)} that got control` : ''
-  })
+  const fetchedRatio = computed(() => oneIn(outcomes.value?.downloads, outcomes.value?.shell))
+  const fetchedMeta = computed(() =>
+    fetchedRatio.value
+      ? `${fetchedRatio.value} of the ${fmtNumber(outcomes.value?.shell)} that got control`
+      : '',
+  )
   const relayLabel = computed(() => (outcomes.value ? fmtNumber(outcomes.value.tcpip) : '-'))
-  const relayMeta = computed(() => {
-    const o = outcomes.value
-    if (!o) return ''
-    const ratio = oneIn(o.tcpip, o.total)
-    return ratio ? `${ratio} - the honeypot blocked every one` : ''
-  })
+  const relayRatio = computed(() => oneIn(outcomes.value?.tcpip, outcomes.value?.total))
+  const relayMeta = computed(() =>
+    relayRatio.value ? `${relayRatio.value} - the honeypot blocked every one` : '',
+  )
 
   /** Inclusive span of the shelf, not of the honeypot's uptime. */
   const span = computed(() => {
@@ -134,6 +136,9 @@
     const { first, last } = span.value
     return `${fmtShortDate(first)} to ${fmtShortDate(last)}, newest ${fmtRelativeTime(last)}`
   })
+  const windowShort = computed(() =>
+    span.value ? `${fmtShortDate(span.value.first)} - ${fmtShortDate(span.value.last)}` : '',
+  )
 
   function shaPrefix(sha: string): string {
     return sha.slice(0, 12)
@@ -174,9 +179,6 @@
     return d.countries.length
       ? `Fetched from ${countryLabel(d.countries)}`
       : 'Origin could not be resolved'
-  }
-  function onFlagsFocus(e: FocusEvent, d: PayloadDownloadResponse): void {
-    tt.showAt(e.currentTarget as HTMLElement, originLabel(d))
   }
   function flagsFor(codes: string[]): string {
     return codes.length ? codes.map((c) => useCountryFlag(c)).join(' ') : '-'
@@ -253,7 +255,8 @@
         frac: frac(t.sessions),
         badge: String(t.port),
         badgeClass: portBadgeClass(t.port),
-        sub: `${portService(t.port)} - ${fmtNumber(t.hosts)} host${t.hosts === 1 ? '' : 's'} - ${where}`,
+        badgeTitle: portService(t.port),
+        sub: `${portService(t.port)} \u00b7 ${fmtNumber(t.hosts)} host${t.hosts === 1 ? '' : 's'} \u00b7 ${where}`,
       }
     })
   })
@@ -279,61 +282,83 @@
       <div class="page-head">
         <h1>Payloads</h1>
         <span class="sub"
-          >what they leave behind - every file written to the honeypot is saved here</span
+          ><span class="m-full"
+            >what they leave behind - every file written to the honeypot is saved here</span
+          ><span class="m-short">every file attackers leave behind</span></span
         >
       </div>
 
       <section class="stat-row" aria-label="Totals">
-        <StatTile label="Sessions that fetched a file" :value="fetchedLabel">
+        <StatTile label="Sessions that fetched a file" short="Got a file" :value="fetchedLabel">
           <template #label-extra>
             <InfoDot
               title="Sessions that fetched a file"
-              text="Sessions that downloaded at least one file. A session that fetched two files still counts once."
+              :text="`Sessions that downloaded at least one file. A session that fetched two files still counts once.${fetchedMeta ? ` That is ${fetchedMeta}.` : ''}`"
             />
           </template>
-          <template #meta>{{ fetchedMeta }}</template>
+          <template #meta>
+            <span class="m-full">{{ fetchedMeta }}</span>
+            <span class="m-short">{{ fetchedRatio && `${fetchedRatio} sessions` }}</span>
+          </template>
         </StatTile>
         <StatTile label="Files kept" :value="fmtNumber(specimenCount)">
           <template #label-extra>
             <InfoDot
               title="Files kept"
-              text="Different files, each counted once. Two harmless leftovers - a blank line, and the text admin:admin - are included because attackers really wrote them."
+              :text="`Different files, each counted once. Two harmless leftovers - a blank line, and the text admin:admin - are included because attackers really wrote them. ${fmtNumber(singletonCount)} were seen only once. ${fmtNumber(captureCount)} fetches across the files shown, counting each session once per file.`"
             />
           </template>
           <template #meta>
-            {{ fmtNumber(singletonCount) }} seen only once - {{ fmtNumber(captureCount) }} files in
-            all
+            <span class="m-full"
+              >{{ fmtNumber(singletonCount) }} seen only once &middot;
+              {{ fmtNumber(captureCount) }} fetches across these files</span
+            >
+            <span class="m-short">{{ fmtNumber(singletonCount) }} seen once</span>
           </template>
         </StatTile>
         <StatTile label="Date range" :value="windowLabel">
           <template #label-extra>
             <InfoDot
               title="Date range"
-              text="First file to most recent. The honeypot has been running longer - this is only the span the files cover."
+              :text="`First file to most recent. The honeypot has been running longer - this is only the span the files cover.${windowMeta ? ` ${windowMeta}.` : ''}`"
             />
           </template>
-          <template #meta>{{ windowMeta }}</template>
+          <template #meta>
+            <span class="m-full">{{ windowMeta }}</span>
+            <span class="m-short">{{ windowShort }}</span>
+          </template>
         </StatTile>
-        <StatTile label="Sessions that tried to relay" :value="relayLabel">
+        <StatTile label="Sessions that tried to relay" short="Relay attempts" :value="relayLabel">
           <template #label-extra>
             <InfoDot
               title="Sessions that tried to relay"
-              text="Sessions that asked the honeypot to forward a connection elsewhere. The honeypot blocked every one. Counted once per session."
+              :text="`Sessions that asked the honeypot to forward a connection elsewhere. The honeypot blocked every one. Counted once per session.${relayRatio ? ` That is ${relayRatio} of all sessions.` : ''}`"
             />
           </template>
-          <template #meta>{{ relayMeta }}</template>
+          <template #meta>
+            <span class="m-full">{{ relayMeta }}</span>
+            <span class="m-short">{{ relayRatio && `${relayRatio} sessions` }}</span>
+          </template>
         </StatTile>
       </section>
+
+      <a class="relay-jump" href="#relay-card" @click.prevent="jumpToRelay"
+        ><span class="relay-jump-text"
+          >Relay attempts<small>{{ tcpip.length }} networks they tried to reach</small></span
+        ><svg class="relay-jump-icon" viewBox="0 0 24 24" aria-hidden="true">
+          <path :d="ICONS['chevron-right']" fill="currentColor" /></svg
+      ></a>
 
       <div class="grid-main">
         <HwCard
           class="spec-card"
           title="Specimens"
-          :note="`${specimenCount} captured payload specimens`"
+          :note="`${specimenCount} files kept`"
         >
           <ul
             ref="specimensEl"
             class="specimens"
+            :class="{ expanded: showAll }"
             tabindex="0"
             aria-label="Captured files"
             @scroll.passive="checkSpecimens"
@@ -351,18 +376,20 @@
               </RouterLink>
               <span
                 class="flags"
-                role="img"
-                tabindex="0"
-                :aria-label="originLabel(d)"
+                aria-hidden="true"
                 @pointerenter="tt.show(originLabel(d))"
                 @pointermove="tt.move($event)"
                 @pointerleave="tt.hide()"
-                @focus="onFlagsFocus($event, d)"
-                @blur="tt.hide()"
                 >{{ flagsFor(d.countries) }}</span
               >
               <span v-if="benignContent(d.sha256)" class="benign">not malware</span>
-              <a v-else class="vt" :href="vtUrl(d.sha256)" target="_blank" rel="noopener noreferrer"
+              <a
+                v-else
+                class="vt"
+                :href="vtUrl(d.sha256)"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Open on VirusTotal"
                 >VirusTotal</a
               >
               <p class="fact">
@@ -379,6 +406,9 @@
               </p>
             </li>
             <li v-if="!downloads.length" class="empty">No files captured yet.</li>
+            <li v-if="!showAll && downloads.length > NARROW_LIST" class="show-all">
+              <button type="button" @click="showAll = true">Show all {{ downloads.length }}</button>
+            </li>
           </ul>
         </HwCard>
 
@@ -386,6 +416,8 @@
           <HwCard
             title="Relay attempts"
             :note="`top ${tcpip.length} networks attackers tried to reach`"
+            id="relay-card"
+            tabindex="-1"
             class="relay-card"
           >
             <RankList class="relay-rank" :rows="relayRows" label-width="150px" badge-width="46px" />
@@ -435,6 +467,24 @@
     grid-auto-flow: column;
     grid-auto-columns: 1fr;
     gap: 12px;
+  }
+
+  .m-short {
+    display: none;
+  }
+
+  @media (max-width: 480px) {
+    .stat-row :deep(.value) {
+      font-size: 22px;
+    }
+
+    .m-full {
+      display: none;
+    }
+
+    .m-short {
+      display: inline;
+    }
   }
 
   .grid-main {
@@ -575,17 +625,12 @@
     white-space: nowrap;
   }
 
-  .spec .flags:focus-visible {
-    outline: 2px solid var(--accent);
-    outline-offset: -2px;
-  }
-
   /* Numbers emphasized for scanners; plain text for readers. */
   .spec .fact {
     grid-column: 1 / -1;
     grid-row: 2;
     margin: 0;
-    font-size: 11.5px;
+    font-size: 12px;
     line-height: 16px;
     color: var(--text-dim);
     white-space: nowrap;
@@ -617,22 +662,23 @@
     height: 24px;
     padding: 0 10px;
     border-radius: 999px;
-    font-size: 10.5px;
+    font-size: 11px;
     font-weight: 650;
     letter-spacing: 0.02em;
     white-space: nowrap;
   }
 
+  /* Quiet text link: amber stays reserved for data. */
   .spec .vt {
-    color: var(--accent-hot);
-    background: var(--accent-wash);
-    border: 1px solid var(--accent-edge);
+    color: var(--text-muted);
+    padding: 0 4px;
+    font-weight: 500;
     text-decoration: none;
-    transition: background var(--motion-fast);
   }
 
   .spec .vt:hover {
-    background: var(--accent-glow);
+    color: var(--text);
+    text-decoration: underline;
   }
 
   .spec .vt:focus-visible {
@@ -690,7 +736,76 @@
     font-size: 12.5px;
   }
 
+  /* Mobile only: the single column buries Relay attempts last. */
+  .show-all {
+    display: none;
+    grid-column: 1 / -1;
+  }
+
+  .show-all button {
+    width: 100%;
+    min-height: 44px;
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text);
+    font-size: 13px;
+  }
+
+  .relay-jump {
+    display: none;
+    flex: none;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    box-sizing: border-box;
+    min-height: 58px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    box-shadow: var(--shadow-sm);
+    color: var(--text);
+    text-decoration: none;
+    font-size: 13px;
+    font-weight: 650;
+  }
+
+  .relay-jump-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+
+  .relay-jump small {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--text-dim);
+  }
+
+  .relay-jump:hover {
+    border-color: var(--accent-dim);
+  }
+
+  .relay-jump:focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+
+  .relay-jump-icon {
+    flex: none;
+    width: 18px;
+    height: 18px;
+    color: var(--accent);
+    transform: rotate(90deg);
+  }
+
   @media (max-width: 900px) {
+    .relay-jump {
+      display: flex;
+    }
+
     /* grid-auto-flow must be reset; on its own, grid-template-columns cannot
        stop column flow, squeezing tiles into one unreadable row. */
     .stat-row {
@@ -706,6 +821,14 @@
     .specimens {
       grid-template-columns: 1fr;
       overflow: visible;
+    }
+
+    .show-all {
+      display: block;
+    }
+
+    .specimens:not(.expanded) .spec:nth-child(n + 9):not(.picked) {
+      display: none;
     }
 
     /* The header now wraps onto two lines, so a max-height alone left only a

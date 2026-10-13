@@ -11,6 +11,7 @@
     statsPasswordsByLengthOptions,
     statsTopCredentialsOptions,
   } from '@/api/generated/@tanstack/vue-query.gen'
+  import { suspenseAll } from '@/api/queries'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import StatTile from '@/components/base/StatTile.vue'
@@ -78,14 +79,7 @@
     staleTime: POLL_MS,
   })
 
-  await Promise.all([
-    usersQ.suspense(),
-    passwordsQ.suspense(),
-    pairsQ.suspense(),
-    workedQ.suspense(),
-    outcomesQ.suspense(),
-    compositionQ.suspense(),
-  ])
+  await suspenseAll(usersQ, passwordsQ, pairsQ, workedQ, outcomesQ, compositionQ)
 
   const outcomes = computed(() => outcomesQ.data.value!)
   const composition = computed(() => compositionQ.data.value!)
@@ -224,6 +218,27 @@
     else if (target === 'hist') histBarsRef.value?.focus()
   }
 
+  // Roving tabindex (as HexMatrix): the histogram is ONE Tab stop - the bar last
+  // focused, else the tallest - and Left/Right/Home/End walk the non-empty bars.
+  const rovingBar = ref<string | null>(null)
+  const tabBar = computed(() => {
+    const ok = (k: string | null) => lengthBars.value.find((b) => b.key === k && b.count > 0)?.key
+    return ok(rovingBar.value) ?? ok(modeBar.value?.key ?? null) ?? lengthBars.value.find((b) => b.count > 0)?.key
+  })
+  function onHistKeydown(e: KeyboardEvent): void {
+    const bars = [...(histBarsRef.value?.querySelectorAll<HTMLButtonElement>('button:not(:disabled)') ?? [])]
+    const i = bars.indexOf(e.target as HTMLButtonElement)
+    const to = new Map([
+      ['ArrowLeft', Math.max(i - 1, 0)],
+      ['ArrowRight', Math.min(i + 1, bars.length - 1)],
+      ['Home', 0],
+      ['End', bars.length - 1],
+    ]).get(e.key)
+    if (i < 0 || to === undefined || e.ctrlKey || e.altKey || e.metaKey) return
+    e.preventDefault()
+    bars[to]?.focus()
+  }
+
   const tooltip = useHwTooltip()
 
   // Hide the tooltip on any view swap: the hovered trigger (a histogram bar)
@@ -294,23 +309,37 @@
       </div>
 
       <div class="stat-row">
-        <StatTile label="Distinct passwords" :value="fmtNumber(outcomes.unique_passwords)">
+        <StatTile
+          label="Distinct passwords"
+          short="Passwords"
+          :value="fmtNumber(outcomes.unique_passwords)"
+        >
           <template #label-extra>
             <InfoDot title="Distinct passwords" :text="TOOLTIP_DISTINCT_PASSWORDS" />
           </template>
-          <template #meta>top {{ shownPasswordCount }} shown in the grid below</template>
+          <template #meta>
+            <span class="m-full">top {{ shownPasswordCount }} shown in the grid below</span>
+            <span class="m-short">top {{ shownPasswordCount }} shown</span>
+          </template>
         </StatTile>
-        <StatTile label="Distinct usernames" :value="fmtNumber(outcomes.unique_usernames)">
+        <StatTile
+          label="Distinct usernames"
+          short="Usernames"
+          :value="fmtNumber(outcomes.unique_usernames)"
+        >
           <template #label-extra>
             <InfoDot title="Distinct usernames" :text="TOOLTIP_DISTINCT_USERNAMES" />
           </template>
           <template #meta>
             <template v-if="topUser">
-              {{ topUser.label }} alone: {{ fmtNumber(topUser.count) }} attempts
+              <span class="m-full"
+                >{{ topUser.label }} alone: {{ fmtNumber(topUser.count) }} attempts</span
+              >
+              <span class="m-short">{{ topUser.label }}: {{ fmtNumber(topUser.count) }}</span>
             </template>
           </template>
         </StatTile>
-        <StatTile label="Login attempts" :value="fmtNumber(outcomes.total)">
+        <StatTile label="Login attempts" short="Attempts" :value="fmtNumber(outcomes.total)">
           <template #label-extra>
             <InfoDot title="Login attempts" :text="TOOLTIP_AUTH_ATTEMPTS" />
           </template>
@@ -320,7 +349,10 @@
           <template #label-extra>
             <InfoDot title="Accepted" :text="TOOLTIP_ACCEPTED" />
           </template>
-          <template #meta>{{ fmtNumber(outcomes.successful) }} accepted attempts</template>
+          <template #meta>
+            <span class="m-full">{{ fmtNumber(outcomes.successful) }} accepted attempts</span>
+            <span class="m-short">{{ fmtNumber(outcomes.successful) }} logins</span>
+          </template>
         </StatTile>
       </div>
 
@@ -330,7 +362,7 @@
             <InfoDot title="Username and password pairs" :text="TOOLTIP_COMB" />
             <div class="matrix-legend">
               <SeqLegend min="rare" :max="`${fmtCompact(legendMax)} attempts`" />
-              <span class="accept-legend"><span class="ring" aria-hidden="true" />accepted</span>
+              <span class="accept-legend"><svg class="ring" viewBox="0 0 10 10" aria-hidden="true"><circle cx="5" cy="5" r="3.2" /></svg>accepted</span>
             </div>
           </template>
           <HexMatrix
@@ -402,7 +434,8 @@
                     role="group"
                     aria-label="Password lengths. Click a bar to see its passwords."
                   >
-                    <div ref="histBarsRef" class="hist-bars" tabindex="-1">
+                    <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -->
+                    <div ref="histBarsRef" class="hist-bars" tabindex="-1" @keydown="onHistKeydown">
                       <button
                         v-for="bar in lengthBars"
                         :key="bar.key"
@@ -410,12 +443,13 @@
                         class="hist-col"
                         :class="{ peak: modeBar && bar.key === modeBar.key }"
                         :disabled="bar.count === 0"
+                        :tabindex="bar.key === tabBar ? 0 : -1"
                         :aria-label="`Show the ${bar.count} passwords of ${bar.label || bar.length} characters`"
                         @click="selectLength(bar.length)"
                         @mouseenter="tooltip.show(bar.title)"
                         @mousemove="tooltip.move($event)"
                         @mouseleave="tooltip.hide()"
-                        @focus="tooltip.show(bar.title)"
+                        @focus="rovingBar = bar.key; tooltip.show(bar.title)"
                         @blur="tooltip.hide()"
                       >
                         <span class="hist-bar" :style="{ height: bar.heightPct }" />
@@ -427,6 +461,10 @@
                       </span>
                     </div>
                   </div>
+                  <p v-if="modeBar && modeBar.count > 0" class="hist-cap">
+                    most common: {{ modeBar.label || modeBar.length }} characters &middot;
+                    <b>{{ fmtNumber(modeBar.count) }}</b>
+                  </p>
                 </div>
 
                 <!-- Drill-down: fixed-height list of passwords at chosen length; no reflow on swap. -->
@@ -478,11 +516,15 @@
 
           <div class="pd-grid">
             <div>
-              <span class="k">{{ selectedCell.username }}, all passwords</span>
+              <span class="k" :title="`${selectedCell.username}, all passwords`">{{
+                selectedCell.username
+              }}, all passwords</span>
               <span class="v">{{ fmtNumber(cellRowTotal) }}</span>
             </div>
             <div>
-              <span class="k">{{ selectedCell.password }}, all usernames</span>
+              <span class="k" :title="`${selectedCell.password}, all usernames`">{{
+                selectedCell.password
+              }}, all usernames</span>
               <span class="v">{{ fmtNumber(cellColTotal) }}</span>
             </div>
           </div>
@@ -550,9 +592,15 @@
   .accept-legend .ring {
     width: 10px;
     height: 10px;
-    border-radius: 3px;
-    border: 1.5px solid var(--ok);
     display: inline-block;
+  }
+
+  .accept-legend .ring circle {
+    fill: var(--ok);
+  }
+
+  .m-short {
+    display: none;
   }
 
   .stat-row {
@@ -713,6 +761,18 @@
     white-space: nowrap;
   }
 
+  .hist-cap {
+    flex: none;
+    margin: 0;
+    font: 500 11px var(--font-mono);
+    color: var(--text-dim);
+  }
+
+  .hist-cap b {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
   .hist-tick:first-child {
     text-align: left;
   }
@@ -850,6 +910,28 @@
     color: var(--text-muted);
   }
 
+  @media (max-width: 480px) {
+    .m-full {
+      display: none;
+    }
+
+    .m-short {
+      display: block;
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .stat-row :deep(.value) {
+      font-size: 22px;
+    }
+
+    .matrix-card :deep(h2) {
+      letter-spacing: 0.03em;
+    }
+  }
+
   @media (max-width: 900px) {
     .cred-page {
       overflow-y: auto;
@@ -895,13 +977,6 @@
     .hist {
       flex: none;
       height: 180px;
-    }
-
-    /* The card is height:auto on mobile, so flex:1 on the list has nothing
-       to grow into; cap it so it scrolls internally instead of stretching
-       the whole (already-scrolling) page. */
-    .worked-list {
-      max-height: 168px;
     }
 
     /* The card title takes the first line, so the chips get a full row and stay

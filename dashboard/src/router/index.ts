@@ -45,7 +45,8 @@ const routes: RouteRecordRaw[] = [
   {
     // Title stays generic (no session id) so an opaque identifier never leaks
     // into the document title / history. Not in the sitemap (per-session URLs
-    // are thin and unbounded), so it is left to render client-side only.
+    // are thin and unbounded), so it is left to render client-side only, and
+    // noindex keeps the thin pages out of search results too.
     path: '/sessions/:id',
     name: 'session-detail',
     component: () => retryImport(() => import('../views/SessionDetailView.vue')),
@@ -53,6 +54,7 @@ const routes: RouteRecordRaw[] = [
       title: 'Session',
       seoTitle: 'Session - Honeywatch',
       description: 'One recorded attacker session on the honeypot, replayed command by command.',
+      noindex: true,
     },
   },
   {
@@ -102,7 +104,11 @@ const router = createRouter({
   history: createWebHistory(),
   routes,
   scrollBehavior(to, from, savedPosition) {
-    return savedPosition || { left: 0, top: 0 }
+    if (savedPosition) return savedPosition
+    // Query-only changes (?open=, ?view=, filters) stay put; paging still returns to the top.
+    const sameView = from.name && to.path === from.path && to.hash === from.hash
+    if (sameView && to.query.page === from.query.page) return false
+    return { left: 0, top: 0 }
   },
 })
 

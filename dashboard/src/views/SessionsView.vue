@@ -4,14 +4,16 @@
    * filters and server-side pagination. Rows expand in place (no navigation).
    * All state (filters, page, expanded row) is URL-based for sharing and back-nav.
    */
-  import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
   import { useRoute, useRouter, type LocationQuery } from 'vue-router'
-  import { useQuery, keepPreviousData } from '@tanstack/vue-query'
+  import { useQueries, useQuery, keepPreviousData } from '@tanstack/vue-query'
   import type { ListSessionsData } from '@/api/generated/types.gen'
   import {
+    listRunSessionsOptions,
     listSessionsOptions,
     statsOutcomesOptions,
   } from '@/api/generated/@tanstack/vue-query.gen'
+  import { suspenseAll } from '@/api/queries'
   import PageShell from '@/components/layout/PageShell.vue'
   import TopBar from '@/components/layout/TopBar.vue'
   import HwCard from '@/components/base/HwCard.vue'
@@ -20,16 +22,26 @@
   import EmptyState from '@/components/base/EmptyState.vue'
   import SortableTh from '@/components/base/SortableTh.vue'
   import SessionRow from '@/components/sessions/SessionRow.vue'
+  import SessionGroupRow from '@/components/sessions/SessionGroupRow.vue'
+  import SessionsPhoneList from '@/components/sessions/SessionsPhoneList.vue'
   import OutcomeFilter from '@/components/sessions/OutcomeFilter.vue'
+  import PhoneControls from '@/components/sessions/PhoneControls.vue'
   import { ICONS } from '@/components/icons'
   import { fmtNumber } from '@/utils/format'
   import { useCountryOptions } from '@/composables/useCountryOptions'
-  import { SCORE_TIP } from '@/utils/sessionStory'
+  import { useIsPhone } from '@/composables/useIsPhone'
+  import { setLastViewed, setViewedSpot, takeLastViewed, takeViewedSpot } from '@/utils/lastViewed'
+  import { SCORE_TIP, type SessionRow as Row } from '@/utils/sessionStory'
   import { SESSIONS_PER_PAGE, sessionsListQuery } from '@/utils/pagination'
 
   // Debounce the *fetch*, not the keystroke: the box updates instantly, the
   // URL/query only commits once typing pauses.
   const SEARCH_DEBOUNCE_MS = 250
+  // On a phone the list must come back from cache on Back, unchanged: a refetch would shift the
+  // restored scroll position under the user.
+  const PHONE_STALE_MS = 4 * 60_000
+  // Give up looking for the row Back should return to.
+  const RETURN_GIVE_UP_MS = 3000
   // Server bounds on `q` (api/src/schemas/sessions.py) - outside [2, 64] the
   // API 422s, so the box never lets a keystroke produce either edge.
   const MIN_QUERY_LEN = 2
@@ -50,6 +62,14 @@
     duration: 'longest sessions first',
     active: 'most SSH commands issued first',
     country: 'sorted alphabetically by origin',
+  }
+  // The phone's header has one short line, so the clause is shorter.
+  const SORT_SUBTITLE_PHONE: Record<SortId, string> = {
+    interest: 'most interesting first',
+    recent: 'newest first',
+    duration: 'longest first',
+    active: 'most commands first',
+    country: 'by country, A to Z',
   }
   const SORT_DIR: Record<SortId, 'asc' | 'desc'> = {
     interest: 'desc',
@@ -72,13 +92,21 @@
   // view is shareable and survives refresh and back.
   const route = useRoute()
   const router = useRouter()
+  // Before the top-level await below: the listener must register on the setup scope.
+  const isPhone = useIsPhone()
+  // Once the user leaves this list (a row is tapped, or another page is opened) the route is no
+  // longer /sessions: reading its query or writing through updateQuery would clobber that route.
+  // This view stays mounted through the Suspense exit, so the frozen query also stops a refetch.
+  const leaving = (): boolean => route.name !== 'sessions'
+  const qry = computed<LocationQuery>((prev) => (leaving() ? (prev ?? route.query) : route.query))
 
-  // Merges over the last *requested* query, not route.query: two same-tick
-  // calls would otherwise both spread the stale route.query and the second
+  // Merges over the last *requested* query, not the route's: two same-tick
+  // calls would otherwise both spread the stale query and the second
   // replace() clobbers the first.
   let pendingQuery: LocationQuery | null = null
   function updateQuery(patch: Record<string, string | undefined>): void {
-    const next: LocationQuery = { ...(pendingQuery ?? route.query) }
+    if (leaving()) return
+    const next: LocationQuery = { ...(pendingQuery ?? qry.value) }
     for (const [k, v] of Object.entries(patch)) {
       if (v === undefined) delete next[k]
       else next[k] = v
@@ -92,11 +120,11 @@
   // URL key `has` holds the API's comma-list verbatim ('commands,success', or
   // the mutually-exclusive 'none').
   const hasValue = computed<string>({
-    get: () => (route.query.has as string | undefined) ?? '',
+    get: () => (qry.value.has as string | undefined) ?? '',
     set: (v) => updateQuery({ has: v || undefined, page: undefined, open: undefined }),
   })
   const sort = computed<SortId>({
-    get: () => (route.query.sort as SortId | undefined) ?? 'interest',
+    get: () => (qry.value.sort as SortId | undefined) ?? 'interest',
     set: (v) => {
       updateQuery({
         sort: v === 'interest' ? undefined : v,
@@ -107,7 +135,7 @@
     },
   })
   const order = computed<'asc' | 'desc' | undefined>({
-    get: () => route.query.order as 'asc' | 'desc' | undefined,
+    get: () => qry.value.order as 'asc' | 'desc' | undefined,
     set: (v) => {
       updateQuery({
         order: v,
@@ -117,7 +145,7 @@
     },
   })
   const country = computed<string>({
-    get: () => (route.query.country as string | undefined) ?? '',
+    get: () => (qry.value.country as string | undefined) ?? '',
     set: (v) => {
       updateQuery({
         country: v || undefined,
@@ -129,7 +157,7 @@
   // Committed search term (URL state, ?q=) - same reset behavior as every
   // other filter.
   const search = computed<string>({
-    get: () => (route.query.q as string | undefined) ?? '',
+    get: () => (qry.value.q as string | undefined) ?? '',
     set: (v) => updateQuery({ q: v || undefined, page: undefined, open: undefined }),
   })
   // ?sha256= scopes the list to one captured payload. Read-only here: the
@@ -137,13 +165,13 @@
   // server-side, so a hand-typed value that is not 64 lowercase hex 422s
   // rather than silently returning the unfiltered 543k list.
   const shaFilter = computed(() => {
-    const v = route.query.sha256
+    const v = qry.value.sha256
     return typeof v === 'string' && /^[0-9a-f]{64}$/.test(v) ? v : undefined
   })
 
   // Expanded row persists in URL (?open=sessionId) to restore on back/forward.
   const expandedId = computed<string | null>({
-    get: () => (route.query.open as string | undefined) ?? null,
+    get: () => (qry.value.open as string | undefined) ?? null,
     set: (v) => updateQuery({ open: v || undefined }),
   })
 
@@ -151,7 +179,7 @@
   // country/search reset this to undefined (which defaults to 1 on read).
   const currentPage = computed<number>({
     get: () => {
-      const p = route.query.page as string | undefined
+      const p = qry.value.page as string | undefined
       return p ? Math.max(1, parseInt(p, 10)) : 1
     },
     set: (v) => updateQuery({ page: v > 1 ? String(v) : undefined }),
@@ -191,19 +219,24 @@
     searchInput.value = ''
     if (search.value) search.value = ''
   }
-  onUnmounted(() => {
+  onBeforeUnmount(() => {
     if (searchTimer) clearTimeout(searchTimer)
+  })
+  // Back, or a typed ?q=, can change the committed term under the box.
+  watch(search, (v) => {
+    if (v !== searchInput.value) searchInput.value = v
   })
 
   // Never sent below the API's 2-char floor - the box can hold a shorter
   // in-progress term without ever producing a request for it.
   const searchActive = computed(() => search.value.length >= MIN_QUERY_LEN)
 
+  const phoneStale = isPhone.value ? { staleTime: PHONE_STALE_MS } : {}
+  const listQuery = computed(() => sessionsListQuery((k) => qry.value[k]))
   const sessionsQ = useQuery(
     computed(() => ({
-      ...listSessionsOptions({
-        query: sessionsListQuery((k) => route.query[k]),
-      }),
+      ...listSessionsOptions({ query: listQuery.value }),
+      ...phoneStale,
       // Hold the previous page on screen while the next one loads. Without it
       // rows collapses to [] on every page change and the flex-sized table
       // reflows - a blank frame and a layout jump on a page that must fit the
@@ -212,8 +245,7 @@
     })),
   )
 
-  await sessionsQ.suspense()
-  if (sessionsQ.error.value) throw sessionsQ.error.value
+  await suspenseAll(sessionsQ)
 
   // The onMounted below is written after the top-level await above; script
   // setup's compiler preserves the instance context across await
@@ -227,17 +259,17 @@
     [shaFilter, () => sessionsQ.data.value?.items],
     ([sha, items]) => {
       const only = items?.length === 1 ? items[0] : undefined
-      if (!sha || !only) return
-      if (!route.query.open) expandedId.value = only.id
+      if (!sha || !only || isPhone.value) return
+      if (!qry.value.open) expandedId.value = only.id
     },
     { immediate: true },
   )
 
   onMounted(() => {
-    const openRow = scrollEl.value?.querySelector('tr[aria-expanded="true"]')
+    const openRow = scrollEl.value?.querySelector('tr.srow[aria-expanded="true"]')
     // scrollIntoView is absent in jsdom (unit tests) - guard the call, not
     // just the element lookup.
-    openRow?.scrollIntoView?.({ block: 'nearest' })
+    openRow?.scrollIntoView?.({ block: 'center' })
   })
 
   const rows = computed(() => sessionsQ.data.value?.items ?? [])
@@ -247,8 +279,9 @@
   // the same true dataset max) - normalizes the displayed per-row interest
   // score to 0-100 in SessionRow.
   const maxInterest = computed(() => sessionsQ.data.value?.max_interest ?? 0)
+  const loadFailed = computed(() => sessionsQ.isError.value && !sessionsQ.isFetching.value)
 
-  const subtitle = computed(() => SORT_SUBTITLE[sort.value])
+  const subtitle = computed(() => (isPhone.value ? SORT_SUBTITLE_PHONE : SORT_SUBTITLE)[sort.value])
 
   // What the footer's total is a count *of*, when some scope narrows it below
   // "every session" - null means the plain "sessions" wording applies.
@@ -278,12 +311,17 @@
       : 'Try a different outcome, country, or search.',
   )
 
-  // Only when a country is actually set: option[0] is the '' / 'All countries'
-  // entry, and matching it would show a pressed chip offering to clear a
-  // filter that isn't applied.
-  const countryChip = computed(() =>
-    country.value ? countryOptions.value.find((o) => o.value === country.value) : undefined,
-  )
+  // Says how many sessions sit behind the folded group rows.
+  const pageEnd = computed(() => {
+    const closed = [...runs.value].filter(([id]) => !isOpen(id))
+    const folded = closed.reduce((n, [, run]) => n + run.count, 0)
+    const groups = closed.length
+    const shown = rows.value.length + [...members.value.values()].flat().length
+    const base = `${shown} row${shown === 1 ? '' : 's'} shown`
+    return folded
+      ? `${base} \u00b7 ${folded} similar sessions folded into ${groups} group${groups === 1 ? '' : 's'}`
+      : base
+  })
 
   const canPrevious = computed(() => currentPage.value > 1)
   const canNext = computed(() => currentPage.value < pageCount.value)
@@ -292,12 +330,162 @@
     updateQuery({ sha256: undefined, page: undefined, open: undefined })
   }
 
-  // Treegrid roving tabindex: the last focused row is the Tab stop. It falls back to the first
-  // row when that id is not on the current page, so a page change never leaves zero stops.
-  const focusedId = ref<string | null>(null)
-  const stopId = computed(() =>
-    rows.value.some((r) => r.id === focusedId.value) ? focusedId.value : rows.value[0]?.id,
+  // A run's sessions sit behind a group row under its first session, keyed by that session's id.
+  // Opening one fetches them a page at a time from the list's own snapshot (as_of).
+  const runs = computed(() => new Map(rows.value.flatMap((r) => (r.run ? [[r.id, r.run]] : []))))
+  // first id -> pages of the run requested so far. ?run= names the open runs (comma-separated
+  // first ids; on desktop the one holding the expanded ?open= session), so a reload or Back
+  // reopens them, one page each.
+  // Coming Back on a phone restores how deep each run was opened.
+  const viewed = takeViewedSpot()
+  const openRuns = ref(
+    new Map<string, number>(
+      (typeof qry.value.run === 'string' ? qry.value.run.split(',') : [])
+        .filter(Boolean)
+        .map((id) => [id, (isPhone.value && viewed?.runs.get(id)) || 1]),
+    ),
   )
+  const groupKey = (id: string): string => `group-${id}`
+  const isOpen = (first: string): boolean => openRuns.value.has(first)
+  // The list the open runs were requested against: the rows on screen. While the next list loads,
+  // the rows (and the offsets taken from them) stay on the previous result, so the member requests
+  // keep that result's filters and snapshot too.
+  const shown = ref<{ query: ReturnType<typeof sessionsListQuery>; asOf?: string } | null>(null)
+  watch(
+    () => [sessionsQ.data.value, sessionsQ.isPlaceholderData.value] as const,
+    ([data, placeholder]) => {
+      if (data && !placeholder) shown.value = { query: listQuery.value, asOf: data.as_of }
+    },
+    { immediate: true },
+  )
+  const runRequests = computed(() => {
+    const at = shown.value
+    if (!at?.asOf) return []
+    const asOf = at.asOf
+    const { sort, order, has, country, q, sha256 } = at.query
+    return [...openRuns.value].flatMap(([first, pages]) => {
+      const run = runs.value.get(first)
+      if (!run) return []
+      return Array.from({ length: pages }, (_, i) => ({
+        first,
+        options: listRunSessionsOptions({
+          query: {
+            sort,
+            order,
+            has,
+            country,
+            q,
+            sha256,
+            as_of: asOf,
+            offset: run.offset,
+            count: run.count,
+            page: i + 1,
+            per_page: SESSIONS_PER_PAGE,
+          },
+        }),
+      }))
+    })
+  })
+  const runPages = useQueries({
+    queries: computed(() => runRequests.value.map((r) => ({ ...r.options, ...phoneStale }))),
+  })
+  const members = computed(() => {
+    const out = new Map<string, Row[]>()
+    runRequests.value.forEach(({ first }, i) => {
+      out.set(first, [...(out.get(first) ?? []), ...(runPages.value[i]?.data?.items ?? [])])
+    })
+    return out
+  })
+  const runLoading = (first: string): boolean =>
+    runRequests.value.some((r, i) => r.first === first && runPages.value[i]?.isFetching)
+  const runMore = (first: string): number =>
+    (runs.value.get(first)?.count ?? 0) - (members.value.get(first)?.length ?? 0)
+  // A run page that failed leaves its rows out, so the group says so and retries that page.
+  const runFailed = (first: string): boolean =>
+    runRequests.value.some((r, i) => r.first === first && runPages.value[i]?.isError)
+  function retryRun(first: string): void {
+    runRequests.value.forEach((r, i) => {
+      if (r.first === first && runPages.value[i]?.isError) void runPages.value[i]?.refetch()
+    })
+  }
+  function moreLabel(first: string): string {
+    const left = runMore(first)
+    const next = `Show ${fmtNumber(Math.min(left, SESSIONS_PER_PAGE))} more`
+    return left > SESSIONS_PER_PAGE ? `${next} of ${fmtNumber(left)}` : next
+  }
+  function loadMore(first: string): void {
+    openRuns.value = new Map(openRuns.value).set(first, (openRuns.value.get(first) ?? 0) + 1)
+  }
+  function toggleRun(first: string): void {
+    const next = new Map(openRuns.value)
+    if (isOpen(first)) {
+      next.delete(first)
+      // A row left expanded inside a closing run would vanish from under the user.
+      if (members.value.get(first)?.some((m) => m.id === expandedId.value)) {
+        updateQuery({ open: undefined, run: undefined })
+      }
+    } else next.set(first, 1)
+    openRuns.value = next
+    if (isPhone.value) {
+      const ids = [...next.keys()].filter((id) => runs.value.has(id))
+      updateQuery({ run: ids.join(',') || undefined })
+    }
+  }
+
+  const rowLink = (id: string): HTMLElement | undefined =>
+    [...document.querySelectorAll<HTMLElement>('a.row')].find((a) => a.dataset.id === id)
+  function onOpen(id: string): void {
+    setLastViewed(id)
+    const top = rowLink(id)?.getBoundingClientRect().top
+    if (top !== undefined) setViewedSpot({ id, top, runs: openRuns.value })
+  }
+
+  // Back from a session (or an old ?open= link) on a phone: focus the row and bring it into view
+  // once it exists. Members of an open run render after their queries land, so this watches the
+  // data; if the row never shows up, focus falls to the page instead.
+  const lastViewed = takeLastViewed()
+  let returnTo: string | null = null
+  if (isPhone.value) {
+    const open = typeof qry.value.open === 'string' ? qry.value.open : null
+    returnTo = lastViewed ?? open
+  }
+  function finishReturn(el: HTMLElement | null): void {
+    returnTo = null
+    clearTimeout(returnTimer)
+    if (qry.value.open) updateQuery({ open: undefined })
+    if (!el) {
+      if (document.activeElement === document.body) {
+        document.getElementById('main')?.focus({ preventScroll: true })
+      }
+      return
+    }
+    el.focus({ preventScroll: true })
+    const was = viewed && viewed.id === el.dataset.id ? viewed.top : undefined
+    if (was !== undefined) window.scrollBy(0, el.getBoundingClientRect().top - was)
+    const { top, bottom } = el.getBoundingClientRect()
+    if (top < 0 || bottom > window.innerHeight) el.scrollIntoView?.({ block: 'center' })
+  }
+  function tryReturn(): void {
+    if (!returnTo) return
+    const el = rowLink(returnTo)
+    if (el || runPages.value.every((q) => !q.isFetching)) finishReturn(el ?? null)
+  }
+  const returnTimer = returnTo ? setTimeout(() => finishReturn(null), RETURN_GIVE_UP_MS) : undefined
+  watch([rows, members], () => nextTick(tryReturn), { flush: 'post' })
+  onMounted(tryReturn)
+  onBeforeUnmount(() => clearTimeout(returnTimer))
+
+  // Treegrid roving tabindex: the last focused row (or group row) is the Tab stop. It falls back
+  // to the first row when that id is not visible, so a page change never leaves zero stops.
+  const focusedId = ref<string | null>(null)
+  const stopId = computed(() => {
+    const visible = rows.value.flatMap((r) =>
+      runs.value.has(r.id)
+        ? [r.id, groupKey(r.id), ...(members.value.get(r.id) ?? []).map((m) => m.id)]
+        : [r.id],
+    )
+    return visible.includes(focusedId.value ?? '') ? focusedId.value : visible[0]
+  })
 
   // PageUp/PageDown move focus to the new page's first row. focusPage is the page we are waiting
   // on: armed only when the page really changes, dropped on error or if the route lands elsewhere,
@@ -323,16 +511,17 @@
     }
     focusPage = null
     await nextTick()
-    scrollEl.value?.querySelector<HTMLElement>('tr.srow')?.focus()
+    scrollEl.value?.querySelector<HTMLElement>(NAV_ROW)?.focus()
   })
+  const NAV_ROW = 'tr.srow, tr.sgroup'
   function onGridFocus(e: FocusEvent): void {
-    const id = (e.target as HTMLElement).closest<HTMLElement>('tr.srow')?.dataset.id
+    const id = (e.target as HTMLElement).closest<HTMLElement>(NAV_ROW)?.dataset.id
     if (id) focusedId.value = id
   }
   function onGridKey(e: KeyboardEvent): void {
     const tr = e.target as HTMLElement
-    if (!tr.matches('tr.srow')) return
-    const list = [...(tr.parentElement?.querySelectorAll<HTMLElement>('tr.srow') ?? [])]
+    if (!tr.matches(NAV_ROW)) return
+    const list = [...(tr.parentElement?.querySelectorAll<HTMLElement>(NAV_ROW) ?? [])]
     const i = list.indexOf(tr)
     const to = { ArrowDown: i + 1, ArrowUp: i - 1, Home: 0, End: list.length - 1 }[e.key]
     if (to !== undefined) {
@@ -350,8 +539,36 @@
     }
   }
 
-  function toggleRow(id: string): void {
-    expandedId.value = expandedId.value === id ? null : id
+  // Collapsing a panel above the tapped row moves it (Safari has no scroll anchoring, and the
+  // table's own scroller does not anchor either), so the row is pinned to its screen position.
+  let pinned: { id: string; top: number } | null = null
+  const rowEl = (id: string): HTMLElement | undefined =>
+    [...(scrollEl.value?.querySelectorAll<HTMLElement>('tr.srow') ?? [])].find(
+      (r) => r.dataset.id === id,
+    )
+  watch(
+    expandedId,
+    () => {
+      const pin = pinned
+      pinned = null
+      if (!pin) return
+      const now = rowEl(pin.id)?.getBoundingClientRect().top
+      if (now === undefined) return
+      const dy = now - pin.top
+      if (!dy) return
+      const sc = scrollEl.value
+      if (sc && sc.scrollHeight > sc.clientHeight) sc.scrollTop += dy
+      else window.scrollBy(0, dy)
+    },
+    { flush: 'post' },
+  )
+  // Reads the requested ?open=, not the route's: a second tap before the first navigation lands
+  // would otherwise toggle against stale state and leave the panel open.
+  function toggleRow(id: string, run?: string): void {
+    const current = (pendingQuery ?? qry.value).open ?? null
+    const top = rowEl(id)?.getBoundingClientRect().top
+    pinned = top === undefined ? null : { id, top }
+    updateQuery(current === id ? { open: undefined, run: undefined } : { open: id, run })
   }
   // Returns the clamped page it navigated to.
   function goToPage(p: number): number {
@@ -365,11 +582,12 @@
     const n = parseInt(el.value, 10)
     el.value = String(Number.isNaN(n) ? currentPage.value : goToPage(n))
   }
+  // The pager stays focusable while a page loads (aria-disabled, not disabled), so these guard too.
   function prevPage(): void {
-    if (canPrevious.value) goToPage(currentPage.value - 1)
+    if (canPrevious.value && !sessionsQ.isFetching.value) goToPage(currentPage.value - 1)
   }
   function nextPage(): void {
-    if (canNext.value) goToPage(currentPage.value + 1)
+    if (canNext.value && !sessionsQ.isFetching.value) goToPage(currentPage.value + 1)
   }
 
   // Header order; 'spacer' is the unlabeled 4th column (see the width rules in the styles).
@@ -389,6 +607,22 @@
   ]
 
   const sortOptions = computed(() => SORTS.map((s) => ({ value: s.id, label: s.label })))
+  // Three pills share the phone width, so the pill shows a short sort name; the sheet has the full one.
+  const SORT_SHORT: Record<SortId, string> = {
+    interest: 'Interesting',
+    recent: 'Newest',
+    duration: 'Longest',
+    active: 'Active',
+    country: 'Origin',
+  }
+  const phoneSortOptions = computed(() =>
+    SORTS.map((s) => ({
+      value: s.id,
+      label: s.label,
+      short: SORT_SHORT[s.id],
+      hint: SORT_SUBTITLE[s.id],
+    })),
+  )
 </script>
 
 <template>
@@ -450,7 +684,16 @@
         </button>
       </div>
 
-      <div class="controls-row">
+      <PhoneControls
+        v-if="isPhone"
+        v-model:has="hasValue"
+        v-model:sort="sort"
+        v-model:country="country"
+        :sort-options="phoneSortOptions"
+        :country-options="countryOptions"
+        :counts="outcomesQ.data.value ?? null"
+      />
+      <div v-else class="controls-row">
         <OutcomeFilter v-model="hasValue" :counts="outcomesQ.data.value ?? null" />
         <div class="right">
           <span class="country-control">
@@ -476,20 +719,9 @@
         </div>
       </div>
 
-      <!-- Mobile-only (see media query): the country dropdown above is
-           dropped at that width, so a shared ?country= link still needs a
-           visible, removable affordance - display:none hides this on desktop,
-           where the dropdown itself already shows the active country. -->
-      <ChipButton v-if="countryChip" class="country-chip" :pressed="true" @toggle="country = ''">
-        <span aria-hidden="true">{{ countryChip.icon }}</span>
-        <span aria-hidden="true">{{ countryChip.label }}</span>
-        <span aria-hidden="true" class="chip-x">&times;</span>
-        <span class="visually-hidden">Remove country filter: {{ countryChip.label }}</span>
-      </ChipButton>
-
       <!-- Arriving from a Payloads card narrows a 543k list to a handful. Say
            so, and make it removable, or the scope is invisible and permanent. -->
-      <ChipButton v-if="shaFilter" class="sha-chip" :pressed="true" @toggle="clearShaFilter">
+      <ChipButton v-if="shaFilter" :pressed="true" @toggle="clearShaFilter">
         <span aria-hidden="true" class="mono">{{ shaFilter.slice(0, 12) }}</span>
         <span aria-hidden="true" class="chip-x">&times;</span>
         <span class="visually-hidden">
@@ -498,22 +730,32 @@
       </ChipButton>
     </div>
 
-    <HwCard class="tbl-card" :class="{ 'has-rows': rows.length > 0 }">
-      <p
-        v-if="sessionsQ.isError.value && !sessionsQ.isFetching.value"
-        class="load-error"
-        role="alert"
-      >
+    <HwCard class="tbl-card" :class="{ 'has-rows': rows.length > 0, phone: isPhone }">
+      <p v-if="loadFailed" class="load-error" role="alert">
         Could not refresh sessions.
         <ChipButton @toggle="sessionsQ.refetch()">Retry</ChipButton>
       </p>
       <EmptyState
-        v-if="rows.length === 0 && !(sessionsQ.isError.value && !sessionsQ.isFetching.value)"
+        v-if="rows.length === 0 && !loadFailed"
         :title="emptyTitle"
         :hint="emptyHint"
       >
         <ChipButton v-if="searchActive" @toggle="clearSearch">Clear search</ChipButton>
       </EmptyState>
+      <SessionsPhoneList
+        v-else-if="rows.length > 0 && isPhone"
+        :rows="rows"
+        :members="members"
+        :open-runs="openRuns"
+        :sort="sort"
+        :max-interest="maxInterest"
+        :busy="sessionsQ.isPlaceholderData.value"
+        :run-loading="runLoading"
+        :more-label="moreLabel"
+        @toggle-run="toggleRun"
+        @more="loadMore"
+        @open="onOpen"
+      />
       <div
         v-else-if="rows.length > 0"
         ref="scrollEl"
@@ -542,7 +784,9 @@
                   :class="{ r: c.right }"
                 >
                   {{ c.label
-                  }}<span v-if="c.key === 'active'" class="story-key" aria-hidden="true"
+                  }}<span v-if="c.key === 'interest'" class="story-key" aria-hidden="true"
+                    >interest 0-100</span
+                  ><span v-else-if="c.key === 'active'" class="story-key" aria-hidden="true"
                     >commands &middot; files &middot; relays</span
                   >
                 </SortableTh>
@@ -551,17 +795,54 @@
           </thead>
           <!-- eslint-disable-next-line vuejs-accessibility/no-static-element-interactions -- delegated treegrid keys; the focusable rows are the targets -->
           <tbody @focusin="onGridFocus" @keydown="onGridKey">
-            <SessionRow
-              v-for="row in rows"
-              :key="row.id"
-              :row="row"
-              :expanded="expandedId === row.id"
-              :max-interest="maxInterest"
-              :tabbable="row.id === stopId"
-              @toggle="toggleRow(row.id)"
-            />
+            <template v-for="row in rows" :key="row.id">
+              <SessionRow
+                :row="row"
+                :expanded="expandedId === row.id"
+                :max-interest="maxInterest"
+                :tabbable="row.id === stopId"
+                @toggle="toggleRow(row.id)"
+              />
+              <template v-if="row.run">
+                <SessionGroupRow
+                  :data-id="groupKey(row.id)"
+                  :row="row"
+                  :run="row.run"
+                  :open="isOpen(row.id)"
+                  :tabbable="groupKey(row.id) === stopId"
+                  @toggle="toggleRun(row.id)"
+                />
+                <template v-if="isOpen(row.id)">
+                  <SessionRow
+                    v-for="m in members.get(row.id) ?? []"
+                    :key="m.id"
+                    :row="m"
+                    :expanded="expandedId === m.id"
+                    :max-interest="maxInterest"
+                    :tabbable="m.id === stopId"
+                    nested
+                    @toggle="toggleRow(m.id, row.id)"
+                  />
+                  <tr v-if="runLoading(row.id) || runMore(row.id) > 0" class="run-more">
+                    <td colspan="6">
+                      <span v-if="runLoading(row.id)" role="status">Loading&hellip;</span>
+                      <template v-else-if="runFailed(row.id)">
+                        <span role="alert">Could not load these sessions.</span>
+                        <ChipButton @toggle="retryRun(row.id)">Retry</ChipButton>
+                      </template>
+                      <ChipButton v-else @toggle="loadMore(row.id)">
+                        {{ moreLabel(row.id) }}
+                      </ChipButton>
+                    </td>
+                  </tr>
+                </template>
+              </template>
+            </template>
           </tbody>
         </table>
+        <p class="page-end">
+          {{ pageEnd }}
+        </p>
       </div>
     </HwCard>
 
@@ -571,21 +852,20 @@
       <span>
         <b>{{ SESSIONS_PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }}
         {{ scopeClause ?? 'sessions'
-        }}<span v-if="!scopeClause" class="hint-tail">
-          &middot; rows expand in place - the list never navigates away</span
-        >
+        }}<span v-if="!scopeClause" class="hint-tail"> &middot; select a row to expand it</span>
       </span>
       <div class="pagination">
         <button
           type="button"
           class="pg-btn"
-          :disabled="!canPrevious || sessionsQ.isFetching.value"
+          :aria-disabled="!canPrevious || sessionsQ.isFetching.value"
           @click="prevPage"
           aria-label="Previous page"
         >
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
             <path :d="ICONS['chevron-left']" fill="currentColor" />
           </svg>
+          <span v-if="isPhone" aria-hidden="true">Prev</span>
         </button>
         <div class="page-control">
           <span class="page-label">Page</span>
@@ -604,10 +884,11 @@
         <button
           type="button"
           class="pg-btn"
-          :disabled="!canNext || sessionsQ.isFetching.value"
+          :aria-disabled="!canNext || sessionsQ.isFetching.value"
           @click="nextPage"
           aria-label="Next page"
         >
+          <span v-if="isPhone" aria-hidden="true">Next</span>
           <svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" focusable="false">
             <path :d="ICONS['chevron-right']" fill="currentColor" />
           </svg>
@@ -625,11 +906,6 @@
     letter-spacing: 0;
     text-transform: none;
     color: var(--text-dim);
-  }
-  @media (max-width: 760px) {
-    .story-key {
-      display: none;
-    }
   }
 
   .page-head {
@@ -705,7 +981,7 @@
     font-weight: 550;
   }
   .search-box input::placeholder {
-    color: color-mix(in srgb, var(--text-dim) 55%, transparent);
+    color: var(--text-dim);
     font-family: var(--font-sans);
   }
   .match-count {
@@ -748,10 +1024,6 @@
     font-size: 13px;
     line-height: 1;
   }
-  .filters .country-chip {
-    display: none;
-  }
-
   .right {
     margin-left: auto;
     display: flex;
@@ -773,7 +1045,7 @@
     cursor: pointer;
     transition: all var(--motion-fast);
   }
-  .pg-btn:hover:not(:disabled) {
+  .pg-btn:hover:not([aria-disabled='true']) {
     border-color: var(--accent-dim);
     color: var(--text);
   }
@@ -781,7 +1053,7 @@
     outline: 2px solid var(--accent);
     outline-offset: 2px;
   }
-  .pg-btn:disabled {
+  .pg-btn[aria-disabled='true'] {
     color: color-mix(in srgb, var(--text-dim) 55%, transparent);
     cursor: default;
   }
@@ -789,15 +1061,24 @@
   .tbl-card {
     flex: 1;
     min-height: 0;
-    padding: 0;
+    /* Side inset so rows and the scrollbar do not sit on the card border; the
+       first/last columns give back the same 8px so the text does not move. */
+    padding: 0 8px;
     overflow: hidden;
     position: relative;
   }
   .tbl-scroll {
     overflow-y: auto;
     height: 100%;
+    transition: opacity var(--motion-fast);
     scrollbar-width: thin;
     scrollbar-color: color-mix(in srgb, var(--text-dim) 55%, transparent) transparent;
+  }
+  .tbl-card.phone {
+    padding: 0;
+  }
+  .tbl-card.phone::after {
+    display: none;
   }
   .tbl-scroll:focus-visible {
     outline: 2px solid var(--accent);
@@ -817,6 +1098,19 @@
     pointer-events: none;
   }
 
+  /* Lines up with the nested rows' chevrons. */
+  table.data tr.run-more td {
+    padding: 6px 8px 8px 50px;
+    color: var(--text-dim);
+    font-size: 12px;
+  }
+  .page-end {
+    margin: 0;
+    padding: 14px 10px 16px;
+    color: var(--text-dim);
+    font-size: 12.5px;
+    text-wrap: balance;
+  }
   table.data {
     width: 100%;
     /* Fixed layout: column widths come only from the widths below, never from
@@ -839,37 +1133,45 @@
     top: 0;
     background: var(--surface);
     z-index: 2;
+    /* Session / Story / Origin / spacer / Duration / Started column widths.
+       Column 4 (spacer) has no width so fixed layout gives it all leftover space.
+       border-box: widths are the column's actual width, padding included. */
+    box-sizing: border-box;
   }
   table.data th.r {
     text-align: right;
   }
-  /* Session / Story / Origin / spacer / Duration / Started column widths.
-     Column 4 (spacer) has no width so fixed layout gives it all leftover space.
-     border-box: widths are the column's actual width, padding included. */
-  table.data th {
-    box-sizing: border-box;
-  }
   table.data th:nth-child(1) {
     width: 290px;
-    padding-left: 16px;
+    padding-left: 8px;
   }
   table.data th:nth-child(2) {
-    width: 340px;
+    width: 400px;
   }
   table.data th:nth-child(3) {
-    width: 320px;
+    width: 260px;
   }
   table.data th:nth-child(5) {
     width: 130px;
   }
   table.data th:nth-child(6) {
     width: 150px;
-    padding-right: 22px;
+    padding-right: 14px;
   }
   table.data :deep(td) {
     padding: 9px 10px;
     border-bottom: 1px solid var(--grid-line);
     vertical-align: middle;
+  }
+  table.data :deep(tr[tabindex]) {
+    cursor: pointer;
+  }
+  table.data :deep(tr[tabindex]:focus) {
+    outline: none;
+  }
+  table.data :deep(tr[tabindex]:focus-visible) {
+    outline: 2px solid var(--accent-hot);
+    outline-offset: -2px;
   }
   table.data :deep(td.r) {
     text-align: right;
@@ -877,6 +1179,63 @@
   table.data :deep(.num) {
     font-family: var(--font-mono);
     font-variant-numeric: tabular-nums;
+  }
+
+  /* Narrow-desktop band (760-1299px): the desktop table is 1230px of fixed columns and the card is
+     the viewport minus 46px, so it only fits from 1292px up; below that Origin and Duration/Started
+     scrolled off (the compact rules stop at 1299.98px, the first width where the full table fits).
+     Sizes below were set for 760-899px, the tightest case; 900-1179px keeps them, 1180px+ gets
+     roomier columns. What yields first, in order: the header
+     key lines (the tooltip still says what the column is), the city (flag + country name the
+     origin; the full place stays in the cell's title), the group row's "Hide" word (the chevron
+     says it), the right-aligned headers' left padding, chip padding. Story chips, ids and
+     times keep full size: they are what a reader scans. Fixed columns sum to 580px; Origin
+     takes the rest (134px at the 714px card minimum, 274px at 900px). */
+  @media (min-width: 760px) and (max-width: 1299.98px) {
+    table.data th:nth-child(1) {
+      width: 208px;
+    }
+    table.data th:nth-child(2) {
+      width: 160px;
+    }
+    /* Origin has no width of its own here: with the spacer at 0 it takes whatever is left. */
+    table.data th:nth-child(3) {
+      width: auto;
+    }
+    table.data th:nth-child(4) {
+      width: 0;
+      padding: 0;
+    }
+    /* 8px keeps a sorted header's chevron off the neighbouring label. */
+    table.data th:nth-child(5) {
+      width: 104px;
+      padding-left: 8px;
+    }
+    table.data th:nth-child(6) {
+      width: 108px;
+      padding-left: 8px;
+    }
+    .story-key {
+      display: none;
+    }
+  }
+  /* 1180-1299px: room for the full-width Story column again, still without the 1230px floor. */
+  @media (min-width: 1180px) and (max-width: 1299.98px) {
+    table.data th:nth-child(1) {
+      width: 250px;
+    }
+    table.data th:nth-child(2) {
+      width: 300px;
+    }
+    table.data th:nth-child(5) {
+      width: 110px;
+    }
+    table.data th:nth-child(6) {
+      width: 160px;
+    }
+    .story-key {
+      display: inline;
+    }
   }
 
   .foot-line {
@@ -926,9 +1285,6 @@
     appearance: textfield;
   }
 
-  .tbl-scroll {
-    transition: opacity var(--motion-fast);
-  }
   .tbl-scroll.stale {
     opacity: 0.7;
   }
@@ -965,7 +1321,7 @@
     }
   }
 
-  @media (max-width: 760px) {
+  @media (max-width: 759.98px) {
     .search-box input,
     .foot-line .page-input {
       font-size: 16px;
@@ -977,60 +1333,10 @@
     .search-box {
       width: 100%;
     }
-    .controls-row {
-      flex-wrap: wrap;
+    .page-end {
+      padding: 4px 8px 12px;
+      color: var(--text-muted);
     }
-    /* Outcome + sort share one row, evenly split; the country dropdown is
-       dropped entirely (three controls don't fit) in favor of the removable
-       chip above, when a country is actually set. */
-    .controls-row :deep(.outcome-filter) {
-      flex: 1;
-    }
-    .controls-row :deep(.of-trigger) {
-      width: 100%;
-      justify-content: space-between;
-    }
-    .filters .country-chip {
-      display: inline-flex;
-      align-self: flex-start;
-    }
-    .right {
-      flex: 1;
-      margin-left: 0;
-    }
-    .country-control {
-      display: none;
-    }
-    .sort-control {
-      flex: 1;
-      display: flex;
-    }
-    .sort-control :deep(.dropdown) {
-      flex: 1;
-    }
-    .sort-control :deep(.dd-button) {
-      width: 100%;
-      min-width: 0;
-      justify-content: space-between;
-    }
-
-    /* Both remaining columns must drop their desktop px widths (340px alone
-       would overflow a phone screen) - Session flexes, Story sizes to its badges. */
-    /* Not `auto` for both: under table-layout fixed that splits 50/50 and the
-       badges wrap to a second line, growing every row. Session must also fit
-       the copy button, which `@media (hover: none)` pins visible on touch -
-       without that allowance it overflowed the cell onto the badges. Icon
-       badges are short enough that Story can give up the width. */
-    table.data th:nth-child(1) {
-      width: 46%;
-    }
-    table.data th:nth-child(2) {
-      width: 54%;
-    }
-    table.data th:nth-child(n + 3) {
-      display: none;
-    }
-
     .foot-line {
       flex-direction: column;
       align-items: stretch;
@@ -1041,6 +1347,35 @@
     }
     .foot-line .pagination {
       margin-left: 0;
+    }
+    .search-box {
+      border-radius: 999px;
+      padding-left: 16px;
+    }
+    .foot-line > span {
+      text-align: center;
+    }
+    .foot-line > span b {
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .foot-line .pagination {
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      gap: 8px;
+    }
+    .foot-line .page-control {
+      justify-content: center;
+    }
+    .foot-line .page-input {
+      width: 56px;
+    }
+    .pg-btn {
+      width: auto;
+      min-width: var(--control-h);
+      gap: 6px;
+      padding: 0 14px;
+      font: 550 13px var(--font-sans);
     }
   }
 </style>
