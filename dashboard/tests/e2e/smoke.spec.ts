@@ -1760,6 +1760,19 @@ test.describe('dashboard accessibility smoke', () => {
     }
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
 
+    // The sans stack is the system font, so widths differ per platform (CI runners render wider
+    // than a dev machine): simulate a wider face and expect no clipping or sideways scroll.
+    await page.addStyleTag({ content: '.pc-pill { letter-spacing: 1px !important }' })
+    for (const i of [0, 1, 2]) {
+      expect(
+        await pills
+          .nth(i)
+          .locator('.pc-text')
+          .evaluate((e) => e.scrollWidth <= e.clientWidth),
+      ).toBe(true)
+    }
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(360)
+
     await page.getByRole('button', { name: 'Outcome: Outcome' }).click({ delay: 120 })
     await expect(dialog).toBeVisible()
     await page.getByRole('checkbox', { name: /Got control/ }).click({ delay: 120 })

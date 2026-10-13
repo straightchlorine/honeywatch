@@ -276,7 +276,10 @@
 <style scoped>
   .pc-row {
     display: grid;
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    /* Equal thirds, but a track grows to its pill's text when a wider system font needs it
+       (font-sans is the system stack, so label widths differ per platform). The labels are short
+       and fixed (one-word outcome, short sort name, flag + code), so the minimums stay small. */
+    grid-template-columns: repeat(3, minmax(max-content, 1fr));
     gap: 8px;
   }
   .pc-pill {
