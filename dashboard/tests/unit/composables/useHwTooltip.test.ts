@@ -326,4 +326,42 @@ describe('useHwTooltip', () => {
     expect(title?.textContent).toBe('')
     expect(row?.textContent).toBe('')
   })
+
+  it('showAt clamps the bubble inside the viewport next to an edge dot', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(280)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(90)
+    vi.stubGlobal('innerWidth', 390)
+    const dot = document.createElement('button')
+    vi.spyOn(dot, 'getBoundingClientRect').mockReturnValue({ left: 343, bottom: 300 } as DOMRect)
+    try {
+      useHwTooltip().showAt(dot, 'Edge', [['', 'text']])
+      const node = document.querySelector<HTMLElement>('.hw-tooltip')!
+      expect(parseFloat(node.style.left)).toBeGreaterThanOrEqual(8)
+      expect(parseFloat(node.style.left) + 280).toBeLessThanOrEqual(382)
+    } finally {
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('divides viewport coordinates by --ui-zoom when writing left and top', () => {
+    vi.spyOn(HTMLElement.prototype, 'offsetWidth', 'get').mockReturnValue(100)
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockReturnValue(40)
+    vi.stubGlobal('innerWidth', 390)
+    vi.stubGlobal('innerHeight', 800)
+    document.documentElement.style.setProperty('--ui-zoom', '2')
+    try {
+      const tt = useHwTooltip()
+      tt.show('Test')
+      const node = document.querySelector<HTMLElement>('.hw-tooltip')!
+      // Zoomed bubble is 200x80 viewport px, so pointer + 14 fits: 114 viewport px, halved to 57
+      tt.move({ clientX: 100, clientY: 100 })
+      expect(parseFloat(node.style.left)).toBe(57)
+      expect(parseFloat(node.style.top)).toBe(57)
+    } finally {
+      document.documentElement.style.removeProperty('--ui-zoom')
+      vi.restoreAllMocks()
+      vi.unstubAllGlobals()
+    }
+  })
 })

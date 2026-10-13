@@ -14,6 +14,11 @@ function ensure(): HTMLDivElement {
   return el
 }
 
+function uiZoom(): number {
+  const z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-zoom'))
+  return z > 0 ? z : 1
+}
+
 // On touch devices, taps fire pointerenter and pointerleave in one burst;
 // keep bubble visible until next tap elsewhere or scroll (tap-to-peek).
 // Guard matchMedia for jsdom.
@@ -97,8 +102,12 @@ export function useHwTooltip() {
   function move(e: { clientX: number; clientY: number }): void {
     const node = ensure()
     const pad = 14
-    const w = node.offsetWidth
-    const h = node.offsetHeight
+    // The bubble carries the 4K zoom (.hw-tooltip) but pointer and rect coordinates are in
+    // viewport px (offsetWidth is not zoomed), so work in viewport px and divide by the zoom
+    // when writing left/top.
+    const zoom = uiZoom()
+    const w = node.offsetWidth * zoom
+    const h = node.offsetHeight * zoom
     let x = e.clientX + pad
     let y = e.clientY + pad
     if (x + w > window.innerWidth - 8) x = e.clientX - w - pad
@@ -106,8 +115,8 @@ export function useHwTooltip() {
     // Clamp to keep bubble fully visible when neither side has room.
     x = Math.max(8, Math.min(x, window.innerWidth - w - 8))
     y = Math.max(8, Math.min(y, window.innerHeight - h - 8))
-    node.style.left = `${x}px`
-    node.style.top = `${y}px`
+    node.style.left = `${x / zoom}px`
+    node.style.top = `${y / zoom}px`
   }
 
   /** `force` bypasses the tap-burst guard for programmatic hides that must win even mid-tap. */

@@ -1,6 +1,16 @@
+import { readFileSync } from 'node:fs'
+import { resolve } from 'node:path'
+
 import { describe, expect, it } from 'vitest'
 
-import { INK_FLIP_T, logT, needsDarkInk, seq, useSeqScale } from '@/composables/useSeqScale'
+import { inkContrast, inkFor, logT, seq, useSeqScale } from '@/composables/useSeqScale'
+
+// Run from the dashboard root (vitest default), so cwd-relative is the token file.
+const tokensCss = readFileSync(resolve(process.cwd(), 'src/assets/tokens.css'), 'utf8')
+
+function tokenValue(name: string): string {
+  return tokensCss.match(new RegExp(`${name}:\\s*(#[0-9a-fA-F]{6})\\s*;`))?.[1] ?? ''
+}
 
 describe('seq', () => {
   it('maps t=0 to the darkest ramp stop', () => {
@@ -34,14 +44,27 @@ describe('logT', () => {
   })
 })
 
-describe('needsDarkInk', () => {
-  it('stays light-ink below the flip threshold', () => {
-    expect(needsDarkInk(INK_FLIP_T - 0.01)).toBe(false)
+describe('inkContrast', () => {
+  it('matches a hand-computed WCAG ratio (black on seq(0) is about 2.31:1)', () => {
+    expect(inkContrast('#000000', 0)).toBeCloseTo(2.31, 1)
+  })
+})
+
+describe('inkFor', () => {
+  it('lights the dark end, darkens the bright end', () => {
+    expect(inkFor(0)).toBe('#f5e6c8')
+    expect(inkFor(1)).toBe('#120d09')
   })
 
-  it('flips to dark ink at and above the threshold', () => {
-    expect(needsDarkInk(INK_FLIP_T)).toBe(true)
-    expect(needsDarkInk(INK_FLIP_T + 0.1)).toBe(true)
+  it('stays in sync with the --text and --bg-0 tokens', () => {
+    expect(inkFor(0)).toBe(tokenValue('--text'))
+    expect(inkFor(1)).toBe(tokenValue('--bg-0'))
+  })
+
+  it('reaches WCAG AA (4.5:1) at every point on the ramp', () => {
+    for (let t = 0; t <= 1.0001; t += 0.01) {
+      expect(inkContrast(inkFor(t), t)).toBeGreaterThanOrEqual(4.5)
+    }
   })
 })
 
