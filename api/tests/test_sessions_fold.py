@@ -158,6 +158,7 @@ def test_runs_follow_the_requested_order(client: Any, db_session: Session) -> No
             f"mix{i}",
             src_ip=f"192.0.2.{1 if probe else 2}",
             started_at=T0 - timedelta(minutes=i),
+            ended_at=T0 - timedelta(minutes=i) + timedelta(seconds=30),
         )
         if not probe:
             db_session.add(
@@ -195,10 +196,54 @@ def test_a_differing_client_banner_breaks_a_run(
     assert [i["run"] for i in items] == [None] * 4
 
 
+def test_open_sessions_never_fold(client: Any, db_session: Session) -> None:
+    """Counters of an open session still move, so it is never part of a run."""
+    for i in range(4):
+        make_counter_session(
+            db_session, f"open{i}", started_at=T0 - timedelta(minutes=i)
+        )
+    items = client.get("/api/v1/sessions/?fold=true&sort=recent").get_json()["items"]
+    assert [i["run"] for i in items] == [None] * 4
+
+
+def test_a_close_after_the_layout_does_not_reshape_its_pages(
+    client: Any, db_session: Session
+) -> None:
+    """A session that ends after the layout was built (as_of) must hash the same
+    for the page query as it did for the layout, or the page would fold it into
+    a run the layout counted without it."""
+    now = datetime.now(timezone.utc)
+    for i in range(3):
+        make_counter_session(
+            db_session,
+            f"old{i}",
+            started_at=now - timedelta(hours=2, minutes=i),
+            ended_at=now - timedelta(hours=1, minutes=i),
+        )
+    live = make_counter_session(db_session, "live", started_at=now)
+    url = "/api/v1/sessions/?fold=true&sort=recent"
+    before = client.get(url).get_json()["items"]
+    assert [(i["id"], bool(i["run"])) for i in before] == [
+        ("live", False),
+        ("old0", True),
+    ]
+
+    live.ended_at = now
+    db_session.flush()
+    after = client.get(url).get_json()["items"]  # cached layout, fresh page query
+    assert [(i["id"], bool(i["run"])) for i in after] == [
+        ("live", False),
+        ("old0", True),
+    ]
+
+
 def test_run_members_page_through_a_large_run(client: Any, db_session: Session) -> None:
     for i in range(8):
         make_counter_session(
-            db_session, f"big{i}", started_at=T0 - timedelta(minutes=i)
+            db_session,
+            f"big{i}",
+            started_at=T0 - timedelta(minutes=i),
+            ended_at=T0 - timedelta(minutes=i) + timedelta(seconds=30),
         )
     body = client.get("/api/v1/sessions/?fold=true&sort=recent").get_json()
     [item] = body["items"]
@@ -331,26 +376,22 @@ def test_concurrent_cold_requests_share_one_layout_pass() -> None:
     assert got == [layout] * 4
 
 
-def test_a_failed_layout_pass_retries_once_without_parallel_workers() -> None:
+def test_a_layout_pass_runs_without_parallel_workers() -> None:
     db = MagicMock()
     layout = _layout()
-    outcomes: list[Any] = [OperationalError("x", {}, Exception("shm")), layout]
-
-    def build(_db: Any) -> Any:
-        out = outcomes.pop(0)
-        if isinstance(out, Exception):
-            raise out
-        return out
-
-    assert sessions_service._build_in_slot(db, build, 0) is layout
-    db.rollback.assert_called_once()
+    assert sessions_service._build_in_slot(db, lambda _db: layout, 0) is layout
     [(stmt,), _] = db.execute.call_args
     assert "max_parallel_workers_per_gather = 0" in str(stmt)
 
-    def broken(_db: Any) -> Any:
-        raise OperationalError("x", {}, Exception("shm"))
 
-    assert sessions_service._build_in_slot(MagicMock(), broken, 0) is None
+def test_a_failed_layout_pass_yields_no_layout() -> None:
+    db = MagicMock()
+
+    def broken(_db: Any) -> Any:
+        raise OperationalError("x", {}, Exception("boom"))
+
+    assert sessions_service._build_in_slot(db, broken, 0) is None
+    db.rollback.assert_called_once()
 
 
 def test_without_a_layout_the_plain_list_is_served(

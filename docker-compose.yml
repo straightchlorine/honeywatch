@@ -20,6 +20,10 @@ services:
     image: postgres:16-alpine
     container_name: honeywatch-db
     restart: unless-stopped
+    # 64 MB /dev/shm makes parallel hash joins fail with
+    # "could not resize shared memory segment"
+    # under concurrent session-list layout builds.
+    shm_size: 256mb
     ports:
       - "${POSTGRES_HOST_PORT:-5433}:5432"
     environment:

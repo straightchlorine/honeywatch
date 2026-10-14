@@ -9,7 +9,7 @@ from bisect import bisect_right
 from collections import OrderedDict
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from itertools import accumulate
 from typing import Any
 
@@ -18,6 +18,7 @@ from sqlalchemy import (
     Select,
     and_,
     asc,
+    case,
     desc,
     exists,
     func,
@@ -301,9 +302,12 @@ RUN_MIN = 3
 _LAYOUT_TTL_S = 60.0
 _LAYOUT_CACHE_SIZE = 64
 
-# One pass at a time per process: concurrent passes run Postgres out of
-# shared memory. A request that cannot get the slot in time gets the plain list.
+# One pass at a time per process: each is a full ordered pass over the table.
+# A request that cannot get the slot in time gets the plain list.
 _LAYOUT_WAIT_S = 5.0
+
+# Ingest lag moves a close in or out of a snapshot by about this much.
+_SETTLE = timedelta(minutes=1)
 _build_slot = threading.BoundedSemaphore(1)
 
 
@@ -356,18 +360,14 @@ def _build_in_slot(
 ) -> _Layout | None:
     """Run build in the process's one slot; None if busy past `wait` or failed.
 
-    A failure (parallel workers out of shared memory) retries once serially.
+    On the 2 vCPUs this deploys to they cost 15-20% more CPU for no steady
+    wall-clock gain, and a parallel hash is what ran Postgres out of shared memory.
     """
     if not _build_slot.acquire(timeout=wait):
         return None
     try:
-        try:
-            return build(db)
-        except OperationalError:
-            db.rollback()
-            _log.warning("session layout pass failed, retrying serially")
-            db.execute(text("SET LOCAL max_parallel_workers_per_gather = 0"))
-            return build(db)
+        db.execute(text("SET LOCAL max_parallel_workers_per_gather = 0"))
+        return build(db)
     except OperationalError:
         db.rollback()
         _log.exception("session layout pass failed")
@@ -435,19 +435,19 @@ def _cached_layout(
     return hit
 
 
-def _story(authed: Any) -> Any:
+def _story(authed: Any, as_of: datetime) -> Any:
     """Per-session story hash: the fields the rows show - counters (and so
     interest), outcome, client banner. `authed` says whether it tried a login.
 
-    Needs SshClient joined.
+    Only settled sessions (ended at least _SETTLE before `as_of`) hash their
+    story. An open session's counters still move, so a layout and the page
+    queries that follow it could disagree about where a run ends; it hashes to
+    its own id instead and never folds.
 
-    Known limit:
-    Live counters are counted, so a session still open when a layout was built
-    can change story before the page query re-hashes it.
-    It shifts the page by a row or splits/merges a run at its edge. For the new
-    performance patch - only ended sessions should be hashed.
+    Needs SshClient joined.
     """
-    return func.hashtextextended(
+    settled = Session.ended_at <= as_of - _SETTLE
+    story = func.hashtextextended(
         func.concat_ws(
             "|",
             Session.n_commands,
@@ -459,6 +459,7 @@ def _story(authed: Any) -> Any:
         ),
         0,
     )
+    return case((settled, story), else_=func.hashtextextended(Session.id, 1))
 
 
 def _ordered_window(
@@ -475,10 +476,11 @@ def _build_layout(
 ) -> _Layout:
     as_of = datetime.now(timezone.utc)
     stmt, keys = _ordered_window(conditions, sort, order, as_of)
-    # Joined, not EXISTS per row: over the whole table one hash beats 800k probes.
+
+    # joined, not EXISTS per row
     authed = select(AuthAttempt.session_id).distinct().subquery()
     k = (
-        stmt.add_columns(_story(authed.c.session_id.is_not(None)).label("story"))
+        stmt.add_columns(_story(authed.c.session_id.is_not(None), as_of).label("story"))
         .outerjoin(SshClient, SshClient.session_id == Session.id)
         .outerjoin(authed, authed.c.session_id == Session.id)
         .subquery("k")
@@ -579,9 +581,9 @@ def get_sessions_folded(
 
     Known limit:
     Page query loads every member of each run on the page, not per_page rows
-    (largest is around 1,2k sessions).
-    It is bounded, but should be optimized in the incoming performance patch.
-    Runs should be summarized in SQL instead of _fold.
+    (largest seen on prod data: 1.3k sessions by recency, 15k by country).
+    It is bounded, and `_fold` is under 70 ms of the worst page: the cost is the
+    OFFSET walk and the member rows, so summarizing runs in SQL alone buys little.
     """
     resolved = order or _SORT_DEFAULT_DIRECTION[sort]
     conditions = _filter_conditions(
@@ -621,7 +623,7 @@ def get_sessions_folded(
         rows = db.execute(
             select(
                 page_ids.c.sid,
-                _story(authed).label("story"),
+                _story(authed, layout.as_of).label("story"),
                 GeoLocation.country_code,
                 GeoLocation.country,
                 Session.started_at,

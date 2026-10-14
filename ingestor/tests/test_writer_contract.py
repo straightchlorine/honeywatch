@@ -107,7 +107,8 @@ def test_download_written(populated_db: DbConn) -> None:
 def test_ssh_client_written(populated_db: DbConn) -> None:
     """client.version + client.kex are merged into one ssh_clients row."""
     row = populated_db.execute(
-        "SELECT client_version, hassh FROM ssh_clients WHERE session_id = %s",
+        "SELECT c.client_version, p.hassh FROM ssh_clients c "
+        "JOIN ssh_client_profiles p ON p.id = c.profile_id WHERE c.session_id = %s",
         (_CONTRACT_SESSION_ID,),
     ).fetchone()
     assert row is not None
@@ -166,13 +167,9 @@ _WRITER_TABLE_BINDINGS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("commands", (writer_module._INSERT_COMMAND,)),
     ("downloads", (writer_module._INSERT_DOWNLOAD,)),
     ("geo_locations", (writer_module._UPSERT_GEO,)),
-    (
-        "ssh_clients",
-        (
-            writer_module._UPSERT_SSH_CLIENT_VERSION,
-            writer_module._UPSERT_SSH_CLIENT_KEX,
-        ),
-    ),
+    ("ssh_clients", (writer_module._UPSERT_SSH_CLIENT_VERSION,)),
+    # The kex statement's first INSERT is the profile; its link row is not parsed.
+    ("ssh_client_profiles", (writer_module._UPSERT_SSH_CLIENT_KEX,)),
     ("client_fingerprints", (writer_module._INSERT_CLIENT_FINGERPRINT,)),
     ("direct_tcpip_requests", (writer_module._INSERT_DIRECT_TCPIP,)),
 )
@@ -260,8 +257,8 @@ _WRITER_LENGTH_CAPS: tuple[tuple[str, str, int], ...] = (
     ("geo_locations", "as_org", writer_module._LEN_AS_ORG),
     ("ssh_clients", "session_id", writer_module._LEN_SESSION_ID),
     ("ssh_clients", "client_version", writer_module._LEN_CLIENT_VERSION),
-    ("ssh_clients", "hassh", writer_module._LEN_HASSH),
-    ("ssh_clients", "hassh_algorithms", writer_module._LEN_HASSH_ALGORITHMS),
+    ("ssh_client_profiles", "hassh", writer_module._LEN_HASSH),
+    ("ssh_client_profiles", "hassh_algorithms", writer_module._LEN_HASSH_ALGORITHMS),
     ("client_fingerprints", "session_id", writer_module._LEN_SESSION_ID),
     ("client_fingerprints", "username", writer_module._LEN_USERNAME),
     ("client_fingerprints", "fingerprint", writer_module._LEN_FINGERPRINT),

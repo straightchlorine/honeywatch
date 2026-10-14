@@ -143,7 +143,11 @@ _UPSERT_GEO = """
 """
 
 # Two events populate ssh_clients; each upserts only its own columns so it
-# never clobbers the other's (version and kex arrive as separate events).
+# never overwrites the other's (version and kex arrive as separate events).
+# The handshake is stored once per distinct value in ssh_client_profiles.
+
+# Profile another writer commits between the insert and the lookup leaves
+# profile_id NULL for that one session.
 _UPSERT_SSH_CLIENT_VERSION = """
     INSERT INTO ssh_clients (session_id, client_version)
     VALUES (%(session_id)s, %(client_version)s)
@@ -152,22 +156,33 @@ _UPSERT_SSH_CLIENT_VERSION = """
 """
 
 _UPSERT_SSH_CLIENT_KEX = """
-    INSERT INTO ssh_clients
-        (session_id, hassh, hassh_algorithms, kex_algorithms,
-         key_algorithms, encryption_algorithms, mac_algorithms,
-         compression_algorithms)
-    VALUES
-        (%(session_id)s, %(hassh)s, %(hassh_algorithms)s, %(kex_algorithms)s,
-         %(key_algorithms)s, %(encryption_algorithms)s, %(mac_algorithms)s,
-         %(compression_algorithms)s)
-    ON CONFLICT (session_id) DO UPDATE SET
-        hassh                  = EXCLUDED.hassh,
-        hassh_algorithms       = EXCLUDED.hassh_algorithms,
-        kex_algorithms         = EXCLUDED.kex_algorithms,
-        key_algorithms         = EXCLUDED.key_algorithms,
-        encryption_algorithms  = EXCLUDED.encryption_algorithms,
-        mac_algorithms         = EXCLUDED.mac_algorithms,
-        compression_algorithms = EXCLUDED.compression_algorithms
+    WITH k AS (
+        SELECT %(hassh)s::varchar(64) AS hassh,
+               %(hassh_algorithms)s::varchar(1024) AS hassh_algorithms,
+               %(kex_algorithms)s::text AS kex_algorithms,
+               %(key_algorithms)s::text AS key_algorithms,
+               %(encryption_algorithms)s::text AS encryption_algorithms,
+               %(mac_algorithms)s::text AS mac_algorithms,
+               %(compression_algorithms)s::text AS compression_algorithms
+    ),
+    d AS (SELECT md5(row(k.*)::text) AS digest, k.* FROM k),
+    made AS (
+        INSERT INTO ssh_client_profiles
+            (digest, hassh, hassh_algorithms, kex_algorithms, key_algorithms,
+             encryption_algorithms, mac_algorithms, compression_algorithms)
+        SELECT * FROM d
+        ON CONFLICT (digest) DO NOTHING
+        RETURNING id
+    )
+    INSERT INTO ssh_clients (session_id, profile_id)
+    VALUES (
+        %(session_id)s,
+        COALESCE(
+            (SELECT id FROM made),
+            (SELECT p.id FROM ssh_client_profiles p JOIN d USING (digest))
+        )
+    )
+    ON CONFLICT (session_id) DO UPDATE SET profile_id = EXCLUDED.profile_id
 """
 
 _INSERT_CLIENT_FINGERPRINT = """

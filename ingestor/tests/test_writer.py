@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timezone
-from typing import Any, LiteralString
+from typing import Any, LiteralString, cast
 from unittest.mock import patch
 
 import pytest
@@ -31,9 +31,9 @@ from tests.conftest import DbConn
 _TS = datetime(2024, 1, 15, 10, 30, 1, tzinfo=timezone.utc)
 
 
-def _connect_event() -> SessionConnect:
+def _connect_event(session_id: str = "sess-001") -> SessionConnect:
     return SessionConnect(
-        session_id="sess-001",
+        session_id=session_id,
         src_ip="192.168.1.100",
         src_port=54321,
         dst_ip="10.0.0.1",
@@ -362,8 +362,9 @@ def test_write_client_version_then_kex_upserts_one_row(
     )
 
     row = db_connection.execute(
-        "SELECT client_version, hassh, kex_algorithms, encryption_algorithms"
-        " FROM ssh_clients WHERE session_id = %s",
+        "SELECT c.client_version, p.hassh, p.kex_algorithms, p.encryption_algorithms "
+        "FROM ssh_clients c LEFT JOIN ssh_client_profiles p ON p.id = c.profile_id "
+        "WHERE c.session_id = %s",
         ("sess-001",),
     ).fetchone()
     assert row is not None
@@ -1057,7 +1058,8 @@ _CAP_CASES = [
     ),
     pytest.param(
         ClientKex(session_id="sess-001", hassh="A" * 600, timestamp=_TS),
-        "SELECT hassh FROM ssh_clients WHERE session_id = %s",
+        "SELECT p.hassh FROM ssh_clients c "
+        "JOIN ssh_client_profiles p ON p.id = c.profile_id WHERE c.session_id = %s",
         writer_module._LEN_HASSH,
         id="hassh",
     ),
@@ -1155,7 +1157,8 @@ def test_kex_algorithm_lists_clamped(
         )
     )
     row = db_connection.execute(
-        "SELECT kex_algorithms FROM ssh_clients WHERE session_id = %s",
+        "SELECT p.kex_algorithms FROM ssh_clients c "
+        "JOIN ssh_client_profiles p ON p.id = c.profile_id WHERE c.session_id = %s",
         ("sess-001",),
     ).fetchone()
     assert row is not None
@@ -1186,8 +1189,9 @@ def test_kex_then_version_upserts_one_row(
         )
     )
     row = db_connection.execute(
-        "SELECT client_version, hassh, kex_algorithms FROM ssh_clients "
-        "WHERE session_id = %s",
+        "SELECT c.client_version, p.hassh, p.kex_algorithms "
+        "FROM ssh_clients c LEFT JOIN ssh_client_profiles p ON p.id = c.profile_id "
+        "WHERE c.session_id = %s",
         ("sess-001",),
     ).fetchone()
     assert row is not None
@@ -1208,7 +1212,9 @@ def test_client_version_only_row(writer: EventWriter, db_connection: DbConn) -> 
         ClientVersion(session_id="sess-001", version="SSH-2.0-X", timestamp=_TS)
     )
     row = db_connection.execute(
-        "SELECT client_version, hassh FROM ssh_clients WHERE session_id = %s",
+        "SELECT c.client_version, p.hassh "
+        "FROM ssh_clients c LEFT JOIN ssh_client_profiles p ON p.id = c.profile_id "
+        "WHERE c.session_id = %s",
         ("sess-001",),
     ).fetchone()
     assert row is not None
@@ -1221,12 +1227,82 @@ def test_client_kex_only_row(writer: EventWriter, db_connection: DbConn) -> None
     writer.write_event(_connect_event())
     writer.write_event(ClientKex(session_id="sess-001", hassh="cafe", timestamp=_TS))
     row = db_connection.execute(
-        "SELECT client_version, hassh FROM ssh_clients WHERE session_id = %s",
+        "SELECT c.client_version, p.hassh "
+        "FROM ssh_clients c LEFT JOIN ssh_client_profiles p ON p.id = c.profile_id "
+        "WHERE c.session_id = %s",
         ("sess-001",),
     ).fetchone()
     assert row is not None
     assert row[0] is None
     assert row[1] == "cafe"
+
+
+def _profile_ids(db_connection: DbConn) -> dict[str, int | None]:
+    rows = db_connection.execute(
+        "SELECT session_id, profile_id FROM ssh_clients"
+    ).fetchall()
+    return {str(sid): cast("int | None", pid) for sid, pid in rows}
+
+
+def test_identical_handshakes_share_one_profile(
+    writer: EventWriter, db_connection: DbConn
+) -> None:
+    """Sessions with the same hassh and algorithm lists point at one profile
+    row; a different handshake gets its own."""
+    for sid, hassh in (("sess-001", "aa"), ("sess-002", "aa"), ("sess-003", "bb")):
+        writer.write_event(_connect_event(sid))
+        writer.write_event(
+            ClientKex(
+                session_id=sid,
+                hassh=hassh,
+                kexAlgs=["curve25519-sha256"],
+                timestamp=_TS,
+            )
+        )
+    ids = _profile_ids(db_connection)
+    assert ids["sess-001"] == ids["sess-002"] != ids["sess-003"]
+    count = db_connection.execute("SELECT count(*) FROM ssh_client_profiles").fetchone()
+    assert count is not None and count[0] == 2
+
+
+def test_profile_digest_is_the_row_text_md5(
+    writer: EventWriter, db_connection: DbConn
+) -> None:
+    """The migration backfills digests with md5(row(<seven columns>)::text); a
+    writer that hashed differently would duplicate every pre-migration profile."""
+    writer.write_event(_connect_event())
+    writer.write_event(
+        ClientKex(
+            session_id="sess-001",
+            hassh="deadbeef",
+            hasshAlgorithms="a;b;c;d",
+            kexAlgs=["k1", "k2"],
+            keyAlgs=["rsa"],
+            encCS=["aes"],
+            macCS=["hmac"],
+            compCS=["none"],
+            timestamp=_TS,
+        )
+    )
+    row = db_connection.execute(
+        "SELECT digest = md5(row(hassh, hassh_algorithms, kex_algorithms, "
+        "key_algorithms, encryption_algorithms, mac_algorithms, "
+        "compression_algorithms)::text) FROM ssh_client_profiles"
+    ).fetchone()
+    assert row is not None and row[0] is True
+
+
+def test_a_kex_replay_keeps_one_profile(
+    writer: EventWriter, db_connection: DbConn
+) -> None:
+    """Retry may deliver the same kex twice: still one profile, one link."""
+    writer.write_event(_connect_event())
+    kex = ClientKex(session_id="sess-001", hassh="cafe", timestamp=_TS)
+    writer.write_event(kex)
+    writer.write_event(kex)
+    count = db_connection.execute("SELECT count(*) FROM ssh_client_profiles").fetchone()
+    assert count is not None and count[0] == 1
+    assert _profile_ids(db_connection)["sess-001"] is not None
 
 
 # --- Unhandled eventids are counted as dropped, not silently swallowed ---
