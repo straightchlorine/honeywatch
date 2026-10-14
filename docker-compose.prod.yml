@@ -139,6 +139,10 @@ services:
     image: postgres:16-alpine@sha256:4e6e670bb069649261c9c18031f0aded7bb249a5b6664ddec29c013a89310d50
     container_name: honeywatch-db
     restart: unless-stopped
+    # 64 MB /dev/shm makes parallel hash joins fail with
+    # "could not resize shared memory segment"
+    # under concurrent session-list layout builds.
+    shm_size: 256mb
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}

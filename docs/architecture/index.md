@@ -123,8 +123,9 @@ Events that exhausted their retries are logged and lost.
 
 ## Database Schema
 
-Eight tables. `sessions` is the hub; six tables hang off it by `session_id`
-with `ON DELETE CASCADE`, and `geo_locations` stands apart, keyed on the IP.
+Nine tables. `sessions` is the hub; six tables hang off it by `session_id`
+with `ON DELETE CASCADE`, `geo_locations` stands apart, keyed on the IP, and
+`ssh_client_profiles` is referenced by `ssh_clients`.
 
 ```mermaid
 graph LR
@@ -135,6 +136,7 @@ graph LR
     S -->|offered keys| F[client_fingerprints]
     S -->|relay attempts| T[direct_tcpip_requests]
     S -->|client banner, one per session| K[ssh_clients]
+    K -->|handshake, shared| P[ssh_client_profiles]
     S -.->|src_ip lookup| G[geo_locations]
 ```
 
@@ -153,10 +155,17 @@ graph LR
 `interest` is computed by Postgres so the Sessions page can sort by "how much
 did this attacker do" off an index instead of an aggregate.
 
-Two child tables have unusual shapes. `ssh_clients` uses `session_id` as its
-primary key, so there is at most one row per session and repeated
-`client.version` events upsert it. `direct_tcpip_requests.dst_ip` is
-`VARCHAR(256)` rather than `INET`, because attackers relay to hostnames too.
+Two child tables have unusual shapes.
+
+`ssh_clients` uses `session_id` as its primary key, so there is at most one row
+per session and repeated `client.version` events upsert it.
+
+It holds the client banner and a `profile_id`; the handshake itself
+(hassh and the algorithm lists, about 1.2 kB) is stored once per distinct value
+in `ssh_client_profiles`, since a few hundred values cover every session.
+
+`direct_tcpip_requests.dst_ip` is `VARCHAR(256)` rather than `INET`, because
+attackers relay to hostnames too.
 
 String columns are bounded (`commands.input` at 8192, `downloads.url` at 2048,
 usernames and passwords at 256) as a last defence against payload bloat. The

@@ -5,7 +5,7 @@ from src.models.direct_tcpip import DirectTcpipRequest
 from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session
-from src.models.ssh_client import SshClient
+from src.models.ssh_client import SshClient, SshClientProfile
 
 __all__ = [
     "AuthAttempt",
@@ -16,4 +16,5 @@ __all__ = [
     "GeoLocation",
     "Session",
     "SshClient",
+    "SshClientProfile",
 ]

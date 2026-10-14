@@ -13,9 +13,14 @@ from sqlalchemy.orm import Session
 from src.extensions import Base
 from src.models.client_fingerprint import ClientFingerprint
 from src.models.direct_tcpip import DirectTcpipRequest
-from src.models.ssh_client import SshClient
+from src.models.ssh_client import SshClient, SshClientProfile
 
-_NEW_MODELS: list[type[Base]] = [SshClient, ClientFingerprint, DirectTcpipRequest]
+_NEW_MODELS: list[type[Base]] = [
+    SshClient,
+    SshClientProfile,
+    ClientFingerprint,
+    DirectTcpipRequest,
+]
 
 
 @pytest.mark.parametrize("model", _NEW_MODELS, ids=lambda m: m.__tablename__)
