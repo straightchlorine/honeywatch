@@ -134,4 +134,15 @@ describe('DailyColumns', () => {
     const label = w.find('figure').attributes('aria-label') ?? ''
     expect(label).not.toContain('Axis capped')
   })
+
+  it('keeps the axis ceiling close to the peak (22k peak is not a 50k axis)', () => {
+    const buckets = [5000, 9000, 22330, 8000].map((count, i) => ({
+      bucket: `2026-10-${String(10 + i).padStart(2, '0')}T00:00:00+00:00`,
+      count,
+    }))
+    const w = mount(DailyColumns, { props: { buckets } })
+    const labels = w.findAll('text').map((t) => t.text())
+    expect(labels).toContain('30k')
+    expect(labels).not.toContain('50k')
+  })
 })

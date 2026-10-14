@@ -43,9 +43,7 @@
 
   /** Fill missing days with count 0, capped at the last 31 so a huge gap
    *  cannot blow up the allocation. */
-  function densifyBuckets(
-    input: ActivityBucketResponse[]
-  ): ActivityBucketResponse[] {
+  function densifyBuckets(input: ActivityBucketResponse[]): ActivityBucketResponse[] {
     if (input.length === 0) return []
     if (input.length === 1) return input
 
@@ -58,14 +56,14 @@
     })
 
     const result: ActivityBucketResponse[] = []
-    const current = new Date(Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), firstDate.getUTCDate()))
-    const last = new Date(Date.UTC(lastDate.getUTCFullYear(), lastDate.getUTCMonth(), lastDate.getUTCDate()))
+    const current = new Date(
+      Date.UTC(firstDate.getUTCFullYear(), firstDate.getUTCMonth(), firstDate.getUTCDate()),
+    )
+    const last = new Date(
+      Date.UTC(lastDate.getUTCFullYear(), lastDate.getUTCMonth(), lastDate.getUTCDate()),
+    )
 
-    for (
-      ;
-      current.getTime() <= last.getTime();
-      current.setUTCDate(current.getUTCDate() + 1)
-    ) {
+    for (; current.getTime() <= last.getTime(); current.setUTCDate(current.getUTCDate() + 1)) {
       const dateStr = current.toISOString().split('T')[0]!
       const count = byDate.get(dateStr) ?? 0
       result.push({
@@ -83,13 +81,15 @@
 
   const densified = computed(() => densifyBuckets(buckets))
 
-  /** Round the axis ceiling up to a "nice" 1/2/5 x 10^n step above the max. */
+  /** Round the axis ceiling up to a readable step above the max.
+  For example 22k peak should get 30k axis rather than 50k. Every step halves
+  to a clean mid label. **/
   function niceCeil(v: number): number {
     if (v <= 0) return 1
     const exp = Math.floor(Math.log10(v))
     const base = 10 ** exp
     const norm = v / base
-    const step = norm <= 1 ? 1 : norm <= 2 ? 2 : norm <= 5 ? 5 : 10
+    const step = [1, 2, 3, 4, 5, 6, 8].find((s) => norm <= s) ?? 10
     return step * base
   }
 
@@ -183,8 +183,7 @@
         dateLabel: fmtDate(b.bucket),
         title: `${fmtDate(b.bucket)} - ${fmtNumber(b.count)} sessions`,
         count: b.count,
-        dateAnchor:
-          i === 0 ? 'start' : i === densified.value.length - 1 ? 'end' : 'middle',
+        dateAnchor: i === 0 ? 'start' : i === densified.value.length - 1 ? 'end' : 'middle',
       }
     })
   })
@@ -231,7 +230,14 @@
       <!-- eslint-disable vuejs-accessibility/mouse-events-have-key-events, vuejs-accessibility/no-static-element-interactions -->
       <svg :viewBox="`0 0 ${W} ${H}`" aria-hidden="true">
         <g v-for="g in gridLines" :key="`grid-${g.key}`">
-          <line :x1="PLOT_L" :y1="g.y" :x2="PLOT_R" :y2="g.y" stroke="var(--grid-line)" stroke-width="1" />
+          <line
+            :x1="PLOT_L"
+            :y1="g.y"
+            :x2="PLOT_R"
+            :y2="g.y"
+            stroke="var(--grid-line)"
+            stroke-width="1"
+          />
           <text
             :x="PLOT_L - 8"
             :y="g.y + 3"
