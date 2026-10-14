@@ -107,11 +107,13 @@ openapi-check: openapi-regen
     git add -A -- api/openapi.json dashboard/src/api/generated
     git diff --cached --exit-code -- api/openapi.json dashboard/src/api/generated
 
-# Bump version everywhere and commit.
+# Bump the version everywhere, commit (signed), then open the signed tag message. Takes vX.Y.Z.
 bump-version version:
+    @echo '{{version}}' | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$' || { echo "usage: just bump-version vX.Y.Z"; exit 1; }
     sed -i 's/^version = ".*"/version = "{{version}}"/' api/pyproject.toml ingestor/pyproject.toml
     sed -i 's/"version": ".*"/"version": "{{version}}"/' dashboard/package.json
     cd api && uv lock
     cd ingestor && uv lock
     git add api/pyproject.toml api/uv.lock ingestor/pyproject.toml ingestor/uv.lock dashboard/package.json
-    git commit
+    git commit -S -m "chore(version): bumped to {{version}}"
+    git tag -a {{version}} -s

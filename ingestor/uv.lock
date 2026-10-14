@@ -370,7 +370,7 @@ wheels = [
 
 [[package]]
 name = "honeywatch-ingestor"
-version = "0.8.1"
+version = "0.8.2"
 source = { editable = "." }
 dependencies = [
     { name = "geoip2" },

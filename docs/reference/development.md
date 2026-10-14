@@ -161,4 +161,4 @@ missing from the nav is only an INFO message, so add new pages to
 
 Releases are triggered by a `v*.*.*` tag. `just bump-version <version>`
 writes the version into both `pyproject.toml` files and `package.json`,
-re-locks, and opens a commit.
+re-locks, makes a signed commit and opens the signed tag message.

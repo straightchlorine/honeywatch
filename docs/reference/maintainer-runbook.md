@@ -26,9 +26,9 @@ service. The dashboard is served from elsewhere and is out of scope here.
 A release is a `v*.*.*` tag on a `master` commit:
 
 ```bash
-just bump-version v0.7.2
+just bump-version v0.7.2   # signed commit, then the tag message opens in your editor
 git push origin master
-git tag v0.7.2 && git push origin v0.7.2
+git push origin v0.7.2
 ```
 
 `release.yml` then runs, in order:
