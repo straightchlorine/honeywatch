@@ -531,7 +531,11 @@
     () => tooltip.hide(true),
   )
 
-  onBeforeUnmount(() => clearTimeout(saveTimer))
+  // A hovered country that unmounts with the page never fires pointerleave.
+  onBeforeUnmount(() => {
+    clearTimeout(saveTimer)
+    tooltip.hide(true)
+  })
 
   const ariaSummary = computed(() => {
     if (!props.countries.length) return 'World map of where attacks on the honeypot come from. No data yet.'
@@ -606,16 +610,13 @@
         </g>
         <!-- Boundaries Natural Earth does not class as settled: the Kashmir
              Line of Control, the Korean MDL, the Green Line, Abyei and the
-             like. The casing is the load-bearing part - it is opaque and wider
-             than the country stroke, so it OCCLUDES the solid border beneath
-             rather than merely decorating it. A dotted line laid over an intact
-             solid one reads as emphasis, not as "this is not agreed".
-             Dots need no zoom compensation: non-scaling-stroke resolves the
-             dash pattern in CSS px, measured constant from k=1 to k=16.
-             The low detail tier is simplified far enough (dp 3.5%) that the
-             base tier's dp-20% overlay drifts off the redrawn stroke and
-             stops occluding it, so that tier ships its own borders file at
-             the same simplification; other tiers fall back to the base. -->
+             like.
+
+             Drawn as dots over a casing with the same dot pattern in the
+             ocean colour at 45% (.disputed-casing below):
+              - each dot gets a dark halo,
+              - and the faint country stroke underneath is dominated,
+                not painted out. -->
         <g class="disputed" aria-hidden="true">
           <path class="disputed-casing" :d="detail.borders ?? geometry.disputedBorders" />
           <path class="disputed-line" :d="detail.borders ?? geometry.disputedBorders" />

@@ -21,6 +21,8 @@ description: "Run your own SSH honeypot. Cowrie records the attacks, an ingestor
 
 Run your own SSH honeypot and watch what the internet does to it.
 
+[![Overview page of the public instance: attack origins by country, live sessions and the map detail slider](https://assets.blog.codextechnologies.org/honeywatch/honeywatch-world-map-borders-1-2400.webp){ loading=lazy }](https://honey.piotrkrzysztof.dev)
+
 ## What It Is
 
 Honeywatch is an SSH honeypot with an analytics pipeline attached. A
