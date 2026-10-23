@@ -307,7 +307,7 @@
             </span>
           </template>
         </StatTile>
-        <StatTile label="Unique IPs" glass :value="fmtNumber(totals?.unique_ips)">
+        <StatTile class="tile-ips" label="Unique IPs" glass :value="fmtNumber(totals?.unique_ips)">
           <template #label-extra>
             <button
               type="button"
@@ -523,9 +523,15 @@
       scroll-snap-align: center;
       box-shadow: none;
     }
-    /* DOM is Sessions-first (desktop stack); phones show Logins first. Tab order follows the DOM. */
+    /* DOM is Sessions-first (desktop stack); phones show Logins first. Tab order follows the DOM.
+       Auto margins on the outer tiles centre the row when it fits and collapse to 0 when it
+       scrolls (justify-content: center would clip the start of an overflowing row). */
     .kpis :deep(.tile-login) {
       order: -1;
+      margin-left: auto;
+    }
+    .kpis :deep(.tile-ips) {
+      margin-right: auto;
     }
   }
 </style>

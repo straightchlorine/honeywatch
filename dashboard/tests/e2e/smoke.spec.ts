@@ -1245,6 +1245,33 @@ test.describe('dashboard accessibility smoke', () => {
     }
   })
 
+  test('overview: stat row is centred when it fits below the desktop breakpoint', async ({
+    page,
+  }) => {
+    test.skip(test.info().project.name === 'mobile-chromium', 'sets its own viewport')
+    await page.setViewportSize({ width: 834, height: 1000 })
+    await page.goto('/')
+    await dismissIntro(page)
+    const tiles = page.locator('.kpis .stat-tile')
+    await expect(tiles).toHaveCount(3)
+    await expect(tiles.first().locator('.value')).toBeVisible()
+    const g = await page.locator('.kpis').evaluate((el) => {
+      const cs = getComputedStyle(el)
+      const r = el.getBoundingClientRect()
+      const boxes = Array.from(el.querySelectorAll('.stat-tile')).map((t) =>
+        t.getBoundingClientRect(),
+      )
+      return {
+        left: Math.min(...boxes.map((b) => b.left)) - r.left - parseFloat(cs.paddingLeft),
+        right: r.right - parseFloat(cs.paddingRight) - Math.max(...boxes.map((b) => b.right)),
+        overflow: el.scrollWidth - el.clientWidth,
+      }
+    })
+    expect(g.overflow).toBe(0)
+    expect(g.left).toBeGreaterThan(20)
+    expect(Math.abs(g.left - g.right)).toBeLessThanOrEqual(2)
+  })
+
   test('overview: Logins fits on one line in its tile', async ({ page }) => {
     test.skip(test.info().project.name !== 'chromium', 'desktop layout only')
     await page.goto('/')
