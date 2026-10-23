@@ -252,9 +252,9 @@ def build_layout(
         # carried along the operation, so that checkpoint reader may pick the id
         # at given positions - say at 0, 1000, 2000, ...
         k.c.sid,
-        # defining this query as common table expression, since it will be read again
-        # in case referenced more than once it's output is written as a temporary result,
-        # so readers don't cause recomputing
+        # defining this query as common table expression, since it will be read
+        # again in case referenced more than once it's output is written as a
+        # temporary result, so readers don't cause recomputing
     ).cte("b")
 
     # Stage isl: the islands. Keeping only the break rows and measuring each to
@@ -262,7 +262,7 @@ def build_layout(
     # and size. The last island has no next break and runs to `total`.
     isl = (
         select(
-            # start of the island (first session into which 'see more' will be folded into)
+            # start of the island (first session 'see more' will be folded into)
             b.c.pos,
             # size of the entire result - for the final query
             b.c.total,
