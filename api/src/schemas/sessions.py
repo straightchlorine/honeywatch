@@ -9,7 +9,7 @@ from src.schemas.common import (
     sort_order_field,
 )
 from src.services.categories import CATEGORY_DESCRIPTION, SESSION_CATEGORIES
-from src.services.sessions import RUN_MIN, VALID_HAS_FILTERS
+from src.services.sessions.common import RUN_MIN, VALID_HAS_FILTERS
 
 
 class AuthAttemptResponse(BaseSchema):

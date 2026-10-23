@@ -19,7 +19,10 @@ if TYPE_CHECKING:
 
 
 class Session(Base):
-    """A single cowrie SSH/Telnet session and its aggregated child events."""
+    """A single cowrie SSH/Telnet session and its aggregated child events.
+
+    NOTE: default= values are Python-side only
+    """
 
     __tablename__ = "sessions"
 
@@ -37,10 +40,9 @@ class Session(Base):
     )
     sensor: Mapped[str | None] = mapped_column(String(64), nullable=True)
 
-    # Maintained by the ingestor (one UPDATE per child-row insert, same
-    # transaction - see ingestor/src/writer.py) so the Sessions explorer can
-    # sort/filter without a per-request aggregate scan. `interest` is a
-    # Postgres GENERATED ALWAYS column; never assign it from Python.
+    # maintained by the ingestor only; sessions explorer can sort/filter
+    # without a per-request aggregate scan.
+    # NOTE: `interest` is a GENERATED ALWAYS column - never assign it from Python!
     n_commands: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     n_downloads: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     n_tcpip: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

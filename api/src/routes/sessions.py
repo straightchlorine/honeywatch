@@ -15,12 +15,7 @@ from src.schemas.sessions import (
     SessionsListQuery,
     SessionsListResponse,
 )
-from src.services.sessions import (
-    get_run_members,
-    get_session_detail,
-    get_sessions_folded,
-    get_sessions_paginated,
-)
+from src.services.sessions import pages
 from src.services.types import SessionDetailDict
 
 sessions_bp = Blueprint(
@@ -42,14 +37,14 @@ def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
     filters = _filters(query_args)
     page, per_page = query_args["page"], query_args["per_page"]
     if query_args["fold"]:
-        folded = get_sessions_folded(get_db(), page, per_page, **filters)
+        folded = pages.get_sessions_folded(get_db(), page, per_page, **filters)
         return {
             "items": folded["sessions"],
             "meta": _meta(folded),
             "max_interest": folded["max_interest"],
             "as_of": folded["as_of"],
         }
-    result = get_sessions_paginated(get_db(), page, per_page, **filters)
+    result = pages.get_sessions_paginated(get_db(), page, per_page, **filters)
     return {
         "items": result["sessions"],
         "meta": _meta(result),
@@ -65,7 +60,7 @@ def list_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
 @sessions_bp.alt_response(500, "InternalServerError")
 def list_run_sessions(query_args: dict[str, Any]) -> dict[str, Any]:
     """Return a page of the sessions folded into one run of a folded list."""
-    result = get_run_members(
+    result = pages.get_run_members(
         get_db(),
         query_args["page"],
         query_args["per_page"],
@@ -102,7 +97,7 @@ def _meta(result: Mapping[str, Any]) -> dict[str, Any]:
 @sessions_bp.alt_response(500, "InternalServerError")
 def session_detail(_path_args: dict[str, Any], session_id: str) -> SessionDetailDict:
     """Return full detail for a single session."""
-    result = get_session_detail(get_db(), session_id)
+    result = pages.get_session_detail(get_db(), session_id)
     if result is None:
         current_app.logger.info("session not found id=%r", session_id)
         abort(404, message="Session not found")
