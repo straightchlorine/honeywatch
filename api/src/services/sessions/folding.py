@@ -11,7 +11,7 @@ from src.services.sessions.common import RUN_MIN
 from src.services.types import RunDict
 
 
-def _run_summary(members: Sequence[Row[Any]], offset: int) -> RunDict:
+def _run_summary(members: Sequence[Row[*tuple[Any, ...]]], offset: int) -> RunDict:
     countries = {r.country_code: r.country for r in members if r.country_code}
     secs = [
         round((r.ended_at - r.started_at).total_seconds())
@@ -33,7 +33,9 @@ def _run_summary(members: Sequence[Row[Any]], offset: int) -> RunDict:
     }
 
 
-def fold(rows: Sequence[Row[Any]], offset: int) -> list[tuple[str, RunDict | None]]:
+def fold(
+    rows: Sequence[Row[*tuple[Any, ...]]], offset: int
+) -> list[tuple[str, RunDict | None]]:
     """Display rows of a page: (session id, its run or None), in order."""
     out: list[tuple[str, RunDict | None]] = []
     i = 0
