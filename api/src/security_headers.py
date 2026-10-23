@@ -18,6 +18,9 @@ def init_security_headers(app: Flask) -> None:
         response.headers.setdefault(
             "Referrer-Policy", "strict-origin-when-cross-origin"
         )
+        # robots.txt to allow crawlers to fetch the API so the dashboard renders
+        # keeps the raw JSON out of the index.
+        response.headers.setdefault("X-Robots-Tag", "noindex")
         if response.mimetype == "application/json":
             # Stats tolerate 30s of staleness; a cached spec or error does not.
             if request.path.endswith("/openapi.json") or response.status_code >= 400:

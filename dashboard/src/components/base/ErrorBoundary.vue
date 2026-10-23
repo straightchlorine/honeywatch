@@ -22,19 +22,21 @@
 
   // The generated client throws the API error envelope (a plain object with a
   // string `message`), not an Error, so unwrap it instead of rendering
-  // "[object Object]".
+  // "[object Object]". A rejection with no value or an empty error body reaches here as {},
+  // which becomes an empty message and so the fallback below.
   function toError(err: unknown): Error {
     if (err instanceof Error) return err
     if (err && typeof err === 'object') {
       const message = (err as { message?: unknown }).message
       if (typeof message === 'string' && message) return new Error(message)
       try {
-        return new Error(JSON.stringify(err))
+        const json = JSON.stringify(err)
+        return new Error(json === '{}' ? '' : json)
       } catch {
         return new Error('Unknown error')
       }
     }
-    return new Error(String(err))
+    return new Error(err ? String(err) : '')
   }
 
   onErrorCaptured((err, _instance, info) => {
@@ -55,6 +57,7 @@
       mode: 'strip',
       allowWhitespace: false,
     })
+    if (!cleaned) return 'The data could not be loaded.'
     return cleaned.length > 500 ? cleaned.slice(0, 500) + '...' : cleaned
   })
 

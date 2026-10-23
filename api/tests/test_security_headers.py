@@ -12,6 +12,12 @@ def test_security_headers_present_on_health(client: Any) -> None:
     assert "Referrer-Policy" in response.headers
 
 
+def test_every_response_is_noindex(client: Any) -> None:
+    """robots.txt allows /api so Googlebot renders pages; the JSON stays unindexed."""
+    for path in ("/health", "/api/v1/stats/auth-outcomes", "/api/v1/no-such-route"):
+        assert client.get(path).headers["X-Robots-Tag"] == "noindex", path
+
+
 def test_openapi_json_uses_no_store(client: Any) -> None:
     response = client.get("/api/v1/openapi.json")
     assert response.status_code == 200
