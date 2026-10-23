@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 from src.models.auth_attempt import AuthAttempt
 from src.models.geo_location import GeoLocation
 from src.models.ssh_client import SshClient
-from src.services import sessions as sessions_service
+from src.services.sessions import cache, checkpoints, layout, pages
 from tests.conftest import make_counter_session
 
 T0 = datetime(2026, 1, 1, tzinfo=timezone.utc)
@@ -50,6 +50,35 @@ def pattern_seed(db_session: Session) -> list[str]:
         db_session.merge(
             GeoLocation(ip=f"198.51.100.{n}", country_code=code, country=name)
         )
+    db_session.flush()
+    return ids
+
+
+@pytest.fixture()
+def checkpoint_seed(db_session: Session) -> list[str]:
+    """Sessions for the checkpoint-seek tests, newest first.
+
+    Only two of the four source IPs resolve to a country *name*, so some rows
+    have a NULL country (which sorts last) and several share one (ties), which is
+    what the keyset predicate has to get right.
+    """
+    ids: list[str] = []
+    for i in range(14):
+        sid = f"ck{i:04d}"
+        make_counter_session(
+            db_session,
+            sid,
+            src_ip=f"198.51.100.{i % 4 + 1}",
+            started_at=T0 - timedelta(minutes=i),
+            ended_at=T0 - timedelta(minutes=i) + timedelta(seconds=i),
+            n_commands=i % 3,
+        )
+        ids.append(sid)
+    for ip, code, name in [
+        ("198.51.100.1", "PE", "Peru"),
+        ("198.51.100.2", "CL", "Chile"),
+    ]:
+        db_session.merge(GeoLocation(ip=ip, country_code=code, country=name))
     db_session.flush()
     return ids
 
@@ -324,25 +353,26 @@ def test_one_layout_pass_serves_every_per_page(
 ) -> None:
     del pattern_seed
     passes: list[str] = []
-    build = sessions_service._build_layout
+    build = pages.build_layout
 
     def counted(*args: Any) -> Any:
         passes.append(args[2])
         return build(*args)
 
-    monkeypatch.setattr(sessions_service, "_build_layout", counted)
+    monkeypatch.setattr(pages, "build_layout", counted)
     for per_page in (1, 3, 4, 40):
         client.get(f"/api/v1/sessions/?fold=true&sort=recent&per_page={per_page}")
     assert passes == ["recent"]
 
 
 def _layout() -> Any:
-    return sessions_service._Layout(
+    return layout.Layout(
         as_of=T0,
         total=0,
         rows_before=[],
         hidden=[],
         built_at=0.0,
+        checkpoints=[],
     )
 
 
@@ -360,9 +390,7 @@ def test_concurrent_cold_requests_share_one_layout_pass() -> None:
     got: list[Any] = []
     threads = [
         threading.Thread(
-            target=lambda: got.append(
-                sessions_service._cached_layout(MagicMock(), ("k",), build)
-            )
+            target=lambda: got.append(cache.cached_layout(MagicMock(), ("k",), build))
         )
         for _ in range(4)
     ]
@@ -379,9 +407,128 @@ def test_concurrent_cold_requests_share_one_layout_pass() -> None:
 def test_a_layout_pass_runs_without_parallel_workers() -> None:
     db = MagicMock()
     layout = _layout()
-    assert sessions_service._build_in_slot(db, lambda _db: layout, 0) is layout
-    [(stmt,), _] = db.execute.call_args
-    assert "max_parallel_workers_per_gather = 0" in str(stmt)
+    assert cache._build_in_slot(db, lambda _db: layout, 0) is layout
+    stmts = [str(call.args[0]) for call in db.execute.call_args_list]
+    assert any("max_parallel_workers_per_gather = 0" in stmt for stmt in stmts)
+
+
+def test_a_layout_pass_gets_the_build_work_mem() -> None:
+    """At the default work_mem the build's sort and both hashes spill to disk,
+    so the slot raises it for the pass. See _BUILD_WORK_MEM.
+    """
+    db = MagicMock()
+    layout = _layout()
+    assert cache._build_in_slot(db, lambda _db: layout, 0) is layout
+    stmts = [str(call.args[0]) for call in db.execute.call_args_list]
+    assert any(
+        stmt.startswith("SET LOCAL work_mem") and cache._BUILD_WORK_MEM in stmt
+        for stmt in stmts
+    )
+
+
+def test_a_layout_collects_checkpoints(
+    db_session: Session, checkpoint_seed: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """One checkpoint every _CHECKPOINT_EVERY rows, holding the session shown
+    there, so a page can seek from it."""
+    monkeypatch.setattr(layout, "_CHECKPOINT_EVERY", 3)
+    lay = layout.build_layout(db_session, [], "recent", None)
+    assert [pos for pos, _ in lay.checkpoints] == [0, 3, 6, 9, 12]
+    assert {sid for _, sid in lay.checkpoints} <= set(checkpoint_seed)
+
+
+def test_checkpoint_before_picks_the_last_checkpoint_strictly_before() -> None:
+    lay = layout.Layout(
+        as_of=T0,
+        total=10,
+        rows_before=[],
+        hidden=[],
+        built_at=0.0,
+        checkpoints=[(0, "a"), (5, "b"), (10, "c")],
+    )
+    assert lay.checkpoint_before(0) is None
+    assert lay.checkpoint_before(1) == (0, "a")
+    assert lay.checkpoint_before(5) == (0, "a")
+    assert lay.checkpoint_before(6) == (5, "b")
+    assert lay.checkpoint_before(11) == (10, "c")
+    assert lay.checkpoint_before(99) == (10, "c")
+
+
+def test_a_layout_without_checkpoints_never_seeks() -> None:
+    lay = layout.Layout(
+        as_of=T0,
+        total=3,
+        rows_before=[],
+        hidden=[],
+        built_at=0.0,
+        checkpoints=[],
+    )
+    assert lay.checkpoints == []
+    assert lay.checkpoint_before(5) is None
+
+
+def test_a_seeked_page_matches_the_offset_page(
+    db_session: Session, checkpoint_seed: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Every page of every sort and order: the keyset seek returns exactly what
+    the OFFSET walk returns. Checkpoints every 2 rows so pages after the first
+    seek, and the seed has both NULL and tied countries."""
+    monkeypatch.setattr(layout, "_CHECKPOINT_EVERY", 2)
+    cache.clear_layout_cache()
+    original = pages.checkpoint_seek
+
+    def rows(pages: list[Any]) -> list[list[tuple[str, Any]]]:
+        return [
+            [(s["id"], (s["run"] or {}).get("count")) for s in p["sessions"]]
+            for p in pages
+        ]
+
+    for sort in ("recent", "country", "active", "interest", "duration"):
+        for order in (None, "asc", "desc"):
+            seeked = [
+                pages.get_sessions_folded(db_session, pg, 3, sort=sort, order=order)
+                for pg in range(1, 8)
+            ]
+            monkeypatch.setattr(pages, "checkpoint_seek", lambda *a, **k: None)
+            try:
+                plain = [
+                    pages.get_sessions_folded(db_session, pg, 3, sort=sort, order=order)
+                    for pg in range(1, 8)
+                ]
+            finally:
+                monkeypatch.setattr(pages, "checkpoint_seek", original)
+            assert rows(seeked) == rows(plain), f"{sort} order={order}"
+
+
+def test_a_deep_page_seeks_and_page_one_does_not(
+    db_session: Session, checkpoint_seed: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """The seek has to engage, or the optimisation is silently dead; and page 1
+    must not pay for it, since its snapshot offset is 0."""
+    monkeypatch.setattr(layout, "_CHECKPOINT_EVERY", 2)
+    cache.clear_layout_cache()
+    calls: list[str] = []
+    original = checkpoints._checkpoint_values
+
+    def spy(db: Any, sort: str, order: Any, as_of: Any, sid: str) -> Any:
+        calls.append(sid)
+        return original(db, sort, order, as_of, sid)
+
+    monkeypatch.setattr(checkpoints, "_checkpoint_values", spy)
+    pages.get_sessions_folded(db_session, 1, 3, sort="country")
+    assert calls == []
+    pages.get_sessions_folded(db_session, 2, 3, sort="country")
+    assert calls
+
+
+def test_a_vanished_checkpoint_falls_back_to_the_offset(
+    db_session: Session, checkpoint_seed: list[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(layout, "_CHECKPOINT_EVERY", 2)
+    monkeypatch.setattr(checkpoints, "_checkpoint_values", lambda *a, **k: None)
+    cache.clear_layout_cache()
+    page = pages.get_sessions_folded(db_session, 3, 3, sort="country")
+    assert len(page["sessions"]) == 3
 
 
 def test_a_failed_layout_pass_yields_no_layout() -> None:
@@ -390,14 +537,14 @@ def test_a_failed_layout_pass_yields_no_layout() -> None:
     def broken(_db: Any) -> Any:
         raise OperationalError("x", {}, Exception("boom"))
 
-    assert sessions_service._build_in_slot(db, broken, 0) is None
+    assert cache._build_in_slot(db, broken, 0) is None
     db.rollback.assert_called_once()
 
 
 def test_without_a_layout_the_plain_list_is_served(
     client: Any, pattern_seed: list[str], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    monkeypatch.setattr(sessions_service, "_build_in_slot", lambda *_: None)
+    monkeypatch.setattr(cache, "_build_in_slot", lambda *_: None)
     body = client.get("/api/v1/sessions/?fold=true&sort=recent&per_page=10")
     assert body.status_code == 200
     data = body.get_json()
@@ -425,44 +572,41 @@ def test_a_stale_layout_is_served_while_one_rebuild_runs(
 ) -> None:
     old, new = _layout(), _layout()
     key = ("stale",)
-    sessions_service._store_layout(key, old)
-    monkeypatch.setattr(sessions_service, "_LAYOUT_TTL_S", -1.0)
+    cache._store_layout(key, old)
+    monkeypatch.setattr(cache, "_LAYOUT_TTL_S", -1.0)
     rebuilt = threading.Event()
     started: list[int] = []
-    monkeypatch.setattr(sessions_service, "get_session_factory", lambda: MagicMock())
+    monkeypatch.setattr(cache, "get_session_factory", lambda: MagicMock())
 
     def build(_db: Any) -> Any:
         started.append(1)
         rebuilt.set()
         return new
 
-    assert sessions_service._cached_layout(MagicMock(), key, build) is old
+    assert cache.cached_layout(MagicMock(), key, build) is old
     assert rebuilt.wait(5)
     # the background pass replaces the stale entry; wait for it to land
     for _ in range(100):
-        with sessions_service._layouts_lock:
-            if sessions_service._layouts[key] is new:
+        with cache._layouts_lock:
+            if cache._layouts[key] is new:
                 break
         time.sleep(0.05)
-    assert sessions_service._layouts[key] is new
+    assert cache._layouts[key] is new
     assert started == [1]
 
 
 def test_the_layout_cache_evicts_its_oldest_key(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    monkeypatch.setattr(sessions_service, "_LAYOUT_CACHE_SIZE", 2)
+    monkeypatch.setattr(cache, "_LAYOUT_CACHE_SIZE", 2)
     for k in ("a", "b", "c"):
-        sessions_service._store_layout((k,), _layout())
-    assert list(sessions_service._layouts) == [("b",), ("c",)]
+        cache._store_layout((k,), _layout())
+    assert list(cache._layouts) == [("b",), ("c",)]
 
 
 def test_a_busy_build_slot_yields_no_layout() -> None:
-    assert sessions_service._build_slot.acquire(timeout=1)
+    assert cache._build_slot.acquire(timeout=1)
     try:
-        assert (
-            sessions_service._build_in_slot(MagicMock(), lambda _d: _layout(), 0)
-            is None
-        )
+        assert cache._build_in_slot(MagicMock(), lambda _d: _layout(), 0) is None
     finally:
-        sessions_service._build_slot.release()
+        cache._build_slot.release()

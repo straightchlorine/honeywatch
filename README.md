@@ -50,8 +50,10 @@ Cowrie has no direct internet egress; outbound traffic is forced through
 a tinyproxy sidecar (`egress-proxy`).
 
 The dashboard routes `/api/*` through a Tailscale egress pod across the tailnet
-to the honeypot's nginx. All k8s manifests, including the ArgoCD `Application`,
-live in `k8s/`.
+to the honeypot's nginx. All k8s manifests live in `k8s/`; the ArgoCD `Application`
+that syncs them is registered in the fleet repo
+([GitHub](https://github.com/straightchlorine/fleet)/[Codeberg](https://codeberg.org/piotrkrzysztof/fleet))
+at `apps/hetzner/honeywatch.yaml`.
 
 <div align="center">
 
@@ -106,7 +108,7 @@ See `justfile` for the full command list.
 
 ## Documentation
 
-Full docs at <https://docs.honeywatch.piotrkrzysztof.dev>. Build
+Docs at <https://docs.honeywatch.piotrkrzysztof.dev>. Build
 them locally with:
 
 ```bash

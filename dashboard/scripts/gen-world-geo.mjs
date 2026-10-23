@@ -46,7 +46,7 @@ const MAPSHAPER = 'mapshaper@0.7.55'
 // keep small enclaves (Ceuta, Melilla, the Macau peninsula, the Quneitra
 // salient) inside the right country. 20% sits mid-band: 16% is the floor where
 // the checks below start failing, 35% still passes, and weighted Visvalingam
-// (mapshaper's default) needs 40% to match what DP does at 16%.
+// (mapshaper's default) needs 38% to match what DP does at 16%.
 const SIMPLIFY = ['dp', '20%', 'keep-shapes']
 
 const SOURCES = {

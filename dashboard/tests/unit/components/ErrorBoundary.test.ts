@@ -87,6 +87,31 @@ describe('ErrorBoundary', () => {
     expect(w.text()).not.toContain('[object Object]')
   })
 
+  it.each([
+    ['undefined', undefined],
+    ['null', null],
+    ['an empty string', ''],
+    ['an empty object', {}],
+    ['an Error with no message', new Error('')],
+    ['a message of control characters only', new Error('\x07\x1b')],
+  ])('shows a plain fallback instead of an empty or {} message for %s', async (_name, value) => {
+    const w = mountWithProviders(ErrorBoundary, {
+      slots: { default: () => h(throwing(value)) },
+    })
+    await nextTick()
+
+    expect(w.get('.boundary-message').text()).toBe('The data could not be loaded.')
+  })
+
+  it('still shows a non-empty object that has no message', async () => {
+    const w = mountWithProviders(ErrorBoundary, {
+      slots: { default: () => h(throwing({ code: 502 })) },
+    })
+    await nextTick()
+
+    expect(w.get('.boundary-message').text()).toBe('{"code":502}')
+  })
+
   it('truncates long messages to 500 characters plus an ellipsis', async () => {
     const w = mountWithProviders(ErrorBoundary, {
       slots: { default: () => h(throwing(new Error('x'.repeat(600)))) },
