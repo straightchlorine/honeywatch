@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Collection
+from typing import Collection
 
 from sqlalchemy import ColumnElement, Select
 
@@ -29,9 +29,10 @@ def country_match(country: str) -> ColumnElement[bool]:
     return GeoLocation.country_code == country
 
 
-def scope_to_country(stmt: Select[Any], country: str | None) -> Select[Any]:
-    """Join geo_locations and filter to a single country; None returns stmt
-    unchanged."""
+def scope_to_country[*Ts](stmt: Select[*Ts], country: str | None) -> Select[*Ts]:
+    """Join geo_locations and filter to a single country;
+    None returns stmt unchanged.
+    """
     if country is None:
         return stmt
     join = stmt.outerjoin if country == UNKNOWN_COUNTRY else stmt.join
