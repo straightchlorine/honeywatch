@@ -18,7 +18,7 @@ from src.models.command import Command
 from src.models.download import Download
 from src.models.geo_location import GeoLocation
 from src.models.session import Session as HoneypotSession
-from src.services.sessions import clear_layout_cache
+from src.services.sessions.cache import clear_layout_cache
 
 
 def _resolve_test_db_url() -> str:
