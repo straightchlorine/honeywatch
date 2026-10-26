@@ -9,6 +9,9 @@ both:
     just bench measure ../honeywatch-wt/0.8.5 --variant baseline --scenario layout
 
 Scenarios:
+  route   every GET route of the API through the Flask test client, in process
+          (routes.py lists the requests): wall time, the request's own CPU, the
+          database's CPU, payload bytes and HTTP status. Works on any release.
   layout  N builds of the layout pass through the path prod uses (serial plan, one
           slot). Build 0 is a warm-up; summarize.py drops it.
   page    one layout build, then timed get_sessions_folded() calls on a warm cache:
@@ -24,8 +27,8 @@ behaviour changed, not only the speed.
 Numbers go into the CSV as they are measured and summarize.py renders the tables
 from it. Do not copy numbers by hand.
 
-The in-process instrument needs v0.8.3 or later, where src.services.sessions is a
-package. Older releases have to be measured over HTTP.
+The layout and page scenarios need v0.8.3 or later, where src.services.sessions is
+a package. The route scenario also runs on older releases.
 """
 
 from __future__ import annotations
@@ -47,15 +50,15 @@ from typing import IO
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
 
+import routes
 from src.config import Config
 
 try:
     from src.services.sessions import cache, filters, layout, pages
 except ImportError as exc:
-    sys.exit(
-        f"this tree has no src.services.sessions package ({exc}); "
-        "the in-process instrument needs v0.8.3 or later"
-    )
+    SESSIONS_MISSING = str(exc)
+else:
+    SESSIONS_MISSING = ""
 
 HERE = pathlib.Path(__file__).resolve().parent
 HOST_TREE = HERE.parent  # the checkout that hosts this script
@@ -63,14 +66,15 @@ DEFAULT_CSV = HERE / "results" / "results.csv"
 CONTAINER = os.environ.get("BENCH_NAME", "hw-bench-pg")
 PER_PAGE = 25
 DEEP_PAGE = 300
+SORTS = ["recent", "country", "active", "interest", "duration"]
 FIELDS = (
     "ts run_id variant git_sha tree_hash alembic sessions caps "
-    "scenario sort label build_idx wall_ms cpu_ms throttled_ms read_mb "
-    "fingerprint fp_match_baseline rows note"
+    "scenario sort label build_idx wall_ms app_cpu_ms cpu_ms throttled_ms read_mb "
+    "fingerprint fp_match_baseline rows bytes status note"
 ).split()
 
-# What a timed call returns: the result, what to fingerprint, and the row count.
-Call = Callable[[], tuple[object, object, int]]
+# What a timed call returns: what to fingerprint, and extra CSV columns.
+Call = Callable[[], tuple[object, dict[str, object]]]
 
 
 def sh(*cmd: str, cwd: pathlib.Path | None = None) -> str:
@@ -256,6 +260,8 @@ class Recorder:
         )
         print(f"host: {self.host.info['cpu_model']}")
         new = not args.csv.exists() or args.csv.stat().st_size == 0
+        if not new and args.csv.read_text().split("\n", 1)[0].split(",") != FIELDS:
+            sys.exit(f"{args.csv} has an older column set; start a new file with --csv")
         self.f = args.csv.open("a", newline="")
         self.w = csv.DictWriter(self.f, FIELDS)
         if new:
@@ -276,9 +282,10 @@ class Recorder:
         self, scenario: str, sort: str, label: str, idx: int, call: Call
     ) -> None:
         before = self.cg.read()
-        t = time.perf_counter()
-        _, fp_source, rows = call()
+        cpu0, t = time.process_time(), time.perf_counter()
+        fp_source, extra = call()
         wall = (time.perf_counter() - t) * 1000
+        app_cpu = (time.process_time() - cpu0) * 1000
         after = self.cg.read()
         fp = fingerprint(fp_source)
         key = (scenario, sort, label)
@@ -298,19 +305,24 @@ class Recorder:
             "label": label,
             "build_idx": idx,
             "wall_ms": round(wall),
+            "app_cpu_ms": round(app_cpu),
             "cpu_ms": cg[0],
             "throttled_ms": cg[1],
             "read_mb": cg[2],
             "fingerprint": fp,
             "fp_match_baseline": match,
-            "rows": rows,
+            "rows": "",
+            "bytes": "",
+            "status": "",
+            **extra,
             "note": self.args.note,
         }
         self.w.writerow(row)
         self.f.flush()
         print(
-            f"{scenario:6} {sort:8} {label:12} #{idx} wall={row['wall_ms']:>5}ms "
-            f"cpu={cg[0]!s:>5}ms read={cg[2]!s:>6}MB fp={fp} match={match}"
+            f"{scenario:6} {sort:8} {label[:44]:44} #{idx} wall={row['wall_ms']:>5}ms "
+            f"app={row['app_cpu_ms']:>5}ms db={cg[0]!s:>5}ms "
+            f"bytes={extra.get('bytes', '')!s:>7} fp={fp} match={match}"
         )
 
     def finish(self) -> None:
@@ -340,13 +352,13 @@ def measure_layout(
 ) -> None:
     order = filters.SORT_DEFAULT_DIRECTION[sort]
 
-    def build() -> tuple[object, object, int]:
+    def build() -> tuple[object, dict[str, object]]:
         with factory() as db:
             lay = cache._build_in_slot(
                 db, lambda d: layout.build_layout(d, [], sort, order), 60
             )
         assert lay is not None, "layout build failed"
-        return lay, (lay.total, lay.rows_before, lay.hidden), lay.rows
+        return (lay.total, lay.rows_before, lay.hidden), {"rows": lay.rows}
 
     for i in range(builds):
         rec.measure("layout", sort, "build", i, build)
@@ -372,15 +384,52 @@ def measure_pages(
             targets["largest_run"] = lay.rows_before[biggest] // PER_PAGE + 1
         for label, page in targets.items():
 
-            def call(page: int = page) -> tuple[object, object, int]:
+            def call(page: int = page) -> tuple[object, dict[str, object]]:
                 r = pages.get_sessions_folded(db, page, PER_PAGE, sort=sort)
                 shown = [
                     (s["id"], (s["run"] or {}).get("count")) for s in r["sessions"]
                 ]
-                return r, shown, len(r["sessions"])
+                return shown, {"rows": len(r["sessions"])}
 
             for i in range(repeat):
                 rec.measure("page", sort, label, i, call)
+
+
+def strip_as_of(doc: object) -> object:
+    """Drop the snapshot time: it differs per build and says nothing about behaviour."""
+    if isinstance(doc, dict):
+        return {k: strip_as_of(v) for k, v in doc.items() if k != "as_of"}
+    if isinstance(doc, list):
+        return [strip_as_of(v) for v in doc]
+    return doc
+
+
+def measure_routes(
+    rec: Recorder, factory: sessionmaker[Session], repeat: int, only: list[str]
+) -> None:
+    from src.app import create_app
+
+    app = create_app()
+    client = app.test_client()
+    with factory() as db:
+        paths = routes.cases(routes.lookups(db))
+    if (run := routes.run_members(client)) is not None:
+        paths.append(run)
+    for rule in routes.uncovered(app):
+        print(f"warning: route not covered by bench/routes.py: {rule}", file=sys.stderr)
+    for path in paths:
+        if only and not any(o in path for o in only):
+            continue
+        client.get(path)  # warm-up: fills the layout cache and the page cache
+
+        def call(path: str = path) -> tuple[object, dict[str, object]]:
+            r = client.get(path)
+            body = r.get_data()
+            doc = strip_as_of(r.get_json(silent=True)) or body.decode(errors="replace")
+            return doc, {"bytes": len(body), "status": r.status_code}
+
+        for i in range(repeat):
+            rec.measure("route", "GET", path, i, call)
 
 
 def main() -> None:
@@ -392,16 +441,21 @@ def main() -> None:
     add("--repo", required=True, type=path, help="tree under test (a worktree)")
     add("--csv", type=path, default=DEFAULT_CSV, help="results CSV to append to")
     add("--variant", required=True, help="what is tested; the first run is 'baseline'")
-    add("--scenario", choices=["layout", "page"], required=True)
-    sorts = sorted(filters.SORT_DEFAULT_DIRECTION)
-    add("--sort", nargs="+", default=["recent"], choices=sorts)
+    add("--scenario", choices=["route", "layout", "page"], required=True)
+    add("--sort", nargs="+", default=["recent"], choices=SORTS)
+    add(
+        "--only",
+        nargs="+",
+        default=[],
+        help="route: only paths containing one of these",
+    )
     add(
         "--builds",
         type=int,
         default=6,
         help="layout: builds per sort, first is warm-up",
     )
-    add("--repeat", type=int, default=5, help="page: calls per page label")
+    add("--repeat", type=int, default=5, help="route, page: calls per request")
     add(
         "--cold",
         action="store_true",
@@ -423,6 +477,11 @@ def main() -> None:
             "that hosts the bench.\nPut the change in a worktree "
             "(worktrees.sh add-branch <name>) and pass --repo <path>."
         )
+    if args.scenario != "route" and SESSIONS_MISSING:
+        sys.exit(
+            f"this tree has no src.services.sessions package ({SESSIONS_MISSING}); "
+            "layout and page need v0.8.3 or later, route works on any release"
+        )
     args.csv.parent.mkdir(parents=True, exist_ok=True)
     args.note = f"repo={args.repo.name} {args.note}".strip()
 
@@ -438,7 +497,9 @@ def main() -> None:
     with factory() as db:
         rec = Recorder(args, db)
     try:
-        for sort in args.sort:
+        if args.scenario == "route":
+            measure_routes(rec, factory, args.repeat, args.only)
+        for sort in args.sort if args.scenario != "route" else []:
             if args.scenario == "layout":
                 measure_layout(rec, factory, sort, args.builds)
             else:
@@ -448,7 +509,7 @@ def main() -> None:
         if args.sql_after:
             with open(args.sql_after) as fh:
                 psql(stdin=fh)
-    print(f"results: {args.csv} (run_id {rec.run_id}); next: just bench summary")
+    print(f"results: {args.csv} (run_id {rec.run_id}); next: just bench report")
 
 
 if __name__ == "__main__":

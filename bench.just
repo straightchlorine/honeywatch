@@ -44,10 +44,10 @@ measure repo *args:
     set -euo pipefail
     root="$PWD"
     target="$(cd "{{repo}}" && pwd)"
-    cd "$target/api"
     eval "$("$root/bench/bench.sh" env)"
-    uv run python "$root/bench/measure.py" --repo "$target" {{args}}
+    export PYTHONPATH="$target/api"
+    uv run --project "$target/api" python "$root/bench/measure.py" --repo "$target" {{args}}
 
-# Render results.csv as a markdown table; `--append` adds it to bench/RESULTS.md.
-summary *args:
+# Show results.csv as a table: `just bench report --rank wall`, `--scenario route`, `--md --append`.
+report *args:
     python3 ./bench/summarize.py {{args}}
