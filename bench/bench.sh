@@ -82,7 +82,7 @@ case "${1:-}" in
     psqlb -c "VACUUM ANALYZE" ;;
   restart) docker restart "$NAME" >/dev/null; wait_pg ;;
   env) cat <<ENV
-export BENCH_NAME=$NAME POSTGRES_HOST=localhost POSTGRES_PORT=$PORT POSTGRES_USER=honeywatch POSTGRES_PASSWORD=bench POSTGRES_DB=honeywatch ENVIRONMENT=development PYTHONPATH=.
+export BENCH_NAME=$NAME POSTGRES_HOST=localhost POSTGRES_PORT=$PORT POSTGRES_USER=honeywatch POSTGRES_PASSWORD=bench POSTGRES_DB=honeywatch ENVIRONMENT=development PYTHONPATH=. UV_PYTHON=${UV_PYTHON:-3.14}
 ENV
   ;;
   psql) shift; psqlb "$@" ;;
