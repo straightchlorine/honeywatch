@@ -1,6 +1,7 @@
 set dotenv-load := true
 
 mod db
+mod bench
 
 default:
     @just --list

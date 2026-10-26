@@ -1,0 +1,6 @@
+# Bench output stays out. Large and hardware-specific.
+results/
+plans/
+*.log
+*.ndjson
+k6/*.json
