@@ -43,6 +43,69 @@
   })
   onUnmounted(() => specimensRo.disconnect())
 
+  // Roving tabindex (ARIA grid, as CountryHive): the specimens are ONE Tab stop - the cell last
+  // focused, else the first link. Rows = specimens, cells = card link + VirusTotal link.
+  const tabSha = ref<string | null>(null)
+  const tabCol = ref(0)
+  const tabStop = computed(() => {
+    const hit = downloads.value.some((d) => d.sha256 === tabSha.value)
+    return {
+      sha: hit ? tabSha.value : downloads.value[0]?.sha256,
+      col: hit ? tabCol.value : 0,
+    }
+  })
+  function tabAt(sha: string, col: number): 0 | -1 {
+    return sha === tabStop.value.sha && col === tabStop.value.col ? 0 : -1
+  }
+  function onSpecFocus(sha: string, e: FocusEvent): void {
+    const row = (e.currentTarget as HTMLElement).closest('li')!
+    tabSha.value = sha
+    tabCol.value = Math.max(
+      0,
+      [...row.querySelectorAll('a')].indexOf(e.target as HTMLAnchorElement),
+    )
+  }
+  function onSpecKeydown(e: KeyboardEvent): void {
+    if (e.altKey || e.metaKey) return
+    const row = (e.currentTarget as HTMLElement).closest('li')!
+    // Rows hidden by the phone's 8-row cap are not walkable.
+    const rows = [...specimensEl.value!.querySelectorAll<HTMLElement>('li.spec')].filter(
+      (r) => getComputedStyle(r).display !== 'none',
+    )
+    const links = (r: HTMLElement) => [...r.querySelectorAll<HTMLElement>('a')]
+    const col = Math.max(0, links(row).indexOf(e.target as HTMLElement))
+    const i = rows.indexOf(row)
+    let r = i
+    let c = col
+    switch (e.key) {
+      case 'ArrowDown':
+        r = Math.min(i + 1, rows.length - 1)
+        break
+      case 'ArrowUp':
+        r = Math.max(i - 1, 0)
+        break
+      case 'ArrowRight':
+        c = col + 1
+        break
+      case 'ArrowLeft':
+        c = col - 1
+        break
+      case 'Home':
+        if (e.ctrlKey) r = 0
+        c = 0
+        break
+      case 'End':
+        if (e.ctrlKey) r = rows.length - 1
+        c = 9
+        break
+      default:
+        return
+    }
+    e.preventDefault()
+    const to = links(rows[r]!)
+    to[Math.min(Math.max(c, 0), to.length - 1)]?.focus()
+  }
+
   function jumpToRelay(): void {
     const t = document.getElementById('relay-card')
     t?.scrollIntoView({ behavior: 'smooth', block: 'start' })
@@ -82,6 +145,13 @@
   // Phones list 8 specimens (CSS) until "Show all"; a deep-linked specimen is always kept.
   const NARROW_LIST = 8
   const showAll = ref(false)
+  // The button unmounts on click, so hand focus to the first row it revealed.
+  async function revealAll(): Promise<void> {
+    showAll.value = true
+    await nextTick()
+    const rows = specimensEl.value?.querySelectorAll<HTMLElement>('li.spec')
+    rows?.[NARROW_LIST]?.querySelector<HTMLElement>('.spec-link')?.focus()
+  }
   const tcpip = computed<TcpipDestinationResponse[]>(() => tcpipQ.data.value ?? [])
 
   // KPIs: four questions a specimen card cannot answer, so nothing on the row is printed twice.
@@ -311,7 +381,7 @@
           <template #meta>
             <span class="m-full"
               >{{ fmtNumber(singletonCount) }} seen only once &middot;
-              {{ fmtNumber(captureCount) }} fetches across these files</span
+              {{ fmtNumber(captureCount) }} fetches in all</span
             >
             <span class="m-short">{{ fmtNumber(singletonCount) }} seen once</span>
           </template>
@@ -350,49 +420,61 @@
       ></a>
 
       <div class="grid-main">
-        <HwCard
-          class="spec-card"
-          title="Specimens"
-          :note="`${specimenCount} files kept`"
-        >
+        <HwCard class="spec-card" title="Specimens" :note="`${specimenCount} files kept`">
           <ul
             ref="specimensEl"
             class="specimens"
             :class="{ expanded: showAll }"
-            tabindex="0"
+            role="grid"
             aria-label="Captured files"
             @scroll.passive="checkSpecimens"
           >
+            <!-- keys bubble from the roving links; the row itself is never focused -->
+            <!-- eslint-disable-next-line vuejs-accessibility/interactive-supports-focus -->
             <li
               v-for="d in downloads"
               :id="'spec-' + d.sha256"
               :key="d.sha256"
               :class="{ recurring: d.sessions > 1, picked: hash === '#spec-' + d.sha256 }"
               class="spec"
+              role="row"
+              @keydown="onSpecKeydown"
             >
-              <RouterLink class="spec-link" :to="sessionsFor(d)">
-                <span class="mono head-sha" aria-hidden="true">{{ shaPrefix(d.sha256) }}</span>
-                <span class="visually-hidden">{{ cardLabel(d) }}</span>
-              </RouterLink>
+              <span class="cell" role="gridcell">
+                <RouterLink
+                  class="spec-link"
+                  :to="sessionsFor(d)"
+                  :tabindex="tabAt(d.sha256, 0)"
+                  @focus="onSpecFocus(d.sha256, $event)"
+                >
+                  <span class="mono head-sha" aria-hidden="true">{{ shaPrefix(d.sha256) }}</span>
+                  <span class="visually-hidden">{{ cardLabel(d) }}</span>
+                </RouterLink>
+              </span>
               <span
                 class="flags"
+                role="gridcell"
                 aria-hidden="true"
                 @pointerenter="tt.show(originLabel(d))"
                 @pointermove="tt.move($event)"
                 @pointerleave="tt.hide()"
                 >{{ flagsFor(d.countries) }}</span
               >
-              <span v-if="benignContent(d.sha256)" class="benign">not malware</span>
-              <a
-                v-else
-                class="vt"
-                :href="vtUrl(d.sha256)"
-                target="_blank"
-                rel="noopener noreferrer"
-                aria-label="Open on VirusTotal"
-                >VirusTotal</a
-              >
-              <p class="fact">
+              <span class="cell" role="gridcell">
+                <span v-if="benignContent(d.sha256)" class="benign">not malware</span>
+                <a
+                  v-else
+                  class="vt"
+                  :href="vtUrl(d.sha256)"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  aria-label="Open on VirusTotal"
+                  :tabindex="tabAt(d.sha256, 1)"
+                  @focus="onSpecFocus(d.sha256, $event)"
+                  >VirusTotal</a
+                >
+              </span>
+              <p class="fact" role="gridcell">
                 <template v-if="d.sessions > 1">
                   <b class="num">{{ fmtNumber(d.sessions) }}</b> sessions from
                   <template v-if="repeated(d)">just </template>
@@ -405,9 +487,15 @@
                 </template>
               </p>
             </li>
-            <li v-if="!downloads.length" class="empty">No files captured yet.</li>
-            <li v-if="!showAll && downloads.length > NARROW_LIST" class="show-all">
-              <button type="button" @click="showAll = true">Show all {{ downloads.length }}</button>
+            <li v-if="!downloads.length" class="empty" role="row">
+              <span class="cell" role="gridcell">No files captured yet.</span>
+            </li>
+            <li v-if="!showAll && downloads.length > NARROW_LIST" class="show-all" role="row">
+              <span class="cell" role="gridcell">
+                <button type="button" @click="revealAll">
+                  Show all {{ downloads.length }}
+                </button>
+              </span>
             </li>
           </ul>
         </HwCard>
@@ -497,6 +585,87 @@
 
   .spec-card {
     min-height: 0;
+  }
+
+  .cell {
+    display: contents;
+  }
+
+  /* Relay rows: the sub-line sits tight under its name, rows stay 8px apart. */
+  .relay-rank :deep(.rank-list) {
+    gap: 8px;
+  }
+
+  .relay-rank :deep(.rank-row) {
+    row-gap: 0;
+  }
+
+  .relay-rank :deep(.rk-sub) {
+    margin-top: 0;
+    line-height: 16px;
+  }
+
+  /* Desktop only: rows share the card height evenly down to the mail-port note,
+     and the port pills take the protocol colours (web amber, DNS/STUN muted,
+     mail red). Phone keeps the plain list above. */
+  @media (min-width: 901px) {
+    .relay-rank :deep(.rank-list) {
+      flex: 1 1 0;
+      gap: 0;
+    }
+
+    .relay-rank :deep(.rank-row) {
+      flex: 1 1 0;
+      min-height: 38px;
+      align-content: center;
+    }
+
+    .relay-rank :deep(.rk-badge) {
+      justify-self: end;
+    }
+
+    .relay-rank :deep(.rk-track) {
+      height: 6px;
+      border-radius: 3px;
+      background: var(--border);
+    }
+
+    .relay-rank :deep(.rk-fill) {
+      min-width: 6px;
+      border-radius: 3px;
+    }
+
+    .relay-rank :deep(.rk-sub) {
+      font-family: var(--font-mono);
+      color: var(--text-muted);
+    }
+
+    .relay-rank :deep(.badge) {
+      padding: 2px 9px;
+    }
+
+    .relay-rank :deep(.badge.amber) {
+      color: var(--accent-hot);
+      background: color-mix(in srgb, var(--accent) 14%, transparent);
+      border-color: var(--accent-dim);
+    }
+
+    .relay-rank :deep(.badge.dim) {
+      color: var(--text-muted);
+      background: var(--surface);
+      border-color: var(--border-strong);
+    }
+
+    .relay-rank :deep(.badge.bad) {
+      color: var(--bad);
+      background: color-mix(in srgb, var(--bad) 12%, transparent);
+      border-color: color-mix(in srgb, var(--bad) 45%, var(--bg-1));
+    }
+
+    /* Doubled class beats the base margin-top:auto; the list now fills the card. */
+    .relay-card .relay-insight {
+      margin-top: 12px;
+    }
   }
 
   .specimens {
@@ -676,6 +845,13 @@
     text-decoration: none;
   }
 
+  /* 44px tap row without changing the visual size; extends into the card's own padding. */
+  .spec .vt::after {
+    content: '';
+    position: absolute;
+    inset: -8px -4px -12px;
+  }
+
   .spec .vt:hover {
     color: var(--text);
     text-decoration: underline;
@@ -723,6 +899,13 @@
     margin-top: auto;
     padding-top: 12px;
     font-size: 12px;
+  }
+
+  /* Stacked layout: the card hugs its rows, so auto resolves to 0 and the note touched the last row. */
+  @media (max-width: 900px) {
+    .relay-insight {
+      margin-top: 16px;
+    }
   }
 
   .mono {

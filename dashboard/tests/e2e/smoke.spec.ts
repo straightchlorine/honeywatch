@@ -1684,7 +1684,8 @@ test.describe('dashboard accessibility smoke', () => {
           expect(await chip.innerText()).toBe('')
           await expect(chip).toHaveAttribute('role', 'img')
           expect(await chip.getAttribute('aria-label')).toMatch(/\w{4}/)
-          expect(await chip.getAttribute('title')).toBeTruthy()
+          // No native title bubble: StoryChip shows its words in the honeywatch tooltip.
+          expect(await chip.getAttribute('title')).toBeNull()
         }
         for (const chip of await page.locator('a.row .chip').all())
           expect(await chip.getAttribute('aria-label')).toBeTruthy()

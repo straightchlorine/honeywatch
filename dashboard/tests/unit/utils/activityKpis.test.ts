@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest'
 
-import { busiestHour, busiestWeekday, peakDay } from '@/utils/activityKpis'
+import {
+  busiestHour,
+  busiestWeekday,
+  hourlyTotals,
+  peakAndTypical,
+  peakDay,
+  peakIndex,
+  weekdayTotals,
+} from '@/utils/activityKpis'
 
 describe('activityKpis', () => {
   it('busiestHour sums across weekdays and formats HH:00', () => {
@@ -44,5 +52,36 @@ describe('activityKpis', () => {
     expect(busiestHour([]).value).toBe('-')
     expect(busiestWeekday([]).value).toBe('-')
     expect(peakDay([]).value).toBe('-')
+  })
+
+  it('hourlyTotals and weekdayTotals sum into fixed-size arrays and skip out-of-range points', () => {
+    const pts = [
+      { weekday: 0, hour: 14, count: 3 },
+      { weekday: 1, hour: 14, count: 4 },
+      { weekday: 6, hour: 0, count: 1 },
+      { weekday: 9, hour: 30, count: 50 },
+    ]
+    const hours = hourlyTotals(pts)
+    expect(hours).toHaveLength(24)
+    expect(hours[14]).toBe(7)
+    expect(hours[0]).toBe(1)
+    const days = weekdayTotals(pts)
+    expect(days).toHaveLength(7)
+    expect(days).toEqual([3, 4, 0, 0, 0, 0, 1])
+  })
+
+  it('peakIndex returns the first maximum, or -1 when everything is zero', () => {
+    expect(peakIndex([1, 5, 5, 2])).toBe(1)
+    expect(peakIndex([0, 0])).toBe(-1)
+    expect(peakIndex([])).toBe(-1)
+  })
+
+  it.each([
+    [[], 0, 0],
+    [[5], 5, 5],
+    [[1, 2, 3, 100], 100, 2],
+    [[0, 0], 0, 0],
+  ])('peakAndTypical(%j) -> peak %i typical %i', (counts, peak, typical) => {
+    expect(peakAndTypical(counts)).toEqual({ peak, typical })
   })
 })

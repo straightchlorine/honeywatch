@@ -56,13 +56,13 @@ describe('SessionGroupRow', () => {
   afterAll(() => vi.useRealTimers())
 
   it('summarises the folded sessions from the run, not from loaded rows', () => {
-    const [label, story, origin, , duration, started] = cells(run)
+    const [label, story, origin, duration, started] = cells(run)
     expect(label).toContain('12')
     expect(label).toContain('more like this')
     expect(story).toContain('2')
     expect(origin).toBe('3 countries')
     expect(duration).toBe('4-58s')
-    expect(started).toMatch(/ to /)
+    expect(started).not.toMatch(/ to /)
   })
 
   it('groups the run count in thousands', () => {
@@ -72,10 +72,10 @@ describe('SessionGroupRow', () => {
   it('names the one country, ranges minutes, and dashes what is unknown', () => {
     const one = { ...run, countries: 1, country_code: 'PE', country: 'Peru' }
     expect(cells(one)[2]).toContain('Peru')
-    expect(cells({ ...run, min_duration_s: 90, max_duration_s: 600 })[4]).toBe('2m-10m')
-    expect(cells({ ...run, min_duration_s: null, max_duration_s: null })[4]).toBe('-')
+    expect(cells({ ...run, min_duration_s: 90, max_duration_s: 600 })[3]).toBe('2m-10m')
+    expect(cells({ ...run, min_duration_s: null, max_duration_s: null })[3]).toBe('-')
     // both ends round to the same minute: one value, not "1m-1m"
-    expect(cells({ ...run, min_duration_s: 61, max_duration_s: 89 })[4]).toBe('1m')
+    expect(cells({ ...run, min_duration_s: 61, max_duration_s: 89 })[3]).toBe('1m')
     expect(cells({ ...run, countries: 0 })[2]).toBe('-')
   })
 

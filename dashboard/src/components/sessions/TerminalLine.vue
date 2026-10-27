@@ -1,4 +1,24 @@
+<script lang="ts">
+  // One ResizeObserver shared by every line: a long replay renders thousands of them.
+  const lineMeasures = new Map<Element, () => void>()
+  const lineRo =
+    typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver((entries) => {
+          for (const e of entries) lineMeasures.get(e.target)?.()
+        })
+  function observeLine(el: Element, measure: () => void): void {
+    lineMeasures.set(el, measure)
+    lineRo?.observe(el)
+  }
+  function unobserveLine(el: Element): void {
+    lineMeasures.delete(el)
+    lineRo?.unobserve(el)
+  }
+</script>
+
 <script setup lang="ts">
+  import { onBeforeUnmount, onMounted, ref, useTemplateRef } from 'vue'
   import type { TerminalLine } from './useTerminalTranscript'
   import { useHwTooltip } from '@/composables/useHwTooltip'
 
@@ -6,13 +26,28 @@
 
   const tt = useHwTooltip()
   const HOST = 'honeypot'
+
+  // Phone only (CSS clamps below 760px): long lines get a show-all toggle.
+  // The clamp is 6 lines; the toggle shows only while it actually truncates.
+  const body = useTemplateRef<HTMLElement>('body')
+  const open = ref(false)
+  const clipped = ref(false)
+  function measure(): void {
+    const el = body.value
+    if (el && !open.value) clipped.value = el.scrollHeight > el.clientHeight + 1
+  }
+  onMounted(() => {
+    measure()
+    if (body.value) observeLine(body.value, measure)
+  })
+  onBeforeUnmount(() => body.value && unobserveLine(body.value))
 </script>
 
 <template>
   <!-- Annotations (< ... >) mark honeywatch metadata, since cowrie doesn't record raw input. -->
   <div class="line" :class="`line-${line.kind}`">
     <span class="ts">{{ line.time }}</span>
-    <span class="line-body">
+    <span ref="body" class="line-body" :class="{ clamp: !open }" @focusin="open = true">
       <template v-if="line.kind === 'command'">
         <span class="prompt">{{ line.user }}@{{ HOST }}:~$ </span
         ><span class="input"
@@ -26,7 +61,7 @@
               @pointerleave="tt.hide()"
               @focus="tt.show('IP address hidden')"
               @blur="tt.hide()"
-            >{{ seg.text }}<span class="visually-hidden"> (IP address hidden)</span></span
+              >{{ seg.text }}<span class="visually-hidden"> (IP address hidden)</span></span
             ><template v-else>{{ seg.text }}</template></template
           ></span
         >
@@ -42,9 +77,7 @@
           @pointerleave="tt.hide()"
           @focus="tt.show('password the attacker supplied')"
           @blur="tt.hide()"
-        >{{
-          line.password
-        }}</span
+          >{{ line.password }}</span
         ><span v-else class="cred cred-empty"
           >(blank)<span class="visually-hidden"> (no password supplied)</span></span
         >{{ line.post }}<span aria-hidden="true"> &gt;</span></span
@@ -54,6 +87,15 @@
         }}<span aria-hidden="true"> &gt;</span></span
       >
     </span>
+    <button
+      v-if="clipped || open"
+      type="button"
+      class="more"
+      :aria-expanded="open"
+      @click="open = !open"
+    >
+      {{ open ? 'show less' : 'show all' }}
+    </button>
   </div>
 </template>
 
@@ -91,6 +133,38 @@
     min-width: 0;
     white-space: pre-wrap;
     overflow-wrap: anywhere;
+  }
+
+  .more {
+    display: none;
+  }
+
+  @media (max-width: 759px) {
+    .line {
+      display: grid;
+      grid-template-columns: 8ch minmax(0, 1fr);
+    }
+
+    .line-body.clamp {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 6;
+      line-clamp: 6;
+      overflow: hidden;
+    }
+
+    .more {
+      display: block;
+      grid-column: 2;
+      padding: 0;
+      background: none;
+      border: 0;
+      text-align: left;
+      color: var(--accent);
+      font: inherit;
+      line-height: 1.5;
+      cursor: pointer;
+    }
   }
 
   .prompt {

@@ -56,7 +56,8 @@
     cursor: pointer;
   }
 
-  /* neighbours overlap by 4px of hit area; later button wins. */
+  /* Touch hit area 46 tall, 40 wide; neighbours overlap by 2px of the 6px gap (later button wins).
+     The outer ends reach 10px outward. */
   @media (pointer: coarse) {
     .zoombtns button {
       position: relative;
@@ -64,7 +65,13 @@
     .zoombtns button::after {
       content: '';
       position: absolute;
-      inset: -6px;
+      inset: -7px -4px;
+    }
+    .zoombtns button:first-child::after {
+      left: -10px;
+    }
+    .zoombtns button:last-child::after {
+      right: -10px;
     }
   }
 

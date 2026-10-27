@@ -258,8 +258,15 @@
   }
 }
 
-/* 4K: scale the whole UI (applied as zoom on .shell). */
-@media (min-width: 2560px) {
+/* Large screens: scale the whole UI (applied as zoom on .shell) so 1440p and 4K read like
+   ~2048 and ~2560 CSS px layouts, not a 1080p page stretched. */
+@media (min-width: 2400px) {
+  :root {
+    --ui-zoom: 1.25;
+  }
+}
+
+@media (min-width: 2880px) {
   :root {
     --ui-zoom: 1.5;
   }

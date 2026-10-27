@@ -144,7 +144,15 @@
     showTip(e, '7-day trend', [
       ['This week', fmtNumber(t?.current ?? 0)],
       ['Prior week', fmtNumber(t?.previous ?? 0)],
-      ['Change', t ? fmtDelta({ delta: t.delta, pct_change: t.pct_change }) : 'no data', tone],
+      [
+        'Change',
+        t?.current === 0
+          ? 'no sessions this week'
+          : t
+            ? fmtDelta({ delta: t.delta, pct_change: t.pct_change })
+            : 'no data',
+        tone,
+      ],
     ])
   }
 
@@ -268,12 +276,19 @@
               :class="`trend-${trendTone}`"
               role="group"
               tabindex="0"
-              :aria-label="`${fmtCompact(trend?.current)} sessions this week, ${trendLabel} vs prior week`"
+              :aria-label="
+                trend?.current === 0
+                  ? 'No sessions this week'
+                  : `${fmtCompact(trend?.current)} sessions this week, ${trendLabel} vs prior week`
+              "
               v-on="tipEvents(showTrendTooltip)"
             >
-              <span class="trend-count">{{ fmtCompact(trend?.current) }}</span>
-              <span class="trend-dot" aria-hidden="true">&middot;</span>
-              <span class="trend-pct">{{ trendPct }}</span>
+              <span v-if="trend?.current === 0" class="trend-none">no sessions this week</span>
+              <template v-else>
+                <span class="trend-count">{{ fmtCompact(trend?.current) }}</span>
+                <span class="trend-dot" aria-hidden="true">&middot;</span>
+                <span class="trend-pct">{{ trendPct }}</span>
+              </template>
             </span>
           </template>
         </StatTile>
@@ -377,6 +392,10 @@
 
   .trend-up .trend-pct {
     color: var(--ok);
+  }
+  .trend-none {
+    white-space: nowrap;
+    color: var(--text-muted);
   }
   .trend-down .trend-pct {
     color: var(--bad);
@@ -518,8 +537,9 @@
       outline-offset: -2px;
     }
     .kpis :deep(.stat-tile) {
+      /* Shared minimum width so captions fit; tiles with longer numbers grow past it. */
       flex: none;
-      min-width: 148px;
+      min-width: 152px;
       scroll-snap-align: center;
       box-shadow: none;
     }
