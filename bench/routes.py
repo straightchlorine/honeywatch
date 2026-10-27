@@ -15,6 +15,9 @@ from urllib.parse import quote
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
+# Windows relative to now: the same data answers differently as the clock moves, so
+# only the shape of the response is fingerprinted.
+TIME_RELATIVE = ("/api/v1/stats/activity", "/api/v1/stats/trend")
 # Docs, the spec and static assets are not part of the API surface.
 NOT_API = re.compile(r"^/api/v1/(static|swagger|redoc|openapi)")
 
@@ -104,6 +107,20 @@ def cases(values: dict[str, str | None]) -> list[str]:
         if all(values.get(n) for n in names):
             paths.append(template.format(**values))
     return paths
+
+
+def label(path: str) -> str:
+    """The request as the CSV names it: the snapshot time differs on every run."""
+    return re.sub(r"as_of=[^&]*", "as_of=SNAPSHOT", path)
+
+
+def shape(doc: object) -> object:
+    """The structure of a response with every value replaced by its type."""
+    if isinstance(doc, dict):
+        return {k: shape(v) for k, v in doc.items()}
+    if isinstance(doc, list):
+        return [len(doc), shape(doc[0]) if doc else None]
+    return type(doc).__name__
 
 
 def run_members(client: Any) -> str | None:

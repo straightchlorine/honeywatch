@@ -426,10 +426,12 @@ def measure_routes(
             r = client.get(path)
             body = r.get_data()
             doc = strip_as_of(r.get_json(silent=True)) or body.decode(errors="replace")
+            if path.startswith(routes.TIME_RELATIVE):
+                doc = routes.shape(doc)
             return doc, {"bytes": len(body), "status": r.status_code}
 
         for i in range(repeat):
-            rec.measure("route", "GET", path, i, call)
+            rec.measure("route", "GET", routes.label(path), i, call)
 
 
 def main() -> None:
