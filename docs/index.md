@@ -13,9 +13,15 @@ description: "Run your own SSH honeypot. Cowrie records the attacks, an ingestor
 
 [Live dashboard](https://honey.piotrkrzysztof.dev)
 
-[![CI](https://img.shields.io/github/actions/workflow/status/straightchlorine/honeywatch/ci.yml?branch=master&label=CI)](https://github.com/straightchlorine/honeywatch/actions/workflows/ci.yml)
+[![API readiness](https://status.codextechnologies.org/api/v1/endpoints/external_honeywatch-api-readiness/health/badge.svg)](https://status.codextechnologies.org/endpoints/external_honeywatch-api-readiness)
 [![Release](https://img.shields.io/github/v/release/straightchlorine/honeywatch)](https://github.com/straightchlorine/honeywatch/releases)
+[![CI](https://img.shields.io/github/actions/workflow/status/straightchlorine/honeywatch/ci.yml?branch=master&label=CI)](https://github.com/straightchlorine/honeywatch/actions/workflows/ci.yml)
+<br>
 [![ghcr.io](https://img.shields.io/badge/ghcr.io-api%20%7C%20ingestor%20%7C%20dashboard-blue?logo=github)](https://github.com/straightchlorine?tab=packages&repo_name=honeywatch)
+<br>
+[![api pulls](https://img.shields.io/docker/pulls/straightchlorine/honeywatch-api?label=api%20pulls&logo=docker)](https://hub.docker.com/r/straightchlorine/honeywatch-api)
+[![ingestor pulls](https://img.shields.io/docker/pulls/straightchlorine/honeywatch-ingestor?label=ingestor%20pulls&logo=docker)](https://hub.docker.com/r/straightchlorine/honeywatch-ingestor)
+[![dashboard pulls](https://img.shields.io/docker/pulls/straightchlorine/honeywatch-dashboard?label=dashboard%20pulls&logo=docker)](https://hub.docker.com/r/straightchlorine/honeywatch-dashboard)
 
 </div>
 
