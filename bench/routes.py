@@ -73,6 +73,22 @@ TEMPLATES = """
 """.split()
 
 
+# What the dashboard sends when a visitor opens Sessions (default sort interest, 40
+# rows, folded) and then changes the sort. Each sort has its own layout, so every
+# first visit of a sort is a cold layout build.
+_LIST = "/api/v1/sessions/?page=1&per_page=40&fold=true&sort="
+JOURNEY = [
+    ("open interest", _LIST + "interest"),
+    ("open outcomes", "/api/v1/stats/outcomes"),
+    ("open countries", "/api/v1/stats/top-countries?top_n=100"),
+    ("sort recent", _LIST + "recent"),
+    ("sort duration", _LIST + "duration"),
+    ("sort active", _LIST + "active"),
+    ("sort country", _LIST + "country"),
+    ("back to interest", _LIST + "interest"),
+]
+
+
 def lookups(db: Session) -> dict[str, str | None]:
     """Data-dependent request values; None when the table has no row for one."""
 

@@ -12,6 +12,9 @@ Scenarios:
   route   every GET route of the API through the Flask test client, in process
           (routes.py lists the requests): wall time, the request's own CPU, the
           database's CPU, payload bytes and HTTP status. Works on any release.
+  journey a visitor opens Sessions and cycles the sort (routes.JOURNEY), with the
+          layout cache cleared per visit, so each sort's first request is cold. The
+          time per step is what the visitor waits. Needs v0.8.3 or later.
   layout  N builds of the layout pass through the path prod uses (serial plan, one
           slot). Build 0 is a warm-up; summarize.py drops it.
   page    one layout build, then timed get_sessions_folded() calls on a warm cache:
@@ -45,7 +48,7 @@ import subprocess
 import sys
 import time
 from collections.abc import Callable
-from typing import IO
+from typing import IO, Any
 
 from sqlalchemy import create_engine, text
 from sqlalchemy.orm import Session, sessionmaker
@@ -404,6 +407,28 @@ def strip_as_of(doc: object) -> object:
     return doc
 
 
+def fetch(client: Any, path: str) -> tuple[object, dict[str, object]]:
+    """One request: what to fingerprint, and the payload bytes and HTTP status."""
+    r = client.get(path)
+    body = r.get_data()
+    doc = strip_as_of(r.get_json(silent=True)) or body.decode(errors="replace")
+    if path.startswith(routes.TIME_RELATIVE):
+        doc = routes.shape(doc)
+    return doc, {"bytes": len(body), "status": r.status_code}
+
+
+def measure_journey(rec: Recorder, repeat: int) -> None:
+    from src.app import create_app
+
+    client = create_app().test_client()
+    for i in range(repeat):
+        cache.clear_layout_cache()  # a new visitor: every sort starts cold
+        for step, (name, path) in enumerate(routes.JOURNEY, 1):
+            rec.measure(
+                "journey", "-", f"{step} {name}", i, lambda p=path: fetch(client, p)
+            )
+
+
 def measure_routes(
     rec: Recorder, factory: sessionmaker[Session], repeat: int, only: list[str]
 ) -> None:
@@ -423,12 +448,7 @@ def measure_routes(
         client.get(path)  # warm-up: fills the layout cache and the page cache
 
         def call(path: str = path) -> tuple[object, dict[str, object]]:
-            r = client.get(path)
-            body = r.get_data()
-            doc = strip_as_of(r.get_json(silent=True)) or body.decode(errors="replace")
-            if path.startswith(routes.TIME_RELATIVE):
-                doc = routes.shape(doc)
-            return doc, {"bytes": len(body), "status": r.status_code}
+            return fetch(client, path)
 
         for i in range(repeat):
             rec.measure("route", "GET", routes.label(path), i, call)
@@ -443,7 +463,7 @@ def main() -> None:
     add("--repo", required=True, type=path, help="tree under test (a worktree)")
     add("--csv", type=path, default=DEFAULT_CSV, help="results CSV to append to")
     add("--variant", required=True, help="what is tested; the first run is 'baseline'")
-    add("--scenario", choices=["route", "layout", "page"], required=True)
+    add("--scenario", choices=["route", "journey", "layout", "page"], required=True)
     add("--sort", nargs="+", default=["recent"], choices=SORTS)
     add(
         "--only",
@@ -457,7 +477,7 @@ def main() -> None:
         default=6,
         help="layout: builds per sort, first is warm-up",
     )
-    add("--repeat", type=int, default=5, help="route, page: calls per request")
+    add("--repeat", type=int, default=5, help="route, journey, page: repeats")
     add(
         "--cold",
         action="store_true",
@@ -501,7 +521,9 @@ def main() -> None:
     try:
         if args.scenario == "route":
             measure_routes(rec, factory, args.repeat, args.only)
-        for sort in args.sort if args.scenario != "route" else []:
+        elif args.scenario == "journey":
+            measure_journey(rec, args.repeat)
+        for sort in args.sort if args.scenario in ("layout", "page") else []:
             if args.scenario == "layout":
                 measure_layout(rec, factory, sort, args.builds)
             else:
