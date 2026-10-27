@@ -6,12 +6,15 @@
   import { ICONS } from '@/components/icons'
   import { benignContent, vtUrl } from '@/utils/knownDigests'
   import StoryChip from './StoryChip.vue'
+  import { useHwTooltip } from '@/composables/useHwTooltip'
 
   const { downloads, label, title } = defineProps<{
     downloads: readonly DownloadResponse[]
     label: string
     title: string
   }>()
+
+  const tt = useHwTooltip()
 
   const kept = computed(() => {
     const counts = new Map<string, number>()
@@ -36,7 +39,8 @@
     const t = trigger.value
     const l = list.value
     if (!t || !l) return
-    const z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-zoom')) || 1
+    const z =
+      parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--ui-zoom')) || 1
     const r = t.getBoundingClientRect()
     const w = l.offsetWidth * z
     const h = l.offsetHeight * z
@@ -89,8 +93,12 @@
     v-if="direct"
     :to="to(direct.sha)"
     class="dl-chip"
-    :title="`${title} - open in Payloads`"
     :aria-label="`${title}, open in Payloads`"
+    @pointerenter="tt.showAt($event.currentTarget as Element, `${title} - open in Payloads`)"
+    @pointerleave="tt.hide()"
+    @focus="tt.showAt($event.currentTarget as Element, `${title} - open in Payloads`)"
+    @blur="tt.hide()"
+    @keydown.esc="tt.hide(true)"
   >
     <StoryChip icon="file">{{ label }}</StoryChip>
   </RouterLink>
@@ -102,9 +110,12 @@
       class="dl-chip"
       aria-haspopup="true"
       :aria-expanded="open"
-      :title="open ? undefined : title"
       :aria-label="`${title}, show files`"
-      @click="toggle"
+      @pointerenter="!open && tt.showAt($event.currentTarget as Element, title)"
+      @pointerleave="tt.hide()"
+      @focus="!open && tt.showAt($event.currentTarget as Element, title)"
+      @blur="tt.hide()"
+      @click="(tt.hide(true), toggle())"
     >
       <StoryChip icon="file">
         {{ label }}

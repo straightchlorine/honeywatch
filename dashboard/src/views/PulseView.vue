@@ -20,9 +20,17 @@
   import HexHeatmap from '@/components/charts/HexHeatmap.vue'
   import DailyColumns from '@/components/charts/DailyColumns.vue'
   import { buildHeatmapGrid } from '@/utils/heatmapGrid'
-  import { busiestHour, busiestWeekday, peakDay } from '@/utils/activityKpis'
+  import {
+    busiestHour,
+    busiestWeekday,
+    peakDay,
+    hourlyTotals,
+    weekdayTotals,
+    peakIndex,
+    peakAndTypical,
+  } from '@/utils/activityKpis'
   import { pulseReadings, quietReading } from '@/utils/pulseReadings'
-  import { fmtNumber, fmtDelta, fmtDeltaParts } from '@/utils/format'
+  import { fmtCompact, fmtNumber, fmtDelta, fmtDeltaParts } from '@/utils/format'
   import { useCountryFilter } from '@/composables/useCountryFilter'
   import { useCountryOptions } from '@/composables/useCountryOptions'
 
@@ -70,6 +78,7 @@
   const heatmapPoints = computed(() => heatmapQ.data.value ?? [])
   const days = computed(() => dayQ.data.value ?? [])
   const trend = computed(() => trendQ.data.value)
+  const quietWeek = computed(() => trend.value?.current === 0)
 
   // KPIs and readings derive from heatmapPoints/days alone, so they cannot
   // contradict each other. The trend tile is the one exception (trendQ).
@@ -77,6 +86,48 @@
   const bHour = computed(() => busiestHour(heatmapPoints.value))
   const bDay = computed(() => busiestWeekday(heatmapPoints.value))
   const pDay = computed(() => peakDay(days.value))
+
+  type MiniBar = { h: string; tone: 'dim' | 'mid' | 'hi' }
+
+  /** Bars scaled to the series maximum; the tone of each comes from its index. */
+  function miniBars(values: number[], tone: (i: number) => MiniBar['tone']): MiniBar[] {
+    const max = Math.max(...values, 0)
+    return values.map((v, i) => ({
+      h: `${max > 0 ? Math.max(8, Math.round((v / max) * 100)) : 8}%`,
+      tone: tone(i),
+    }))
+  }
+
+  /** Every bar dim except the series peak. */
+  function peakTone(values: number[]): (i: number) => MiniBar['tone'] {
+    const hi = peakIndex(values)
+    return (i) => (i === hi ? 'hi' : 'dim')
+  }
+
+  const dayCounts = computed(() => days.value.map((b) => b.count))
+  const trendBars = computed(() => {
+    const last = dayCounts.value.slice(-14)
+    const split = last.length - 7
+    return miniBars(last, (i) => (i >= split ? 'mid' : 'dim'))
+  })
+  const hourBars = computed(() => {
+    const v = hourlyTotals(heatmapPoints.value)
+    return miniBars(v, peakTone(v))
+  })
+  const weekdayBars = computed(() => {
+    const v = weekdayTotals(heatmapPoints.value)
+    return miniBars(v, peakTone(v))
+  })
+  // Peak against the median day, so the tile says how big the spike was without repeating the daily chart.
+  const peakVsTypical = computed(() => {
+    const { peak, typical } = peakAndTypical(dayCounts.value)
+    const w = (n: number) => `${peak > 0 ? Math.max(2, Math.round((n / peak) * 100)) : 0}%`
+    return [
+      { label: 'peak', w: w(peak), value: fmtCompact(peak), hi: true },
+      { label: 'typical', w: w(typical), value: fmtCompact(typical), hi: false },
+    ]
+  })
+
   const readings = computed(() => {
     const base = pulseReadings(heatmapGrid.value)
     const quiet = base.length ? quietReading(heatmapGrid.value) : null
@@ -120,6 +171,7 @@
   // is not linked to its button, so assistive tech would never reach those facts.
   // Each button renders only when its count is above zero, so the totals are above zero too.
   function trendAriaLabel(): string {
+    if (quietWeek.value) return '7-day trend: no sessions this week'
     const { abs, pct } = trendParts.value
     const shown = pct ? `${abs} \u00b7 ${pct}` : abs
     return `7-day trend: ${shown} vs prior week`
@@ -157,25 +209,23 @@
   }
 
   function showTrendTooltip(e: TipEvent): void {
-    presentTip(
-      e,
-      '7-day trend',
+    presentTip(e, '7-day trend', [
+      ['This week', fmtNumber(trend.value?.current ?? 0)],
+      ['Prior week', fmtNumber(trend.value?.previous ?? 0)],
       [
-        ['This week', fmtNumber(trend.value?.current ?? 0)],
-        ['Prior week', fmtNumber(trend.value?.previous ?? 0)],
-        [
-          'Change',
-          trend.value
+        'Change',
+        quietWeek.value
+          ? 'no sessions this week'
+          : trend.value
             ? fmtDelta({ delta: trend.value.delta, pct_change: trend.value.pct_change })
             : 'n/a',
-          trend.value && trend.value.delta > 0
-            ? 'pos'
-            : trend.value && trend.value.delta < 0
-              ? 'neg'
-              : undefined,
-        ],
+        trend.value && trend.value.delta > 0
+          ? 'pos'
+          : trend.value && trend.value.delta < 0
+            ? 'neg'
+            : undefined,
       ],
-    )
+    ])
   }
 
   function showBusiestHourTooltip(e: TipEvent): void {
@@ -230,107 +280,150 @@
       </div>
 
       <div class="grid-main">
-        <HwCard
-          title="Session rhythm"
-          note="hour &times; weekday, UTC"
-          class="comb-card"
-        >
+        <HwCard title="Session rhythm" note="hour &times; weekday, UTC" class="comb-card">
           <HexHeatmap class="comb-chart" :points="heatmapPoints" />
         </HwCard>
 
         <div class="bottom-row">
           <div class="kpi-grid">
-            <StatTile label="7-day trend" :value="fmtNumber(trend?.current ?? 0)">
-              <template #label-extra>
-                <InfoDot
-                  title="7-day trend"
-                  text="Sessions in the last 7 days compared with the 7 days before: the change in sessions, then as a percentage."
+            <div class="kpi-cell">
+              <StatTile label="7-day trend" :value="fmtNumber(trend?.current ?? 0)">
+                <template #label-extra>
+                  <InfoDot
+                    title="7-day trend"
+                    text="Sessions in the last 7 days compared with the 7 days before: the change in sessions, then as a percentage."
+                  />
+                </template>
+                <template #meta>
+                  <button
+                    type="button"
+                    class="kpi-meta-button"
+                    :class="`trend-${trendTone}`"
+                    :aria-label="trendAriaLabel()"
+                    @pointerenter="showTrendTooltip($event)"
+                    @pointermove="tt.move($event)"
+                    @pointerleave="tt.hide()"
+                    @focus="showTrendTooltip($event)"
+                    @blur="tt.hide()"
+                  >
+                    <template v-if="quietWeek">no sessions this week</template>
+                    <template v-else>
+                      {{ trendParts.abs }}
+                      <span v-if="trendParts.pct">&middot; </span>
+                      <span class="trend-pct">{{ trendParts.pct }}</span>
+                    </template>
+                  </button>
+                </template>
+              </StatTile>
+              <div class="mini-bars" aria-hidden="true" :style="{ '--n': trendBars.length }">
+                <span
+                  v-for="(b, i) in trendBars"
+                  :key="i"
+                  class="mini-bar"
+                  :class="b.tone"
+                  :style="{ height: b.h }"
                 />
-              </template>
-              <template #meta>
-                <button
-                  type="button"
-                  class="kpi-meta-button"
-                  :class="`trend-${trendTone}`"
-                  :aria-label="trendAriaLabel()"
-                  @pointerenter="showTrendTooltip($event)"
-                  @pointermove="tt.move($event)"
-                  @pointerleave="tt.hide()"
-                  @focus="showTrendTooltip($event)"
-                  @blur="tt.hide()"
-                >
-                  {{ trendParts.abs }}
-                  <span v-if="trendParts.pct">&middot; </span>
-                  <span class="trend-pct">{{ trendParts.pct }}</span>
-                </button>
-              </template>
-            </StatTile>
-            <StatTile label="Busiest hour" :value="bHour.value">
-              <template #label-extra>
-                <InfoDot
-                  title="Busiest hour"
-                  text="The hour of day (UTC) with the most sessions, over all time."
+              </div>
+            </div>
+            <div class="kpi-cell">
+              <StatTile label="Busiest hour" :value="bHour.value">
+                <template #label-extra>
+                  <InfoDot
+                    title="Busiest hour"
+                    text="The hour of day (UTC) with the most sessions, over all time."
+                  />
+                </template>
+                <template v-if="sessionsDelta(bHour.count)" #meta>
+                  <button
+                    type="button"
+                    class="kpi-meta-button"
+                    :aria-label="busiestHourAriaLabel()"
+                    @pointerenter="showBusiestHourTooltip($event)"
+                    @pointermove="tt.move($event)"
+                    @pointerleave="tt.hide()"
+                    @focus="showBusiestHourTooltip($event)"
+                    @blur="tt.hide()"
+                  >
+                    {{ sessionsDelta(bHour.count) }}
+                  </button>
+                </template>
+              </StatTile>
+              <div class="mini-bars" aria-hidden="true" :style="{ '--n': hourBars.length }">
+                <span
+                  v-for="(b, i) in hourBars"
+                  :key="i"
+                  class="mini-bar"
+                  :class="b.tone"
+                  :style="{ height: b.h }"
                 />
-              </template>
-              <template v-if="sessionsDelta(bHour.count)" #meta>
-                <button
-                  type="button"
-                  class="kpi-meta-button"
-                  :aria-label="busiestHourAriaLabel()"
-                  @pointerenter="showBusiestHourTooltip($event)"
-                  @pointermove="tt.move($event)"
-                  @pointerleave="tt.hide()"
-                  @focus="showBusiestHourTooltip($event)"
-                  @blur="tt.hide()"
-                >
-                  {{ sessionsDelta(bHour.count) }}
-                </button>
-              </template>
-            </StatTile>
-            <StatTile label="Top weekday" :value="bDay.value">
-              <template #label-extra>
-                <InfoDot
-                  title="Top weekday"
-                  text="The weekday with the most sessions on average, over all time."
+              </div>
+            </div>
+            <div class="kpi-cell">
+              <StatTile label="Top weekday" :value="bDay.value">
+                <template #label-extra>
+                  <InfoDot
+                    title="Top weekday"
+                    text="The weekday with the most sessions on average, over all time."
+                  />
+                </template>
+                <template v-if="sessionsDelta(bDay.count)" #meta>
+                  <button
+                    type="button"
+                    class="kpi-meta-button"
+                    :aria-label="topWeekdayAriaLabel()"
+                    @pointerenter="showBusiestDayTooltip($event)"
+                    @pointermove="tt.move($event)"
+                    @pointerleave="tt.hide()"
+                    @focus="showBusiestDayTooltip($event)"
+                    @blur="tt.hide()"
+                  >
+                    {{ sessionsDelta(bDay.count) }}
+                  </button>
+                </template>
+              </StatTile>
+              <div class="mini-bars" aria-hidden="true" :style="{ '--n': weekdayBars.length }">
+                <span
+                  v-for="(b, i) in weekdayBars"
+                  :key="i"
+                  class="mini-bar"
+                  :class="b.tone"
+                  :style="{ height: b.h }"
                 />
-              </template>
-              <template v-if="sessionsDelta(bDay.count)" #meta>
-                <button
-                  type="button"
-                  class="kpi-meta-button"
-                  :aria-label="topWeekdayAriaLabel()"
-                  @pointerenter="showBusiestDayTooltip($event)"
-                  @pointermove="tt.move($event)"
-                  @pointerleave="tt.hide()"
-                  @focus="showBusiestDayTooltip($event)"
-                  @blur="tt.hide()"
-                >
-                  {{ sessionsDelta(bDay.count) }}
-                </button>
-              </template>
-            </StatTile>
-            <StatTile label="Peak date" :value="pDay.value">
-              <template #label-extra>
-                <InfoDot
-                  title="Peak date"
-                  text="The date with the most sessions in the last 30 days."
-                />
-              </template>
-              <template v-if="sessionsDelta(pDay.count)" #meta>
-                <button
-                  type="button"
-                  class="kpi-meta-button"
-                  :aria-label="peakDateAriaLabel()"
-                  @pointerenter="showPeakDayTooltip($event)"
-                  @pointermove="tt.move($event)"
-                  @pointerleave="tt.hide()"
-                  @focus="showPeakDayTooltip($event)"
-                  @blur="tt.hide()"
-                >
-                  {{ sessionsDelta(pDay.count) }}
-                </button>
-              </template>
-            </StatTile>
+              </div>
+            </div>
+            <div class="kpi-cell">
+              <StatTile label="Peak date" :value="pDay.value">
+                <template #label-extra>
+                  <InfoDot
+                    title="Peak date"
+                    text="The date with the most sessions in the last 30 days."
+                  />
+                </template>
+                <template v-if="sessionsDelta(pDay.count)" #meta>
+                  <button
+                    type="button"
+                    class="kpi-meta-button"
+                    :aria-label="peakDateAriaLabel()"
+                    @pointerenter="showPeakDayTooltip($event)"
+                    @pointermove="tt.move($event)"
+                    @pointerleave="tt.hide()"
+                    @focus="showPeakDayTooltip($event)"
+                    @blur="tt.hide()"
+                  >
+                    {{ sessionsDelta(pDay.count) }}
+                  </button>
+                </template>
+              </StatTile>
+              <div class="mini-bars mini-compare" aria-hidden="true">
+                <div v-for="r in peakVsTypical" :key="r.label" class="cmp-row">
+                  <span class="cmp-label">{{ r.label }}</span>
+                  <span class="cmp-track"
+                    ><span class="mini-bar" :class="r.hi ? 'hi' : 'mid'" :style="{ width: r.w }"
+                  /></span>
+                  <span class="cmp-value">{{ r.value }}</span>
+                </div>
+              </div>
+            </div>
           </div>
 
           <HwCard
@@ -444,10 +537,89 @@
     min-height: 0;
   }
 
+  .kpi-cell {
+    /* Grows with the viewport so the strip keeps its share of the tile at 4K. */
+    --mini-h: clamp(26px, 2.4dvh, 56px);
+    position: relative;
+    display: flex;
+    min-height: 0;
+  }
+
+  .kpi-cell > :deep(.stat-tile) {
+    flex: 1;
+    min-width: 0;
+  }
+
   .kpi-grid :deep(.stat-tile) {
     align-items: center;
     justify-content: center;
     text-align: center;
+    /* Reserves the strip the mini chart sits in, so the figure centres in the space above it. */
+    padding-bottom: calc(var(--mini-h) + 20px);
+  }
+
+  /* Quiet context under the figure: dim amber bars, one accent highlight. Desktop only. */
+  .mini-bars {
+    position: absolute;
+    inset: auto 16px 12px;
+    height: var(--mini-h);
+    display: flex;
+    align-items: flex-end;
+    justify-content: space-around;
+    border-bottom: 1px solid var(--border-strong);
+    pointer-events: none;
+  }
+
+  /* Daily sessions geometry: a bar takes 64% of its slot, at most 24px. Rounded to whole
+     screen pixels (1px / the shell's UI zoom) so every bar in a strip renders the same width;
+     fractional widths snap to n or n+1. */
+  .mini-bar {
+    flex: 0 0 round(down, calc(64% / var(--n, 1)), calc(1px / var(--ui-zoom, 1)));
+    max-width: 24px;
+    border-radius: 3px 3px 0 0;
+    background: var(--accent-dim);
+  }
+  .mini-bar.dim {
+    opacity: 0.38;
+  }
+  .mini-bar.mid {
+    opacity: 0.85;
+  }
+  .mini-bar.hi {
+    background: var(--accent);
+    opacity: 1;
+  }
+
+  .mini-compare {
+    flex-direction: column;
+    justify-content: center;
+    align-items: stretch;
+    gap: 4px;
+    border-bottom: 0;
+  }
+
+  .cmp-row {
+    display: grid;
+    grid-template-columns: 7ch 1fr 5ch;
+    align-items: center;
+    gap: 6px;
+    font: 500 10px/1 var(--font-mono);
+    color: var(--text-dim);
+  }
+
+  .cmp-track {
+    display: flex;
+    height: 6px;
+  }
+
+  .cmp-track .mini-bar {
+    flex: none;
+    max-width: none;
+    border-radius: 3px;
+  }
+
+  .cmp-value {
+    text-align: right;
   }
 
   .kpi-grid :deep(.meta) {
@@ -462,6 +634,7 @@
     padding: 0;
     color: var(--text-muted);
     font: inherit;
+    white-space: nowrap;
   }
   .kpi-meta-button.trend-up .trend-pct {
     color: var(--ok);
@@ -535,6 +708,14 @@
 
     .kpi-grid {
       grid-template-columns: 1fr 1fr;
+    }
+
+    .mini-bars {
+      display: none;
+    }
+
+    .kpi-grid :deep(.stat-tile) {
+      padding-bottom: 12px;
     }
 
     /* The card had a min-height but nothing stretched the chart into it, so the

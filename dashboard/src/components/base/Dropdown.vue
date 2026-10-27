@@ -211,11 +211,12 @@
     background: transparent;
     color: var(--text-muted);
     border: 1px solid var(--border-strong);
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     padding: 6px 12px;
     font: 550 12.5px var(--font-sans);
     cursor: pointer;
     text-align: left;
+    box-sizing: border-box;
     transition: all var(--motion-fast);
   }
 

@@ -71,7 +71,8 @@ describe('SessionListRow', () => {
       '2 commands typed',
       '1 file downloaded',
     ])
-    expect(chips.every((c) => c.attributes('role') === 'img' && c.attributes('title'))).toBe(true)
+    // No native title bubble: the words show in the honeywatch tooltip (StoryChip's title prop).
+    expect(chips.every((c) => c.attributes('role') === 'img' && !c.attributes('title'))).toBe(true)
 
     const quiet = mountRow({ row: { ...base, n_commands: 0, n_downloads: 0, category: 'login' } })
     expect(quiet.get('.chip').attributes('aria-label')).toBe('Got control, ran nothing')

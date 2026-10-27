@@ -20,6 +20,7 @@
     maxInterest,
     tabbable = true,
     nested = false,
+    wide = false,
   } = defineProps<{
     row: SessionSummaryResponse
     expanded: boolean
@@ -27,6 +28,8 @@
     tabbable?: boolean
     // Child of an open run: the group row shows the hex once, so children drop it.
     nested?: boolean
+    // Show the Network column (>= 1440px); keeps the expansion colspan in step.
+    wide?: boolean
   }>()
   const emit = defineEmits<{ toggle: [] }>()
 
@@ -150,13 +153,13 @@
         </template>
       </div>
     </td>
-    <td class="spacer" aria-hidden="true"></td>
+    <td v-if="wide" class="net" :title="row.asn_org ?? undefined">{{ row.asn_org ?? '-' }}</td>
     <td class="r num duration">{{ duration }}</td>
     <td class="r dim small started" :title="startedUtc">{{ started }}</td>
   </tr>
   <!-- eslint-enable vuejs-accessibility/click-events-have-key-events -->
   <tr class="expand" :class="{ nested }" :hidden="!expanded">
-    <td colspan="6">
+    <td :colspan="wide ? 6 : 5">
       <SessionExpansion v-if="expanded" :session-id="row.id" />
     </td>
   </tr>
@@ -345,6 +348,15 @@
     }
   }
 
+  .net {
+    padding: 3px 10px !important;
+    color: var(--text-dim);
+    font-size: 12px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
   .origin .dot {
     flex: 0 0 auto;
     color: color-mix(in srgb, var(--text-dim) 55%, transparent);
@@ -377,10 +389,6 @@
   .started {
     padding: 3px 14px 3px 10px !important;
     text-align: right;
-  }
-
-  .spacer {
-    padding: 3px 0 !important;
   }
 
   .expand > td {

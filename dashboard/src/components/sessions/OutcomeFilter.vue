@@ -208,7 +208,7 @@
     box-sizing: border-box;
     background: transparent;
     border: 1px solid var(--border-strong);
-    border-radius: 999px;
+    border-radius: var(--radius-md);
     color: var(--text-muted);
     font: 550 12.5px var(--font-sans);
     padding: 6px 14px;

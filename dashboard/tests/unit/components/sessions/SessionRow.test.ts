@@ -123,8 +123,8 @@ describe('SessionRow roving tabindex', () => {
     expect(w.emitted('toggle')).toBeUndefined()
   })
 
-  it('hides the empty spacer cell from assistive tech along with its header', () => {
-    expect(mountRow().get('td.spacer').attributes('aria-hidden')).toBe('true')
+  it('has no empty spacer cell: one cell per header column', () => {
+    expect(mountRow().get('tr').findAll('td')).toHaveLength(5)
   })
 })
 
@@ -165,5 +165,18 @@ describe('SessionRow chips', () => {
     expect(chip.attributes('role')).toBe('img')
     expect(chip.attributes('aria-label')).toBe('Logged in but never got a command prompt')
     expect(chip.find('svg.glyph').exists()).toBe(true)
+  })
+})
+
+describe('SessionRow network column', () => {
+  const props = { row: baseRow, expanded: false, maxInterest: 56 }
+  it('is absent by default and shown with wide, keeping the colspan in step', () => {
+    const narrow = mount(SessionRow, { props })
+    expect(narrow.find('td.net').exists()).toBe(false)
+    expect(narrow.find('tr.expand td').attributes('colspan')).toBe('5')
+    const wide = mount(SessionRow, { props: { ...props, wide: true } })
+    expect(wide.find('td.net').text()).toBe('OVH SAS')
+    expect(wide.find('td.net').attributes('title')).toBe('OVH SAS')
+    expect(wide.find('tr.expand td').attributes('colspan')).toBe('6')
   })
 })

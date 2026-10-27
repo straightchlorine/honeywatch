@@ -23,26 +23,42 @@ function argmax(arr: number[]): { idx: number; count: number } {
   return { idx, count }
 }
 
-/** Hour-of-day (UTC) with the most sessions summed across every weekday. */
-export function busiestHour(points: HeatmapPointResponse[]): Kpi {
+/** Index of the first maximum, or -1 when nothing is above zero (nothing to highlight). */
+export function peakIndex(values: number[]): number {
+  const { idx, count } = argmax(values)
+  return count > 0 ? idx : -1
+}
+
+/** Sessions per hour of day (UTC), summed across every weekday. Always 24 entries. */
+export function hourlyTotals(points: HeatmapPointResponse[]): number[] {
   const byHour = new Array<number>(24).fill(0)
   for (const p of points) {
     if (p.hour < 0 || p.hour > 23) continue
     byHour[p.hour]! += p.count
   }
-  const { idx, count } = argmax(byHour)
+  return byHour
+}
+
+/** Sessions per weekday (0=Sun), summed across every hour. Always 7 entries. */
+export function weekdayTotals(points: HeatmapPointResponse[]): number[] {
+  const byDay = new Array<number>(7).fill(0)
+  for (const p of points) {
+    if (p.weekday < 0 || p.weekday > 6) continue
+    byDay[p.weekday]! += p.count
+  }
+  return byDay
+}
+
+/** Hour-of-day (UTC) with the most sessions summed across every weekday. */
+export function busiestHour(points: HeatmapPointResponse[]): Kpi {
+  const { idx, count } = argmax(hourlyTotals(points))
   if (count <= 0) return { value: EMPTY, count: 0 }
   return { value: `${String(idx).padStart(2, '0')}:00`, count }
 }
 
 /** Weekday (0=Sun) with the most sessions summed across every hour. */
 export function busiestWeekday(points: HeatmapPointResponse[]): Kpi {
-  const byDay = new Array<number>(7).fill(0)
-  for (const p of points) {
-    if (p.weekday < 0 || p.weekday > 6) continue
-    byDay[p.weekday]! += p.count
-  }
-  const { idx, count } = argmax(byDay)
+  const { idx, count } = argmax(weekdayTotals(points))
   if (count <= 0) return { value: EMPTY, count: 0 }
   return { value: WEEKDAY_LABELS[idx]!, count }
 }
@@ -61,4 +77,10 @@ function fmtShortDate(iso: string): string {
   const d = new Date(iso)
   if (Number.isNaN(d.getTime())) return EMPTY
   return fmtUtcDate(d)
+}
+
+/** Largest count and the lower median of the counts; both 0 when empty. */
+export function peakAndTypical(counts: number[]): { peak: number; typical: number } {
+  const v = [...counts].sort((a, b) => a - b)
+  return { peak: v.at(-1) ?? 0, typical: v.length ? v[Math.floor((v.length - 1) / 2)]! : 0 }
 }

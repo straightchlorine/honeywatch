@@ -5,7 +5,7 @@
   import { listSessionsOptions } from '@/api/generated/@tanstack/vue-query.gen'
   import { useCountryFlag } from '@/composables/useCountryFlag'
   import { useReducedMotion } from '@/composables/useReducedMotion'
-  import { fmtUtcClock } from '@/utils/format'
+  import { fmtRelativeTime, fmtUtcClock } from '@/utils/format'
 
   const emit = defineEmits<{
     arrive: [payload: { a2: string; lat: number | null; lon: number | null }]
@@ -75,6 +75,22 @@
     return feedQ.isPending.value ? 'Loading sessions...' : 'No sessions yet.'
   })
 
+  // Freshness from the newest started_at already fetched; `now` ticks each minute so the cue
+  // still appears when polls return identical data.
+  const STALE_MS = 15 * 60_000
+  const now = ref(Date.now())
+  const nowTimer = setInterval(() => (now.value = Date.now()), 60_000)
+  onUnmounted(() => clearInterval(nowTimer))
+  const staleText = computed(() => {
+    const t = feedQ.data.value?.items
+      .map((s) => Date.parse(s.started_at ?? ''))
+      .filter((n) => !Number.isNaN(n))
+    const last = t?.length ? Math.max(...t) : null
+    return last !== null && now.value - last > STALE_MS
+      ? `last ${fmtRelativeTime(new Date(last).toISOString())}`
+      : ''
+  })
+
   let seen = new Set<string>()
   let firstLoad = true
   // Stagger emissions over the poll interval to avoid firing all arcs in one frame.
@@ -114,9 +130,10 @@
 <template>
   <div class="feed glass" aria-live="off">
     <h2>
-      <span class="live-dot" :class="{ paused }" aria-hidden="true" />
+      <span class="live-dot" :class="{ paused: paused || !!staleText }" aria-hidden="true" />
       Live sessions
       <span class="tz">UTC</span>
+      <span v-if="staleText" class="stale">{{ staleText }}</span>
       <!-- WCAG 2.2.2 (Pause, Stop, Hide). -->
       <button
         type="button"
@@ -179,12 +196,21 @@
     display: flex;
     gap: 8px;
     align-items: center;
+    white-space: nowrap;
   }
 
   /* Same face as the clock column it labels; lighter weight keeps it secondary. */
   .tz {
     font: 500 11px var(--font-mono);
     letter-spacing: 0.08em;
+  }
+
+  .stale {
+    font: 500 11px var(--font-mono);
+    letter-spacing: 0.04em;
+    text-transform: none;
+    color: var(--text-dim);
+    white-space: nowrap;
   }
 
   .live-dot.paused {
@@ -323,6 +349,13 @@
   }
   .feed-row .res.no {
     color: var(--bad);
+  }
+
+  /* Phone shows less: the age cue replaces the UTC tag so the header stays on one line. */
+  @media (max-width: 420px) {
+    .feed h2:has(.stale) .tz {
+      display: none;
+    }
   }
 
   @media (max-width: 900px) {

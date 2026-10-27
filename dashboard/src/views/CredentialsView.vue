@@ -318,7 +318,7 @@
             <InfoDot title="Distinct passwords" :text="TOOLTIP_DISTINCT_PASSWORDS" />
           </template>
           <template #meta>
-            <span class="m-full">top {{ shownPasswordCount }} shown in the grid below</span>
+            <span class="m-full">top {{ shownPasswordCount }} in the grid below</span>
             <span class="m-short">top {{ shownPasswordCount }} shown</span>
           </template>
         </StatTile>

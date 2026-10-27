@@ -15,7 +15,14 @@
     run,
     open,
     tabbable = false,
-  } = defineProps<{ row: SessionRow; run: RunSummaryResponse; open: boolean; tabbable?: boolean }>()
+    wide = false,
+  } = defineProps<{
+    row: SessionRow
+    run: RunSummaryResponse
+    open: boolean
+    tabbable?: boolean
+    wide?: boolean
+  }>()
   const emit = defineEmits<{ toggle: [] }>()
 
   // The run shares its first session's story, so these chips stand for every row beneath.
@@ -34,7 +41,7 @@
     const [a, b] = [fmtRelativeTime(run.newest), fmtRelativeTime(run.oldest)]
     return a === b ? a : `${a} to ${b}`
   })
-  // "105d ago to 106d ago" -> "105-106d ago" for the tablet band, where the column is too narrow.
+  // "105d ago to 106d ago" -> "105-106d ago" at every width: the long form clipped at 1080p.
   const startedShort = computed(() => {
     const [a, b] = [fmtRelativeTime(run.newest), fmtRelativeTime(run.oldest)]
     if (a === b) return a
@@ -100,12 +107,9 @@
       </span>
     </td>
     <td class="g">{{ origin }}</td>
-    <td class="g" aria-hidden="true"></td>
+    <td v-if="wide" class="g"></td>
     <td class="g r num">{{ duration }}</td>
-    <td class="g r started" :title="started">
-      <span class="full">{{ started }}</span
-      ><span class="short">{{ startedShort }}</span>
-    </td>
+    <td class="g r started" :title="started">{{ startedShort }}</td>
   </tr>
   <!-- eslint-enable vuejs-accessibility/click-events-have-key-events -->
 </template>
@@ -134,16 +138,7 @@
     padding-right: 14px;
     font-size: 11.5px;
   }
-  .short {
-    display: none;
-  }
   @media (min-width: 760px) and (max-width: 1179.98px) {
-    .full {
-      display: none;
-    }
-    .short {
-      display: inline;
-    }
     .hide {
       display: none;
     }

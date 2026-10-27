@@ -4,7 +4,7 @@
    * filters and server-side pagination. Rows expand in place (no navigation).
    * All state (filters, page, expanded row) is URL-based for sharing and back-nav.
    */
-  import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+  import { computed, nextTick, onBeforeUnmount, onMounted, onScopeDispose, ref, watch } from 'vue'
   import { useRoute, useRouter, type LocationQuery } from 'vue-router'
   import { useQueries, useQuery, keepPreviousData } from '@tanstack/vue-query'
   import type { ListSessionsData } from '@/api/generated/types.gen'
@@ -92,6 +92,15 @@
   // view is shareable and survives refresh and back.
   const route = useRoute()
   const router = useRouter()
+  // Network column only where the fixed columns leave room (the table is not rendered on phones).
+  const wideMql = typeof matchMedia === 'function' ? matchMedia('(min-width: 1440px)') : null
+  const wide = ref(wideMql?.matches ?? false)
+  const onWide = (e: MediaQueryListEvent): void => {
+    wide.value = e.matches
+  }
+  wideMql?.addEventListener('change', onWide)
+  onScopeDispose(() => wideMql?.removeEventListener('change', onWide), true)
+  const colCount = computed(() => (wide.value ? 6 : 5))
   // Before the top-level await below: the listener must register on the setup scope.
   const isPhone = useIsPhone()
   // Once the user leaves this list (a row is tapped, or another page is opened) the route is no
@@ -590,10 +599,7 @@
     if (canNext.value && !sessionsQ.isFetching.value) goToPage(currentPage.value + 1)
   }
 
-  // Header order; 'spacer' is the unlabeled 4th column (see the width rules in the styles).
-  const COLUMNS: (
-    { key: SortId; label: string; hint: string; right?: boolean } | { key: 'spacer' }
-  )[] = [
+  const COLUMNS: { key: SortId; label: string; hint: string; right?: boolean }[] = [
     {
       key: 'interest',
       label: 'Session',
@@ -601,7 +607,6 @@
     },
     { key: 'active', label: 'Story', hint: 'Sort by activity: SSH commands issued' },
     { key: 'country', label: 'Origin', hint: 'Sort by origin: alphabetically' },
-    { key: 'spacer' },
     { key: 'duration', label: 'Duration', hint: 'Sort by duration: longest first', right: true },
     { key: 'recent', label: 'Started', hint: 'Sort by recency: newest first', right: true },
   ]
@@ -773,9 +778,7 @@
           <thead>
             <tr>
               <template v-for="c in COLUMNS" :key="c.key">
-                <th v-if="c.key === 'spacer'" aria-hidden="true"></th>
                 <SortableTh
-                  v-else
                   v-model:sort="sort"
                   v-model:order="order"
                   :sort-key="c.key"
@@ -790,6 +793,7 @@
                     >commands &middot; files &middot; relays</span
                   >
                 </SortableTh>
+                <th v-if="c.key === 'country' && wide" class="net">Network</th>
               </template>
             </tr>
           </thead>
@@ -800,6 +804,7 @@
                 :row="row"
                 :expanded="expandedId === row.id"
                 :max-interest="maxInterest"
+                :wide="wide"
                 :tabbable="row.id === stopId"
                 @toggle="toggleRow(row.id)"
               />
@@ -809,6 +814,7 @@
                   :row="row"
                   :run="row.run"
                   :open="isOpen(row.id)"
+                  :wide="wide"
                   :tabbable="groupKey(row.id) === stopId"
                   @toggle="toggleRun(row.id)"
                 />
@@ -819,12 +825,13 @@
                     :row="m"
                     :expanded="expandedId === m.id"
                     :max-interest="maxInterest"
+                    :wide="wide"
                     :tabbable="m.id === stopId"
                     nested
                     @toggle="toggleRow(m.id, row.id)"
                   />
                   <tr v-if="runLoading(row.id) || runMore(row.id) > 0" class="run-more">
-                    <td colspan="6">
+                    <td :colspan="colCount">
                       <span v-if="runLoading(row.id)" role="status">Loading&hellip;</span>
                       <template v-else-if="runFailed(row.id)">
                         <span role="alert">Could not load these sessions.</span>
@@ -850,9 +857,9 @@
 
     <div class="foot-line">
       <span>
-        <b>{{ SESSIONS_PER_PAGE }}</b> per page &middot; {{ fmtNumber(total) }}
+        <b>{{ SESSIONS_PER_PAGE }}</b> rows per page &middot; {{ fmtNumber(total) }}
         {{ scopeClause ?? 'sessions'
-        }}<span v-if="!scopeClause" class="hint-tail"> &middot; select a row to expand it</span>
+        }}<span class="hint-tail"> &middot; similar sessions fold into one row</span>
       </span>
       <div class="pagination">
         <button
@@ -1115,7 +1122,7 @@
     width: 100%;
     /* Fixed layout: column widths come only from the widths below, never from
        cell content - keeps the expanded row's wide transcript preview
-       (colspan=6) from shifting every other row's column boundaries. */
+       (colspan = every column) from shifting every other row's column boundaries. */
     table-layout: fixed;
     border-collapse: collapse;
     font-size: 13px;
@@ -1128,13 +1135,15 @@
     text-transform: uppercase;
     color: var(--text-dim);
     padding: 8px 10px;
+    vertical-align: middle;
+    line-height: 16px;
     border-bottom: 1px solid var(--border-strong);
     position: sticky;
     top: 0;
     background: var(--surface);
     z-index: 2;
-    /* Session / Story / Origin / spacer / Duration / Started column widths.
-       Column 4 (spacer) has no width so fixed layout gives it all leftover space.
+    /* Session / Story / Origin / Duration / Started column widths.
+       Origin (column 3) has no width so fixed layout gives it all leftover space.
        border-box: widths are the column's actual width, padding included. */
     box-sizing: border-box;
   }
@@ -1146,15 +1155,12 @@
     padding-left: 8px;
   }
   table.data th:nth-child(2) {
-    width: 400px;
+    width: 300px;
   }
-  table.data th:nth-child(3) {
-    width: 260px;
-  }
-  table.data th:nth-child(5) {
+  table.data th:nth-child(4) {
     width: 130px;
   }
-  table.data th:nth-child(6) {
+  table.data th:nth-child(5) {
     width: 150px;
     padding-right: 14px;
   }
@@ -1181,6 +1187,22 @@
     font-variant-numeric: tabular-nums;
   }
 
+  /* 1440px+: Network is column 4, so Duration and Started shift to 5 and 6. */
+  @media (min-width: 1440px) {
+    table.data th.net {
+      width: auto;
+      padding-right: 10px;
+    }
+    table.data th:nth-child(5) {
+      width: 130px;
+      padding-right: 10px;
+    }
+    table.data th:nth-child(6) {
+      width: 150px;
+      padding-right: 14px;
+    }
+  }
+
   /* Narrow-desktop band (760-1299px): the desktop table is 1230px of fixed columns and the card is
      the viewport minus 46px, so it only fits from 1292px up; below that Origin and Duration/Started
      scrolled off (the compact rules stop at 1299.98px, the first width where the full table fits).
@@ -1198,20 +1220,12 @@
     table.data th:nth-child(2) {
       width: 160px;
     }
-    /* Origin has no width of its own here: with the spacer at 0 it takes whatever is left. */
-    table.data th:nth-child(3) {
-      width: auto;
-    }
-    table.data th:nth-child(4) {
-      width: 0;
-      padding: 0;
-    }
     /* 8px keeps a sorted header's chevron off the neighbouring label. */
-    table.data th:nth-child(5) {
+    table.data th:nth-child(4) {
       width: 104px;
       padding-left: 8px;
     }
-    table.data th:nth-child(6) {
+    table.data th:nth-child(5) {
       width: 108px;
       padding-left: 8px;
     }
@@ -1227,10 +1241,10 @@
     table.data th:nth-child(2) {
       width: 300px;
     }
-    table.data th:nth-child(5) {
+    table.data th:nth-child(4) {
       width: 110px;
     }
-    table.data th:nth-child(6) {
+    table.data th:nth-child(5) {
       width: 160px;
     }
     .story-key {

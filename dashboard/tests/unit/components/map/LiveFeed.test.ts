@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { ref } from 'vue'
 import LiveFeed from '@/components/map/LiveFeed.vue'
@@ -101,5 +101,60 @@ describe('LiveFeed country label', () => {
     expect(label.text()).toBe('France')
     expect(label.attributes('title')).toBe('France')
     expect(label.find('.cn').exists()).toBe(false)
+  })
+})
+
+describe('LiveFeed freshness', () => {
+  beforeEach(() => setState({}))
+  const item = (iso: string) => ({
+    id: 'f',
+    started_at: iso,
+    country_code: 'FR',
+    country: 'France',
+    city: null,
+    protocol: 'ssh',
+    category: 'active',
+    has_successful_login: true,
+    lat: null,
+    lon: null,
+  })
+
+  it('greys the dot and shows the age when the newest session is stale', () => {
+    setState({ data: { items: [item(new Date(Date.now() - 11 * 86_400_000).toISOString())] } })
+    const w = mount(LiveFeed)
+    expect(w.get('.stale').text()).toBe('last 11d ago')
+    expect(w.get('.live-dot').classes()).toContain('paused')
+  })
+
+  it('keeps the pulsing dot and no age when fresh', () => {
+    setState({ data: { items: [item(new Date(Date.now() - 60_000).toISOString())] } })
+    const w = mount(LiveFeed)
+    expect(w.find('.stale').exists()).toBe(false)
+    expect(w.get('.live-dot').classes()).not.toContain('paused')
+  })
+
+  describe('15 minute boundary', () => {
+    const T0 = new Date('2026-01-01T12:00:00Z')
+    const ago = (min: number) => new Date(T0.getTime() - min * 60_000).toISOString()
+    beforeEach(() => {
+      vi.useFakeTimers()
+      vi.setSystemTime(T0)
+    })
+    afterEach(() => vi.useRealTimers())
+
+    it('shows no cue at 14 minutes and a cue at 16', () => {
+      setState({ data: { items: [item(ago(14))] } })
+      expect(mount(LiveFeed).find('.stale').exists()).toBe(false)
+      setState({ data: { items: [item(ago(16))] } })
+      expect(mount(LiveFeed).get('.stale').text()).toBe('last 16m ago')
+    })
+
+    it('shows the cue once time passes with unchanged data', async () => {
+      setState({ data: { items: [item(ago(14))] } })
+      const w = mount(LiveFeed)
+      expect(w.find('.stale').exists()).toBe(false)
+      await vi.advanceTimersByTimeAsync(2 * 60_000)
+      expect(w.get('.stale').text()).toBe('last 16m ago')
+    })
   })
 })

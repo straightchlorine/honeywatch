@@ -1,10 +1,13 @@
 import { mount } from '@vue/test-utils'
-import { describe, expect, it } from 'vitest'
+import { nextTick } from 'vue'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import TerminalLine from '@/components/sessions/TerminalLine.vue'
 import type { TerminalLine as TerminalLineType } from '@/components/sessions/useTerminalTranscript'
 
 describe('TerminalLine', () => {
+  afterEach(() => vi.restoreAllMocks())
+
   it('renders a command line with prompt and bright input', () => {
     const w = mount(TerminalLine, {
       props: {
@@ -430,5 +433,62 @@ describe('TerminalLine', () => {
       const w = mount(TerminalLine, { props: { line: lineData } })
       expect(w.find('.line').classes()).toContain(expectedClass)
     }
+  })
+
+  it('offers a show all / show less toggle when the clamp truncates', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(400)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100)
+    const w = mount(TerminalLine, {
+      props: {
+        line: {
+          id: 'c9',
+          kind: 'command',
+          user: 'root',
+          segments: [{ text: 'x'.repeat(900), redacted: false }],
+        },
+      },
+    })
+    await nextTick()
+    const btn = w.find('button.more')
+    expect(btn.text()).toBe('show all')
+    expect(btn.attributes('aria-expanded')).toBe('false')
+    await btn.trigger('click')
+    expect(w.find('button.more').text()).toBe('show less')
+    expect(w.find('button.more').attributes('aria-expanded')).toBe('true')
+    expect(w.find('.line-body').classes()).not.toContain('clamp')
+  })
+
+  it('expands when focus lands inside the clamped body', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(400)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100)
+    const w = mount(TerminalLine, {
+      props: {
+        line: {
+          id: 'c10',
+          kind: 'command',
+          user: 'root',
+          segments: [{ text: '<ip>', redacted: true }],
+        },
+      },
+    })
+    await w.find('.ip-blot').trigger('focusin')
+    expect(w.find('.line-body').classes()).not.toContain('clamp')
+  })
+
+  it('offers no toggle when the text is not clipped', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(100)
+    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(100)
+    const w = mount(TerminalLine, {
+      props: {
+        line: {
+          id: 'c11',
+          kind: 'command',
+          user: 'root',
+          segments: [{ text: 'ls', redacted: false }],
+        },
+      },
+    })
+    await nextTick()
+    expect(w.find('button.more').exists()).toBe(false)
   })
 })
