@@ -244,9 +244,13 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_INGESTOR_PASSWORD:?POSTGRES_INGESTOR_PASSWORD must be set}
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: postgres
+      METRICS_TEXTFILE: /metrics/ingestor.prom
     volumes:
       - cowrie-logs:/logs:ro
       - geoip-data:/data/geoip:ro
+      # Alloy reads the textfile from here.
+      # No :z/:Z: the host labels and owns this dir, relabeling would lock Alloy out.
+      - /var/lib/honeywatch/metrics:/metrics
     networks:
       - backend
     read_only: true

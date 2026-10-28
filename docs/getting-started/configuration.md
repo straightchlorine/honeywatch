@@ -123,6 +123,7 @@ by the browser.
 | `HEALTHCHECK_PATH` | ingestor | `/tmp/healthy` | Liveness file. The Dockerfile health check reads the same path, so change both or neither. |
 | `METRICS_ENABLED` | ingestor | `0` | `1` serves Prometheus metrics on `127.0.0.1` inside the container. |
 | `METRICS_PORT` | ingestor | `9101` | |
+| `METRICS_TEXTFILE` | ingestor | unset | Path of a file the ingestor rewrites every 15 seconds with its `ingestor_*` metrics in Prometheus text format, for a node-exporter-style textfile collector. Independent of `METRICS_ENABLED`. `docker-compose.prod.yml` sets `/metrics/ingestor.prom`. |
 
 `docker-compose.yml` passes only `DROP_LOOPBACK`. To change anything else, add
 it to the ingestor's `environment:` block. The metrics endpoint binds to

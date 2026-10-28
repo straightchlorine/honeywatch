@@ -208,6 +208,16 @@ entry does nothing. Scraping it means a sidecar in the same network namespace.
 | `ingestor_queue_depth` | Current queue depth |
 | `ingestor_consecutive_failures` | Write failures since the last success |
 | `ingestor_fuse_open` | 1 while tripped |
+| `ingestor_attack_events_total{type}` | New rows written: `session`, `login_success`, `login_failed`, `command`, `download` |
+| `ingestor_sessions_by_country_total{country}` | New sessions by source country (ISO alpha-2, or `unknown`) |
+
+The attack counters count new rows only, so a replay after a restart does not
+double-count, and cowrie's loopback healthcheck connects are excluded.
+
+The production compose file also sets `METRICS_TEXTFILE=/metrics/ingestor.prom`
+and mounts `/var/lib/honeywatch/metrics` there, so a host agent (Grafana Alloy's
+textfile collector) can ship the metrics without reaching into the container.
+The directory must be writable by uid/gid 1000.
 
 The labelled counters only appear once an event with that label has been
 seen, so a freshly started ingestor shows the gauges and little else.
