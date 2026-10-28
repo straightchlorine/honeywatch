@@ -14,9 +14,10 @@ import queue
 import signal
 import threading
 from collections.abc import Callable, Iterator
+from pathlib import Path
 
 import psycopg
-from prometheus_client import start_http_server
+from prometheus_client import REGISTRY, start_http_server, write_to_textfile
 
 from src import metrics
 from src.config import Config
@@ -32,6 +33,8 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 _STOP_SENTINEL = object()
+
+_TEXTFILE_INTERVAL = 15.0
 
 
 def _producer(
@@ -109,6 +112,45 @@ def _touch_healthy(config: Config) -> None:
         )
 
 
+def _write_textfile(path: Path) -> None:
+    """Atomically write only the `ingestor_*` metrics (no process_/python_)."""
+    # restricted_registry matches sample names, not family names: a Counter's
+    # family "x" emits "x_total"/"x_created", so list those spellings too.
+    names = [
+        f"{m.name}{suffix}"
+        for m in REGISTRY.collect()
+        if m.name.startswith("ingestor_")
+        for suffix in ("", "_total", "_created")
+    ]
+    write_to_textfile(str(path), REGISTRY.restricted_registry(names))
+
+
+def _textfile_loop(
+    path: Path, stop_event: threading.Event, interval: float = _TEXTFILE_INTERVAL
+) -> None:
+    """Rewrite `path` every `interval` seconds until `stop_event` is set.
+
+    A failing write (missing or unwritable directory) must never affect
+    ingestion, so errors are logged once per outage and once on recovery.
+    """
+    failing = False
+    while not stop_event.is_set():
+        try:
+            _write_textfile(path)
+            if failing:
+                logger.warning("metrics textfile %s writable again", path)
+                failing = False
+        except Exception:
+            if not failing:
+                logger.warning(
+                    "failed to write metrics textfile %s; will keep retrying",
+                    path,
+                    exc_info=True,
+                )
+                failing = True
+        stop_event.wait(interval)
+
+
 def _build_probe(writer: EventWriter) -> Callable[[], bool]:
     """Fuse probe: True iff a `SELECT 1` round-trips to Postgres."""
 
@@ -136,6 +178,17 @@ def main() -> None:
         logger.info("Metrics server disabled (METRICS_ENABLED=0)")
 
     stop_event = threading.Event()
+
+    textfile_thread: threading.Thread | None = None
+    if config.metrics_textfile is not None:
+        textfile_thread = threading.Thread(
+            target=_textfile_loop,
+            args=(config.metrics_textfile, stop_event),
+            name="metrics-textfile",
+            daemon=True,
+        )
+        textfile_thread.start()
+        logger.info("Writing metrics textfile to %s", config.metrics_textfile)
 
     def _handle_signal(signum: int, _frame: object) -> None:
         logger.info("Received signal %d, shutting down", signum)
@@ -179,6 +232,8 @@ def main() -> None:
             _consumer(line_queue, writer, config, stop_event)
             stop_event.set()
             producer_thread.join(timeout=2.0)
+            if textfile_thread is not None:
+                textfile_thread.join(timeout=2.0)
     finally:
         logger.info("Ingestor shut down")
 

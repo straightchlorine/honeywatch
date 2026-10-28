@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ipaddress
 import logging
+import re
 import time
 from types import TracebackType
 from typing import Any, LiteralString, Self
@@ -63,7 +64,18 @@ _GEO_UPSERT_TTL_SECONDS = 3600
 # against a botnet with many distinct source IPs.
 _GEO_UPSERT_CACHE_CAP = 10_000
 
+# Metric label guard: only a real alpha-2 code may become a label value, so a
+# malformed mmdb entry can't inflate the label set.
+_COUNTRY_RE = re.compile(r"[A-Z]{2}")
+
 logger = logging.getLogger(__name__)
+
+
+def _country_label(code: str | None) -> str:
+    """Return `code` if it is exactly two uppercase ASCII letters, else 'unknown'."""
+    if code is not None and _COUNTRY_RE.fullmatch(code):
+        return code
+    return "unknown"
 
 
 def _is_loopback(src_ip: str | None) -> bool:
@@ -235,9 +247,14 @@ class EventWriter:
             conninfo, open=False, check=ConnectionPool.check_connection
         )
         self._drop_loopback = drop_loopback
+
         # ip -> time.monotonic() of the last successful geo upsert.
         # No lock needed: EventWriter is driven by a single consumer thread.
         self._geo_upserted_at: dict[str, float] = {}
+
+        # ip -> country label, kept beside the TTL tracker so a connect that
+        # skips the geo lookup can still feed the per-country counter.
+        self._country_by_ip: dict[str, str] = {}
 
     def __enter__(self) -> Self:
         self.pool.open()
@@ -303,7 +320,7 @@ class EventWriter:
         with self.pool.connection() as conn:
             try:
                 with conn.transaction():
-                    conn.execute(
+                    cur = conn.execute(
                         _INSERT_SESSION,
                         {
                             "id": truncate(event.session_id, _LEN_SESSION_ID),
@@ -320,60 +337,72 @@ class EventWriter:
                 self._drop_bad_event("session_connect", event.session_id, exc)
                 return
 
-            now = time.monotonic()
-            last_upserted = self._geo_upserted_at.get(event.src_ip)
-            if last_upserted is not None and (
-                now - last_upserted < _GEO_UPSERT_TTL_SECONDS
-            ):
-                # Same IP was upserted recently (repeat botnet connects are
-                # the dominant traffic pattern here) - skip the geo lookup
-                # and DB round trip entirely.
-                return
+            country = self._enrich_geo(conn, event.src_ip)
 
-            try:
-                geo = geoip_lookup(event.src_ip)
-            except Exception:
-                # geoip.lookup is documented as never-raise, but isolate from
-                # session-write outcome defensively.
-                logger.warning(
-                    "geoip lookup raised for %s; continuing without enrichment",
-                    event.src_ip,
-                    exc_info=True,
+            # rowcount 0 is a replayed or duplicate connect: already counted.
+            if cur.rowcount != 0:
+                metrics.attack_events_total.labels(type="session").inc()
+                metrics.sessions_by_country_total.labels(country=country).inc()
+
+    def _enrich_geo(self, conn: psycopg.Connection[Any], src_ip: str) -> str:
+        """Upsert geo for `src_ip` (TTL-gated, best-effort); return its country."""
+        now = time.monotonic()
+        last_upserted = self._geo_upserted_at.get(src_ip)
+        if last_upserted is not None and (
+            now - last_upserted < _GEO_UPSERT_TTL_SECONDS
+        ):
+            # Same IP was upserted recently (repeat botnet connects are
+            # the dominant traffic pattern here) - skip the geo lookup
+            # and DB round trip entirely.
+            return self._country_by_ip.get(src_ip, "unknown")
+
+        try:
+            geo = geoip_lookup(src_ip)
+        except Exception:
+            # geoip.lookup is documented as never-raise, but isolate from
+            # session-write outcome defensively.
+            logger.warning(
+                "geoip lookup raised for %s; continuing without enrichment",
+                src_ip,
+                exc_info=True,
+            )
+            geo = None
+        if geo is None:
+            return "unknown"
+        country = _country_label(geo.country_code)
+        try:
+            with conn.transaction():
+                conn.execute(
+                    _UPSERT_GEO,
+                    {
+                        "ip": src_ip,
+                        "country_code": truncate(geo.country_code, _LEN_COUNTRY_CODE),
+                        "country": truncate(geo.country, _LEN_COUNTRY),
+                        "city": truncate(geo.city, _LEN_CITY),
+                        "latitude": geo.latitude,
+                        "longitude": geo.longitude,
+                        "asn": geo.asn,
+                        "as_org": truncate(geo.as_org, _LEN_AS_ORG),
+                    },
                 )
-                geo = None
-            if geo is None:
-                return
-            try:
-                with conn.transaction():
-                    conn.execute(
-                        _UPSERT_GEO,
-                        {
-                            "ip": event.src_ip,
-                            "country_code": truncate(
-                                geo.country_code, _LEN_COUNTRY_CODE
-                            ),
-                            "country": truncate(geo.country, _LEN_COUNTRY),
-                            "city": truncate(geo.city, _LEN_CITY),
-                            "latitude": geo.latitude,
-                            "longitude": geo.longitude,
-                            "asn": geo.asn,
-                            "as_org": truncate(geo.as_org, _LEN_AS_ORG),
-                        },
-                    )
-            except psycopg.Error:
-                metrics.geo_upsert_failures_total.inc()
-                logger.warning(
-                    "geo upsert failed for %s; session row preserved",
-                    event.src_ip,
-                    exc_info=True,
-                )
-                return
-            # Only recorded after a successful upsert - a failed one must
-            # not suppress the retry on the next connect from this IP.
-            # Whole-dict flush at cap to prevent unbounded memory growth.
-            if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
-                self._geo_upserted_at.clear()
-            self._geo_upserted_at[event.src_ip] = now
+        except psycopg.Error:
+            metrics.geo_upsert_failures_total.inc()
+            logger.warning(
+                "geo upsert failed for %s; session row preserved",
+                src_ip,
+                exc_info=True,
+            )
+            return country
+
+        # Only recorded after a successful upsert - a failed one must
+        # not suppress the retry on the next connect from this IP.
+        # Whole-dict flush at cap to prevent unbounded memory growth.
+        if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
+            self._geo_upserted_at.clear()
+            self._country_by_ip.clear()
+        self._geo_upserted_at[src_ip] = now
+        self._country_by_ip[src_ip] = country
+        return country
 
     def _execute(
         self,
@@ -383,6 +412,7 @@ class EventWriter:
         params: dict[str, Any],
         *,
         counter_sql: LiteralString | None = None,
+        attack_type: str | None = None,
     ) -> None:
         """Run one INSERT/UPSERT, isolating the orphan and poison-event cases.
 
@@ -400,14 +430,20 @@ class EventWriter:
         Skipped when the insert's `ON CONFLICT DO NOTHING` no-ops (a
         `Retry`-replayed write, see `_INSERT_COMMAND` et al.), so a
         deduped row can't still double-bump its counter.
+
+        `attack_type` (a fixed metric label, never attacker data) is counted
+        only once a new row is committed, so replays never double-count.
         """
         try:
             with self.pool.connection() as conn:
                 cur = conn.execute(sql, params)
-                if cur.rowcount == 0:
+                inserted = cur.rowcount != 0
+                if not inserted:
                     self._log_deduped(kind, session_id)
                 elif counter_sql is not None:
                     conn.execute(counter_sql, {"session_id": params["session_id"]})
+            if inserted and attack_type is not None:
+                metrics.attack_events_total.labels(type=attack_type).inc()
         except psycopg.errors.ForeignKeyViolation:
             self._log_orphan(kind, session_id)
         except psycopg.errors.DataError as exc:
@@ -427,6 +463,7 @@ class EventWriter:
                 "timestamp": event.timestamp,
             },
             counter_sql=_SET_AUTH_SUCCESS if success else None,
+            attack_type="login_success" if success else "login_failed",
         )
 
     def _write_command(self, event: CommandInput) -> None:
@@ -441,6 +478,7 @@ class EventWriter:
                 "timestamp": event.timestamp,
             },
             counter_sql=_INCR_N_COMMANDS,
+            attack_type="command",
         )
 
     def _write_download(self, event: FileDownload) -> None:
@@ -456,6 +494,7 @@ class EventWriter:
                 "timestamp": event.timestamp,
             },
             counter_sql=_INCR_N_DOWNLOADS,
+            attack_type="download",
         )
 
     def _write_download_failed(self, event: FileDownloadFailed) -> None:
