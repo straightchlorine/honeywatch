@@ -224,3 +224,27 @@ seen, so a freshly started ingestor shows the gauges and little else.
 
 `ingestor_parser_drift_total` is the one to watch after an update. A non-zero
 rate on a previously quiet event id means Cowrie changed a field shape.
+
+## Grafana Dashboard
+
+`grafana/dashboards/honeywatch.json` charts the metrics above: attack counts,
+a country map, ingestor health, and two collapsed rows for the honeypot host.
+
+It needs:
+
+- the ingestor metrics in Prometheus, either through `METRICS_TEXTFILE` plus
+  node exporter's textfile collector (the production compose default), or
+  `METRICS_ENABLED` scraped directly. The "File age" stat reads
+  `node_textfile_mtime_seconds` and stays empty in the direct-scrape setup.
+- optional: node exporter on the same instance for the Host resources row, and
+  Loki with the systemd journal (labels `host`, `unit`, `level`) for Host logs.
+
+Import it under Dashboards, New, Import; the Metrics and Logs dropdowns at the
+top then select the datasources. Grafana 11 or newer; no plugin dependencies.
+
+| Variable | Meaning |
+|---|---|
+| `datasource`, `loki` | Prometheus and Loki datasources |
+| `instance` | Prometheus `instance` label of the honeypot |
+| `host` | Loki `host` label; it can differ from `instance` |
+| `unit` | Journal units to show (multi-select) |
