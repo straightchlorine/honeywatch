@@ -47,6 +47,25 @@ deduped_write_total = Counter(
     ["kind"],
 )
 
+attack_events_total = Counter(
+    "ingestor_attack_events_total",
+    "New attack rows written, by type (session, login_success, login_failed, "
+    "command, download). Not bumped for deduped replays or loopback connects.",
+    ["type"],
+)
+
+# Pre-create every type at 0: otherwise, after a restart, a rare type's first
+# event (e.g. a download) becomes the series' first sample and increase() never
+# shows it.
+for _type in ("session", "login_success", "login_failed", "command", "download"):
+    attack_events_total.labels(type=_type)
+
+sessions_by_country_total = Counter(
+    "ingestor_sessions_by_country_total",
+    "New sessions written, by ISO 3166 alpha-2 source country or 'unknown'.",
+    ["country"],
+)
+
 queue_depth = Gauge(
     "ingestor_queue_depth",
     "Current depth of the tail->writer queue.",

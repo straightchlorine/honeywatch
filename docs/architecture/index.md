@@ -89,7 +89,7 @@ limit.
 | --- | --- |
 | Reads | `/logs/cowrie.json`, plus `GeoLite2-City.mmdb` and `GeoLite2-ASN.mmdb` from `/data/geoip` |
 | Writes | Rows in Postgres, and a liveness file at `/tmp/healthy` |
-| Exposes | Nothing by default. With `METRICS_ENABLED=1`, Prometheus metrics on `127.0.0.1:9101` inside the container |
+| Exposes | With `METRICS_ENABLED=1`, Prometheus metrics on `127.0.0.1:9101` inside the container. With `METRICS_TEXTFILE` set (production compose), the same `ingestor_*` metrics in a file rewritten every 15 seconds |
 
 It handles eleven Cowrie event ids:
 

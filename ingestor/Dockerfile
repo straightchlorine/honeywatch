@@ -26,7 +26,11 @@ RUN rm -rf /usr/local/lib/python3.*/site-packages/pip \
 
 ENV GEOIP_DATA_DIR=/data/geoip
 
-RUN useradd --create-home --shell /bin/bash ingestor \
+# uid/gid 1000 is pinned:
+# the host's metrics dir is owned 1000:1000 so the container can write the textfile
+# Alloy would read.
+RUN groupadd --gid 1000 ingestor \
+    && useradd --uid 1000 --gid 1000 --create-home --shell /bin/bash ingestor \
     && mkdir -p /data/geoip \
     && chown -R ingestor:ingestor /app /data/geoip
 USER ingestor
