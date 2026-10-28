@@ -248,13 +248,10 @@ class EventWriter:
         )
         self._drop_loopback = drop_loopback
 
-        # ip -> time.monotonic() of the last successful geo upsert.
+        # ip -> (time.monotonic() of the last successful geo upsert, country
+        # label), so a connect that skips the lookup still has its country.
         # No lock needed: EventWriter is driven by a single consumer thread.
-        self._geo_upserted_at: dict[str, float] = {}
-
-        # ip -> country label, kept beside the TTL tracker so a connect that
-        # skips the geo lookup can still feed the per-country counter.
-        self._country_by_ip: dict[str, str] = {}
+        self._geo_upserted_at: dict[str, tuple[float, str]] = {}
 
     def __enter__(self) -> Self:
         self.pool.open()
@@ -347,14 +344,12 @@ class EventWriter:
     def _enrich_geo(self, conn: psycopg.Connection[Any], src_ip: str) -> str:
         """Upsert geo for `src_ip` (TTL-gated, best-effort); return its country."""
         now = time.monotonic()
-        last_upserted = self._geo_upserted_at.get(src_ip)
-        if last_upserted is not None and (
-            now - last_upserted < _GEO_UPSERT_TTL_SECONDS
-        ):
+        cached = self._geo_upserted_at.get(src_ip)
+        if cached is not None and now - cached[0] < _GEO_UPSERT_TTL_SECONDS:
             # Same IP was upserted recently (repeat botnet connects are
             # the dominant traffic pattern here) - skip the geo lookup
             # and DB round trip entirely.
-            return self._country_by_ip.get(src_ip, "unknown")
+            return cached[1]
 
         try:
             geo = geoip_lookup(src_ip)
@@ -399,9 +394,7 @@ class EventWriter:
         # Whole-dict flush at cap to prevent unbounded memory growth.
         if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
             self._geo_upserted_at.clear()
-            self._country_by_ip.clear()
-        self._geo_upserted_at[src_ip] = now
-        self._country_by_ip[src_ip] = country
+        self._geo_upserted_at[src_ip] = (now, country)
         return country
 
     def _execute(
@@ -606,10 +599,8 @@ class EventWriter:
             return
 
         now = time.monotonic()
-        last_upserted = self._geo_upserted_at.get(event.dst_ip)
-        if last_upserted is not None and (
-            now - last_upserted < _GEO_UPSERT_TTL_SECONDS
-        ):
+        cached = self._geo_upserted_at.get(event.dst_ip)
+        if cached is not None and now - cached[0] < _GEO_UPSERT_TTL_SECONDS:
             return
 
         try:
@@ -651,7 +642,7 @@ class EventWriter:
             return
         if len(self._geo_upserted_at) >= _GEO_UPSERT_CACHE_CAP:
             self._geo_upserted_at.clear()
-        self._geo_upserted_at[event.dst_ip] = now
+        self._geo_upserted_at[event.dst_ip] = (now, _country_label(geo.country_code))
 
     @staticmethod
     def _log_orphan(kind: str, session_id: str) -> None:

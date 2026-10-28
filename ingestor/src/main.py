@@ -115,12 +115,13 @@ def _touch_healthy(config: Config) -> None:
 def _write_textfile(path: Path) -> None:
     """Atomically write only the `ingestor_*` metrics (no process_/python_)."""
     # restricted_registry matches sample names, not family names: a Counter's
-    # family "x" emits "x_total"/"x_created", so list those spellings too.
+    # family "x" emits "x_total". "x_created" is left out on purpose - text
+    # format gives it no meaning, it would only double the counter series.
     names = [
         f"{m.name}{suffix}"
         for m in REGISTRY.collect()
         if m.name.startswith("ingestor_")
-        for suffix in ("", "_total", "_created")
+        for suffix in ("", "_total")
     ]
     write_to_textfile(str(path), REGISTRY.restricted_registry(names))
 

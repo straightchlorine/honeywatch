@@ -69,11 +69,7 @@ class Config:
             healthcheck_path=Path(os.environ.get("HEALTHCHECK_PATH", "/tmp/healthy")),
             metrics_port=int(os.environ.get("METRICS_PORT", "9101")),
             metrics_enabled=os.environ.get("METRICS_ENABLED", "0") == "1",
-            metrics_textfile=(
-                Path(os.environ["METRICS_TEXTFILE"])
-                if os.environ.get("METRICS_TEXTFILE")
-                else None
-            ),
+            metrics_textfile=Path(v) if (v := os.getenv("METRICS_TEXTFILE")) else None,
         )
 
     @property

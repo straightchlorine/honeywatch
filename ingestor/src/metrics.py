@@ -54,11 +54,9 @@ attack_events_total = Counter(
     ["type"],
 )
 
-# Pre-creating metrics at 0. After restarts, each type would lose its first event.
-#
-# Meaningful especially for rare events - like downloads.
-# By the time first one arrives, its first recorded `1` becomes the initial series.
-# Since it's the first record - the increase wouldn't be displayed
+# Pre-create every type at 0: otherwise, after a restart, a rare type's first
+# event (e.g. a download) becomes the series' first sample and increase() never
+# shows it.
 for _type in ("session", "login_success", "login_failed", "command", "download"):
     attack_events_total.labels(type=_type)
 
