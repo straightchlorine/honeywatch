@@ -14,7 +14,8 @@ Scenarios:
           database's CPU, payload bytes and HTTP status. Works on any release.
   journey a visitor opens Sessions and cycles the sort (routes.JOURNEY), with the
           layout cache cleared per visit, so each sort's first request is cold. The
-          time per step is what the visitor waits. Needs v0.8.3 or later.
+          time per step is what the visitor waits;
+          --think adds reading time between steps. Needs v0.8.3 or later.
   layout  N builds of the layout pass through the path prod uses (serial plan, one
           slot). Build 0 is a warm-up; summarize.py drops it.
   page    one layout build, then timed get_sessions_folded() calls on a warm cache:
@@ -417,7 +418,7 @@ def fetch(client: Any, path: str) -> tuple[object, dict[str, object]]:
     return doc, {"bytes": len(body), "status": r.status_code}
 
 
-def measure_journey(rec: Recorder, repeat: int) -> None:
+def measure_journey(rec: Recorder, repeat: int, think: float) -> None:
     from src.app import create_app
 
     client = create_app().test_client()
@@ -427,6 +428,7 @@ def measure_journey(rec: Recorder, repeat: int) -> None:
             rec.measure(
                 "journey", "-", f"{step} {name}", i, lambda p=path: fetch(client, p)
             )
+            time.sleep(think)  # the visitor reads the page before the next click
 
 
 def measure_routes(
@@ -465,6 +467,7 @@ def main() -> None:
     add("--variant", required=True, help="what is tested; the first run is 'baseline'")
     add("--scenario", choices=["route", "journey", "layout", "page"], required=True)
     add("--sort", nargs="+", default=["recent"], choices=SORTS)
+    add("--think", type=float, default=0, help="journey: seconds between steps")
     add(
         "--only",
         nargs="+",
@@ -522,7 +525,7 @@ def main() -> None:
         if args.scenario == "route":
             measure_routes(rec, factory, args.repeat, args.only)
         elif args.scenario == "journey":
-            measure_journey(rec, args.repeat)
+            measure_journey(rec, args.repeat, args.think)
         for sort in args.sort if args.scenario in ("layout", "page") else []:
             if args.scenario == "layout":
                 measure_layout(rec, factory, sort, args.builds)
