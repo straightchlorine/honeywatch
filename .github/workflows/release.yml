@@ -165,7 +165,12 @@ jobs:
         env:
           IMAGE: ${{ env.IMAGE_PREFIX }}/${{ matrix.component }}@${{ steps.digest.outputs.value }}
         run: |
-          cosign sign --yes "$IMAGE"
+          for attempt in 1 2 3; do
+            cosign sign --yes "$IMAGE" && exit 0
+            echo "::warning::cosign sign attempt $attempt failed, retrying"
+            sleep 20
+          done
+          exit 1
 
       - name: Upload SBOM artifact
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
