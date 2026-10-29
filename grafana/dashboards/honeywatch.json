@@ -1152,10 +1152,10 @@
       },
       "options": {
         "view": {
-          "id": "zero",
-          "lat": 25,
-          "lon": 10,
-          "zoom": 1.6,
+          "id": "coords",
+          "lat": 51.09,
+          "lon": 19.13,
+          "zoom": 3.6,
           "allLayers": true,
           "shared": false
         },
