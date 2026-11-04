@@ -56,7 +56,8 @@
   "pnpm": {
     "overrides": {
       "js-yaml": ">=5.4.1",
-      "minimatch": ">=11.0.1"
+      "minimatch": ">=11.0.1",
+      "glob": ">=14.0.2"
     }
   }
 }
