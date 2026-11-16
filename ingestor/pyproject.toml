@@ -7,7 +7,7 @@ name = "honeywatch-ingestor"
 version = "v0.8.8"
 requires-python = ">=3.13"
 dependencies = [
-    "psycopg[binary]>=3.3.6,<4",
+    "psycopg[binary]>=3.3.8,<4",
     "psycopg-pool>=3.3.3,<4",
     "pydantic>=2.14.2,<3",
     "geoip2>=5.3.0,<6",
